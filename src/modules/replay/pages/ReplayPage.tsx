@@ -25,7 +25,6 @@ const formatTelemetryLabel = (driver: OpenF1Driver) => {
 };
 
 const ALLOWED_SESSION_TYPES = ["Race", "Sprint", "Qualifying"] as const;
-const TRACK_BUILD_WINDOW_MS = 4 * 60 * 1000;
 const TRACK_TIME_GAP_MS = 2000;
 
 export const ReplayPage = () => {
@@ -39,8 +38,10 @@ export const ReplayPage = () => {
   const manualRoundRef = useRef(false);
   const trackBaseRef = useRef<{
     sessionKey: number | null;
+    driverNumber: number | null;
+    sampleCount: number;
     positions: { x: number; y: number; z: number; timestampMs: number }[];
-  }>({ sessionKey: null, positions: [] });
+  }>({ sessionKey: null, driverNumber: null, sampleCount: 0, positions: [] });
 
   const { data, loading, error, meetings, sessions, availableEndMs, dataRevision } =
     useReplayData({ year, round, sessionType, useLiveData });
@@ -78,26 +79,78 @@ export const ReplayPage = () => {
     }
     const sessionKey = data.session.session_key;
     const cached = trackBaseRef.current;
-    if (cached.sessionKey === sessionKey && cached.positions.length > 0) {
-      return cached.positions;
-    }
+    let bestPositions: { x: number; y: number; z: number; timestampMs: number }[] =
+      cached.sessionKey === sessionKey ? cached.positions : [];
+    let bestCount =
+      cached.sessionKey === sessionKey ? cached.sampleCount : 0;
+    let bestDriver =
+      cached.sessionKey === sessionKey ? cached.driverNumber : null;
+
     for (const driver of data.drivers) {
       const telemetry = data.telemetryByDriver[driver.driver_number];
-      if (telemetry?.locations?.length) {
-        const sorted = [...telemetry.locations].sort(
-          (a, b) => a.timestampMs - b.timestampMs,
-        );
-        const firstTimestamp = sorted[0]?.timestampMs ?? 0;
-        const windowEnd = firstTimestamp + TRACK_BUILD_WINDOW_MS;
-        const windowed = sorted.filter(
-          (sample) => sample.timestampMs <= windowEnd,
-        );
-        const positions = windowed.length > 0 ? windowed : sorted;
-        trackBaseRef.current = { sessionKey, positions };
-        return positions;
+      if (!telemetry?.locations?.length) {
+        continue;
+      }
+      const sorted = [...telemetry.locations].sort(
+        (a, b) => a.timestampMs - b.timestampMs,
+      );
+      const laps = telemetry.laps ?? [];
+      let positions = sorted;
+      let sampleCount = sorted.length;
+
+      if (laps.length >= 2) {
+        let bestStart = 0;
+        let bestEnd = 0;
+        let lapBestCount = 0;
+        let cursor = 0;
+        for (let i = 0; i < laps.length; i += 1) {
+          const lapStart = laps[i]?.timestampMs ?? 0;
+          const lapEnd =
+            laps[i + 1]?.timestampMs ?? data.sessionEndMs ?? lapStart;
+          if (lapEnd <= lapStart) {
+            continue;
+          }
+          while (cursor < sorted.length && sorted[cursor].timestampMs < lapStart) {
+            cursor += 1;
+          }
+          let endIndex = cursor;
+          while (endIndex < sorted.length && sorted[endIndex].timestampMs < lapEnd) {
+            endIndex += 1;
+          }
+          const count = endIndex - cursor;
+          if (count > lapBestCount) {
+            lapBestCount = count;
+            bestStart = cursor;
+            bestEnd = endIndex;
+          }
+          cursor = endIndex;
+          if (cursor >= sorted.length) {
+            break;
+          }
+        }
+        if (lapBestCount > 0) {
+          positions = sorted.slice(bestStart, bestEnd);
+          sampleCount = lapBestCount;
+        }
+      }
+
+      if (sampleCount > bestCount) {
+        bestCount = sampleCount;
+        bestPositions = positions;
+        bestDriver = driver.driver_number;
       }
     }
-    return [];
+
+    if (bestPositions.length > 0) {
+      trackBaseRef.current = {
+        sessionKey,
+        driverNumber: bestDriver,
+        sampleCount: bestCount,
+        positions: bestPositions,
+      };
+    }
+
+    return bestPositions;
   }, [data, dataRevision]);
 
   const normalization = useMemo(() => {

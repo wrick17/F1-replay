@@ -162,8 +162,9 @@ export const TrackView = ({
           fill="none"
           stroke="#E10600"
           strokeWidth="4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+          strokeLinecap="butt"
+          strokeLinejoin="miter"
+          shapeRendering="geometricPrecision"
         />
       )}
       {Object.entries(driverStates).map(([driverKey, state]) => {
