@@ -22,6 +22,8 @@ const MIN_LABEL_WIDTH = 40;
 const LABEL_HEIGHT = 20;
 const LABEL_PADDING = 8;
 const VIEWBOX_PADDING = 140;
+const MIN_SEGMENT_JUMP = 60;
+const JUMP_MULTIPLIER = 8;
 
 const toPoint2D = (point: NormalizedPosition): Point2D => ({
   x: point.x * SCALE,
@@ -29,7 +31,10 @@ const toPoint2D = (point: NormalizedPosition): Point2D => ({
 });
 
 const computeBounds = (points: Point2D[]) => {
-  if (!points.length) {
+  const validPoints = points.filter(
+    (point) => Number.isFinite(point.x) && Number.isFinite(point.y),
+  );
+  if (!validPoints.length) {
     return {
       minX: 0,
       minY: 0,
@@ -40,8 +45,8 @@ const computeBounds = (points: Point2D[]) => {
       center: { x: 0, y: 0 },
     };
   }
-  const xs = points.map((point) => point.x);
-  const ys = points.map((point) => point.y);
+  const xs = validPoints.map((point) => point.x);
+  const ys = validPoints.map((point) => point.y);
   const minX = Math.min(...xs);
   const maxX = Math.max(...xs);
   const minY = Math.min(...ys);
@@ -73,9 +78,46 @@ const buildPathD = (points: Point2D[]) => {
   if (points.length < 2) {
     return "";
   }
-  return `${points
-    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
-    .join(" ")} Z`;
+  const distances: number[] = [];
+  let lastValid: Point2D | null = null;
+  points.forEach((point) => {
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+      lastValid = null;
+      return;
+    }
+    if (lastValid) {
+      distances.push(
+        Math.hypot(point.x - lastValid.x, point.y - lastValid.y),
+      );
+    }
+    lastValid = point;
+  });
+  const sorted = [...distances].sort((a, b) => a - b);
+  const median =
+    sorted.length > 0
+      ? sorted[Math.floor(sorted.length / 2)]
+      : MIN_SEGMENT_JUMP;
+  const jumpThreshold = Math.max(median * JUMP_MULTIPLIER, MIN_SEGMENT_JUMP);
+
+  let path = "";
+  let previous: Point2D | null = null;
+  points.forEach((point) => {
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+      previous = null;
+      return;
+    }
+    const isFirst = !previous;
+    const distance = previous
+      ? Math.hypot(point.x - previous.x, point.y - previous.y)
+      : 0;
+    if (isFirst || distance > jumpThreshold) {
+      path += `${path ? " " : ""}M ${point.x} ${point.y}`;
+    } else {
+      path += ` L ${point.x} ${point.y}`;
+    }
+    previous = point;
+  });
+  return path;
 };
 
 const getLabelWidth = (text: string) =>

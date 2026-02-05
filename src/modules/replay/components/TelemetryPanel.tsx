@@ -7,6 +7,7 @@ type TelemetrySummary = {
 type TelemetryRow = {
   driverNumber: number;
   driverName: string;
+  driverAcronym: string;
   position: number | null;
   lap: number | null;
   compound: string | null;
@@ -67,6 +68,7 @@ export const TelemetryPanel = ({ summary, rows }: TelemetryPanelProps) => {
                 <div className="truncate text-white">{row.driverName}</div>
                 <div className="text-[10px] text-white/40">
                   #{row.driverNumber}
+                  {row.driverAcronym ? ` · ${row.driverAcronym}` : ""}
                 </div>
               </div>
               <div className="text-center text-white/80">{row.lap ?? "-"}</div>

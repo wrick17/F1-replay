@@ -16,11 +16,17 @@ import {
 
 const getDefaultYear = () => new Date().getFullYear() - 1;
 
-const formatDriverLabel = (driver: OpenF1Driver) => {
+const formatTrackLabel = (driver: OpenF1Driver) => {
   return driver.name_acronym || driver.full_name;
 };
 
+const formatTelemetryLabel = (driver: OpenF1Driver) => {
+  return driver.broadcast_name || driver.full_name;
+};
+
 const ALLOWED_SESSION_TYPES = ["Race", "Sprint", "Qualifying"] as const;
+const TRACK_BUILD_WINDOW_MS = 4 * 60 * 1000;
+const TRACK_TIME_GAP_MS = 2000;
 
 export const ReplayPage = () => {
   const [year, setYear] = useState(getDefaultYear());
@@ -31,6 +37,10 @@ export const ReplayPage = () => {
   const selectedDrivers: number[] = [];
   const [useLiveData, setUseLiveData] = useState(false);
   const manualRoundRef = useRef(false);
+  const trackBaseRef = useRef<{
+    sessionKey: number | null;
+    positions: { x: number; y: number; z: number; timestampMs: number }[];
+  }>({ sessionKey: null, positions: [] });
 
   const { data, loading, error, meetings, sessions, availableEndMs, dataRevision } =
     useReplayData({ year, round, sessionType, useLiveData });
@@ -66,10 +76,25 @@ export const ReplayPage = () => {
     if (!data?.drivers.length) {
       return [];
     }
+    const sessionKey = data.session.session_key;
+    const cached = trackBaseRef.current;
+    if (cached.sessionKey === sessionKey && cached.positions.length > 0) {
+      return cached.positions;
+    }
     for (const driver of data.drivers) {
       const telemetry = data.telemetryByDriver[driver.driver_number];
       if (telemetry?.locations?.length) {
-        return telemetry.locations;
+        const sorted = [...telemetry.locations].sort(
+          (a, b) => a.timestampMs - b.timestampMs,
+        );
+        const firstTimestamp = sorted[0]?.timestampMs ?? 0;
+        const windowEnd = firstTimestamp + TRACK_BUILD_WINDOW_MS;
+        const windowed = sorted.filter(
+          (sample) => sample.timestampMs <= windowEnd,
+        );
+        const positions = windowed.length > 0 ? windowed : sorted;
+        trackBaseRef.current = { sessionKey, positions };
+        return positions;
       }
     }
     return [];
@@ -119,13 +144,42 @@ export const ReplayPage = () => {
     return map;
   }, [data, dataRevision, normalization.offset, normalization.scale, replay.currentTimeMs]);
 
-  const trackPath = useMemo(() => normalization.normalized, [normalization]);
+  const trackPath = useMemo(() => {
+    if (!referencePositions.length) {
+      return [];
+    }
+    const points: { x: number; y: number; z: number }[] = [];
+    let lastTimestamp: number | null = null;
+    referencePositions.forEach((sample) => {
+      if (
+        !Number.isFinite(sample.x) ||
+        !Number.isFinite(sample.y) ||
+        !Number.isFinite(sample.z)
+      ) {
+        lastTimestamp = null;
+        return;
+      }
+      if (
+        lastTimestamp !== null &&
+        sample.timestampMs - lastTimestamp > TRACK_TIME_GAP_MS
+      ) {
+        points.push({ x: Number.NaN, y: Number.NaN, z: Number.NaN });
+      }
+      points.push({
+        x: (sample.x - normalization.offset.x) * normalization.scale,
+        y: (sample.y - normalization.offset.y) * normalization.scale,
+        z: (sample.z - normalization.offset.z) * normalization.scale,
+      });
+      lastTimestamp = sample.timestampMs;
+    });
+    return points;
+  }, [normalization.offset, normalization.scale, referencePositions]);
   const driverNames = useMemo(() => {
     if (!data) {
       return {};
     }
     return data.drivers.reduce<Record<number, string>>((acc, driver) => {
-      acc[driver.driver_number] = formatDriverLabel(driver);
+      acc[driver.driver_number] = formatTrackLabel(driver);
       return acc;
     }, {});
   }, [data]);
@@ -201,7 +255,8 @@ export const ReplayPage = () => {
         const stint = getCurrentStint(telemetry?.stints ?? [], lapNumber);
         return {
           driverNumber: driver.driver_number,
-          driverName: formatDriverLabel(driver),
+          driverName: formatTelemetryLabel(driver),
+          driverAcronym: driver.name_acronym,
           position: positionSample?.position ?? null,
           lap: lapNumber,
           compound: stint?.compound ?? null,
