@@ -48,9 +48,9 @@ export const ReplayPage = () => {
   const sessionStartMs = data?.sessionStartMs ?? 0;
   const sessionEndMs = data?.sessionEndMs ?? 0;
   const effectiveEndMs =
-    sessionEndMs > sessionStartMs
-      ? sessionEndMs
-      : Math.max(availableEndMs, sessionStartMs);
+    availableEndMs > sessionStartMs
+      ? availableEndMs
+      : Math.max(sessionEndMs, sessionStartMs);
   const hasSupportedSession = useMemo(() => {
     return sessions.some((session) =>
       ALLOWED_SESSION_TYPES.includes(
@@ -270,18 +270,8 @@ export const ReplayPage = () => {
   }, [data, replay.currentTimeMs, useLiveData, availableEndMs, sessionStartMs]);
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-black text-white">
-      <div className="absolute inset-0 pb-16 pl-4 pr-72 pt-24">
-        <TrackView
-          trackPath={trackPath}
-          driverStates={driverStates}
-          driverNames={driverNames}
-          selectedDrivers={selectedDrivers}
-          className="h-full w-full"
-        />
-      </div>
-
-      <header className="absolute left-4 right-4 top-4 z-10 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/20 bg-white/5 px-4 py-3 backdrop-blur-xl">
+    <div className="relative min-h-screen w-full overflow-y-auto bg-black text-white md:h-screen md:w-screen md:overflow-hidden">
+      <header className="relative z-10 mx-4 mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/20 bg-white/5 px-4 py-3 backdrop-blur-xl md:absolute md:left-4 md:right-4 md:top-4 md:mx-0 md:mt-0">
         <div>
           <h1 className="text-lg font-semibold">F1 Replay</h1>
           <p className="text-xs text-white/50">Live telemetry powered by OpenF1.</p>
@@ -305,7 +295,7 @@ export const ReplayPage = () => {
         />
       </header>
 
-      <div className="absolute left-4 top-24 z-10 flex max-w-[420px] flex-col gap-2">
+      <div className="relative z-10 mx-4 mt-3 flex max-w-[420px] flex-col gap-2 md:absolute md:left-4 md:top-24 md:mx-0 md:mt-0">
         {error && (
           <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
             {error}
@@ -319,11 +309,17 @@ export const ReplayPage = () => {
         )}
       </div>
 
-      <aside className="absolute bottom-4 right-4 top-28 z-10 w-72">
-        <TelemetryPanel summary={telemetrySummary} rows={telemetryRows} />
-      </aside>
+      <div className="relative mx-4 mt-4 min-h-[260px] md:absolute md:inset-0 md:mx-0 md:mt-0 md:pb-16 md:pl-4 md:pr-72 md:pt-24">
+        <TrackView
+          trackPath={trackPath}
+          driverStates={driverStates}
+          driverNames={driverNames}
+          selectedDrivers={selectedDrivers}
+          className="h-full w-full"
+        />
+      </div>
 
-      <footer className="absolute bottom-4 left-4 right-80 z-10">
+      <footer className="relative z-10 mx-4 mt-4 md:absolute md:bottom-4 md:left-4 md:right-80 md:mx-0 md:mt-0">
         <ControlsBar
           isPlaying={replay.isPlaying}
           isBuffering={replay.isBuffering}
@@ -340,8 +336,12 @@ export const ReplayPage = () => {
         />
       </footer>
 
+      <aside className="relative z-10 mx-4 mt-4 mb-6 h-[60vh] min-h-[320px] md:absolute md:bottom-4 md:right-4 md:top-40 md:mx-0 md:mb-0 md:h-auto md:min-h-0 md:w-72">
+        <TelemetryPanel summary={telemetrySummary} rows={telemetryRows} />
+      </aside>
+
       {loading && (
-        <div className="absolute bottom-20 left-4 z-10 text-xs text-white/40">
+        <div className="relative z-10 mx-4 mb-6 mt-2 text-xs text-white/40 md:absolute md:bottom-20 md:left-4 md:mx-0 md:mb-0 md:mt-0">
           Loading telemetry data...
         </div>
       )}

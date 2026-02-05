@@ -41,15 +41,15 @@ export const SessionPicker = ({
   const hasSessionType = availableTypes.includes(sessionType);
 
   return (
-    <div className="flex flex-wrap items-center gap-3 text-xs">
-      <div className="flex flex-col gap-1">
+    <div className="flex w-full flex-nowrap items-end gap-2 overflow-hidden text-xs md:flex-wrap md:items-center md:gap-3">
+      <div className="flex w-20 flex-col gap-1 sm:w-24 md:w-auto">
         <span className="text-[10px] uppercase text-white/60">Year</span>
         <select
           id="replay-year"
           name="replay-year"
           value={year}
           onChange={(event) => onYearChange(Number(event.target.value))}
-          className="rounded-md border border-white/20 bg-white/5 px-3 py-2 text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E10600]/70"
+          className="w-full rounded-md border border-white/20 bg-white/5 px-2 py-2 text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E10600]/70 md:px-3"
         >
           {yearOptions.map((option) => (
             <option key={option} value={option}>
@@ -58,14 +58,14 @@ export const SessionPicker = ({
           ))}
         </select>
       </div>
-      <div className="flex flex-col gap-1">
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="text-[10px] uppercase text-white/60">Round</span>
         <select
           id="replay-round"
           name="replay-round"
           value={round}
           onChange={(event) => onRoundChange(Number(event.target.value))}
-          className="rounded-md border border-white/20 bg-white/5 px-3 py-2 text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E10600]/70"
+          className="w-full truncate rounded-md border border-white/20 bg-white/5 px-2 py-2 text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E10600]/70 md:px-3"
         >
           {rounds.map((option) => (
             <option key={option.round} value={option.round}>
@@ -74,7 +74,7 @@ export const SessionPicker = ({
           ))}
         </select>
       </div>
-      <div className="flex flex-col gap-1">
+      <div className="flex w-24 flex-col gap-1 sm:w-28 md:w-auto">
         <span className="text-[10px] uppercase text-white/60">Session</span>
         <select
           id="replay-session"
@@ -83,7 +83,7 @@ export const SessionPicker = ({
           onChange={(event) =>
             onSessionTypeChange(event.target.value as SessionType)
           }
-          className="rounded-md border border-white/20 bg-white/5 px-3 py-2 text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E10600]/70"
+          className="w-full rounded-md border border-white/20 bg-white/5 px-2 py-2 text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E10600]/70 md:px-3"
         >
           {SESSION_TYPES.map((type) => (
             <option key={type} value={type}>

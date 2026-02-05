@@ -66,22 +66,6 @@ export const ControlsBar = ({
         {isBuffering && (
           <span className="text-xs text-white/50">Buffering...</span>
         )}
-        <div className="flex min-w-[240px] flex-1 items-center gap-3 text-xs text-white/60">
-          <span className="text-xs text-white/50">
-            {formatTime(currentTimeMs - startTimeMs)}
-          </span>
-          <input
-            type="range"
-            min={startTimeMs}
-            max={endTimeMs}
-            value={currentTimeMs}
-            onChange={(event) => onSeek(Number(event.target.value))}
-            className="h-1 flex-1 accent-[#E10600]"
-          />
-          <span className="text-xs text-white/50">
-            {formatTime(endTimeMs - startTimeMs)}
-          </span>
-        </div>
         <div className="ml-auto flex items-center gap-2 text-xs text-white/60">
           {SPEED_OPTIONS.map((option) => (
             <button
@@ -98,6 +82,22 @@ export const ControlsBar = ({
             </button>
           ))}
         </div>
+      </div>
+      <div className="flex min-w-0 items-center gap-3 text-xs text-white/60">
+        <span className="text-xs text-white/50">
+          {formatTime(currentTimeMs - startTimeMs)}
+        </span>
+        <input
+          type="range"
+          min={startTimeMs}
+          max={endTimeMs}
+          value={currentTimeMs}
+          onChange={(event) => onSeek(Number(event.target.value))}
+          className="h-1 flex-1 accent-[#E10600]"
+        />
+        <span className="text-xs text-white/50">
+          {formatTime(endTimeMs - startTimeMs)}
+        </span>
       </div>
     </div>
   );

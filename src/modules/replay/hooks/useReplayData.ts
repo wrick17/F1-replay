@@ -37,6 +37,20 @@ type ReplayDataParams = {
   useLiveData: boolean;
 };
 
+const getLatestTelemetryTimestamp = (
+  telemetryByDriver: Record<number, ReplayTelemetry>,
+) => {
+  let latest = 0;
+  Object.values(telemetryByDriver).forEach((telemetry) => {
+    const lastSample =
+      telemetry.locations[telemetry.locations.length - 1] ?? null;
+    if (lastSample && lastSample.timestampMs > latest) {
+      latest = lastSample.timestampMs;
+    }
+  });
+  return latest;
+};
+
 const createTelemetryMap = (
   drivers: OpenF1Driver[],
 ): Record<number, ReplayTelemetry> => {
@@ -182,7 +196,7 @@ export const useReplayData = ({
     const cached = sessionCacheRef.current.get(session.session_key);
     if (cached && !useLiveData) {
       setData(cached);
-      setAvailableEndMs(cached.sessionEndMs);
+      setAvailableEndMs(getLatestTelemetryTimestamp(cached.telemetryByDriver));
       setLoading(false);
       return;
     }
@@ -276,7 +290,13 @@ export const useReplayData = ({
           ),
           normalized,
         );
-        setAvailableEndMs(chunkEndMs);
+        const latestTimestamp = normalized.reduce(
+          (max, sample) => Math.max(max, sample.timestampMs),
+          0,
+        );
+        if (latestTimestamp > 0) {
+          setAvailableEndMs((prev) => Math.max(prev, latestTimestamp));
+        }
         setDataRevision((prev) => prev + 1);
       };
 
@@ -420,7 +440,20 @@ export const useReplayData = ({
         );
       }
       if (locationsChunk.length || positionsChunk.length) {
-        setAvailableEndMs(nextEnd);
+        const latestLocation = locationsChunk.length
+          ? Math.max(
+              ...locationsChunk.map((sample) => new Date(sample.date).getTime()),
+            )
+          : 0;
+        const latestPosition = positionsChunk.length
+          ? Math.max(
+              ...positionsChunk.map((sample) => new Date(sample.date).getTime()),
+            )
+          : 0;
+        const latestTimestamp = Math.max(latestLocation, latestPosition);
+        if (latestTimestamp > 0) {
+          setAvailableEndMs((prev) => Math.max(prev, latestTimestamp));
+        }
         setDataRevision((prev) => prev + 1);
       }
       liveCursorRef.current = nextEnd;
