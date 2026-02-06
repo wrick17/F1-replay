@@ -75,6 +75,8 @@ export type ControlsBarProps = {
   onRadioToggle: () => void;
   onPlayRadio: (radio: TimedSample<OpenF1TeamRadio>) => void;
   onStopRadio: () => void;
+  onPauseRadio: () => void;
+  onResumeRadio: () => void;
   onMarkerClick?: (timestampMs: number) => void;
 };
 
@@ -93,5 +95,5 @@ export type SessionPickerProps = {
 export type TelemetryPanelProps = {
   summary: TelemetrySummary;
   rows: TelemetryRow[];
-  activeOvertake?: OpenF1Overtake | null;
+  activeOvertakes?: OpenF1Overtake[];
 };

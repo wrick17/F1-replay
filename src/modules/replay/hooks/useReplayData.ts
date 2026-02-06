@@ -237,7 +237,7 @@ export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): R
           "persist",
         ),
         fetchOpenF1<OpenF1Overtake[]>(
-          "overtaking",
+          "overtakes",
           { session_key: session.session_key },
           controller.signal,
           "persist",

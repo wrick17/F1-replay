@@ -96,17 +96,18 @@ export const buildTimelineEvents = (
   return events;
 };
 
-export const getActiveOvertake = (
+export const getActiveOvertakes = (
   overtakes: TimedSample<OpenF1Overtake>[],
   currentTimeMs: number,
   windowMs = 3000,
-): OpenF1Overtake | null => {
+): OpenF1Overtake[] => {
+  const result: OpenF1Overtake[] = [];
   for (let i = overtakes.length - 1; i >= 0; i--) {
     const diff = currentTimeMs - overtakes[i].timestampMs;
     if (diff >= 0 && diff <= windowMs) {
-      return overtakes[i];
+      result.push(overtakes[i]);
     }
     if (diff > windowMs) break;
   }
-  return null;
+  return result;
 };

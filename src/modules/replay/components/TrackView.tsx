@@ -56,12 +56,14 @@ export const TrackView = ({
 
   const prevLabelsRef = useRef<LabelRect[]>([]);
 
+  // Inset the clamping bounds so labels stay away from edges that overlap UI panels
+  const LABEL_SAFE_INSET = 80;
   const viewboxBounds: ViewboxBounds = useMemo(
     () => ({
-      minX: bounds.minX - VIEWBOX_PADDING,
-      minY: bounds.minY - VIEWBOX_PADDING,
-      maxX: bounds.maxX + VIEWBOX_PADDING,
-      maxY: bounds.maxY + VIEWBOX_PADDING,
+      minX: bounds.minX - VIEWBOX_PADDING + LABEL_SAFE_INSET,
+      minY: bounds.minY - VIEWBOX_PADDING + LABEL_SAFE_INSET,
+      maxX: bounds.maxX + VIEWBOX_PADDING - LABEL_SAFE_INSET,
+      maxY: bounds.maxY + VIEWBOX_PADDING - LABEL_SAFE_INSET,
     }),
     [bounds],
   );

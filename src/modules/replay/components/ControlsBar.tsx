@@ -22,6 +22,8 @@ export const ControlsBar = ({
   onRadioToggle,
   onPlayRadio,
   onStopRadio,
+  onPauseRadio,
+  onResumeRadio,
   onMarkerClick,
 }: ControlsBarProps) => {
   return (
@@ -74,7 +76,7 @@ export const ControlsBar = ({
         </div>
       </div>
       <div className="flex min-w-0 items-center gap-3 text-xs text-white/60">
-        <span className="shrink-0 text-xs text-white/50">
+        <span className="shrink-0 font-mono text-xs tabular-nums text-white/50">
           {formatTime(currentTimeMs - startTimeMs)}
         </span>
         <div className="min-w-0 flex-1">
@@ -84,14 +86,18 @@ export const ControlsBar = ({
             endTimeMs={endTimeMs}
             events={timelineEvents}
             drivers={drivers}
+            isPlaying={isPlaying}
+            radioEnabled={radioEnabled}
             isRadioPlaying={isRadioPlaying}
             onSeek={onSeek}
             onPlayRadio={onPlayRadio}
             onStopRadio={onStopRadio}
+            onPauseRadio={onPauseRadio}
+            onResumeRadio={onResumeRadio}
             onMarkerClick={onMarkerClick}
           />
         </div>
-        <span className="shrink-0 text-xs text-white/50">
+        <span className="shrink-0 font-mono text-xs tabular-nums text-white/50">
           {formatTime(endTimeMs - startTimeMs)}
         </span>
       </div>

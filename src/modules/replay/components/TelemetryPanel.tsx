@@ -1,22 +1,31 @@
 import { AnimatePresence, motion } from "framer-motion";
+import type { OpenF1Overtake } from "../types/openf1.types";
 import type { TelemetryPanelProps } from "../types/replay.types";
 import { getCompoundBadge, getCompoundLabel } from "../utils/format.util";
 
-const getOvertakeStyle = (
+type OvertakeRole = "overtaking" | "overtaken" | null;
+
+const getOvertakeRole = (
   driverNumber: number,
-  activeOvertake: TelemetryPanelProps["activeOvertake"],
-): string => {
-  if (!activeOvertake) return "";
-  if (driverNumber === activeOvertake.overtaking_driver_number) {
-    return "ring-2 ring-green-400/70 bg-green-500/10";
+  activeOvertakes: OpenF1Overtake[],
+): OvertakeRole => {
+  for (const ot of activeOvertakes) {
+    if (driverNumber === ot.overtaking_driver_number) return "overtaking";
+    if (driverNumber === ot.overtaken_driver_number) return "overtaken";
   }
-  if (driverNumber === activeOvertake.overtaken_driver_number) {
-    return "ring-2 ring-red-400/70 bg-red-500/10";
-  }
-  return "";
+  return null;
 };
 
-export const TelemetryPanel = ({ summary, rows, activeOvertake }: TelemetryPanelProps) => {
+const overtakeStyles: Record<string, string> = {
+  overtaking: "ring-2 ring-inset ring-green-400/70 bg-green-500/10",
+  overtaken: "ring-2 ring-inset ring-red-400/70 bg-red-500/10",
+};
+
+export const TelemetryPanel = ({
+  summary,
+  rows,
+  activeOvertakes = [],
+}: TelemetryPanelProps) => {
   return (
     <div className="flex h-full flex-col gap-3 rounded-xl border border-white/20 bg-white/5 p-4 backdrop-blur-xl">
       <div>
@@ -43,17 +52,22 @@ export const TelemetryPanel = ({ summary, rows, activeOvertake }: TelemetryPanel
           <span className="text-center">Tyre</span>
         </div>
         <div className="mt-2 flex flex-col gap-2 text-xs">
-          <AnimatePresence mode="popLayout">
+          <AnimatePresence initial={false} mode="popLayout">
             {rows.map((row) => {
-              const overtakeClass = getOvertakeStyle(row.driverNumber, activeOvertake);
+              const role = getOvertakeRole(row.driverNumber, activeOvertakes);
+              const overtakeClass = role ? overtakeStyles[role] : "";
               return (
                 <motion.div
                   key={row.driverNumber}
-                  layout
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.8 }}
+                  layout="position"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{
+                    layout: { type: "spring", stiffness: 400, damping: 30, mass: 0.8 },
+                    opacity: { duration: 0.2 },
+                    scale: { duration: 0.2 },
+                  }}
                   className={`grid grid-cols-[0.45fr_2fr_0.55fr_0.55fr] items-center gap-1 rounded-lg bg-white/5 px-2 py-2 transition-shadow duration-500 ${overtakeClass}`}
                 >
                   <div className="text-center text-white/80">{row.position ?? "-"}</div>

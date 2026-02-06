@@ -1,3 +1,4 @@
+import { Loader2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { ControlsBar } from "../components/ControlsBar";
 import { MarkerLegend } from "../components/MarkerLegend";
@@ -10,7 +11,7 @@ import { useReplayData } from "../hooks/useReplayData";
 import { useSessionAutoCorrect, useSessionState } from "../hooks/useSessionSelector";
 import { useTeamRadio } from "../hooks/useTeamRadio";
 import { useTrackComputation } from "../hooks/useTrackComputation";
-import { buildTimelineEvents, getActiveOvertake } from "../services/events.service";
+import { buildTimelineEvents, getActiveOvertakes } from "../services/events.service";
 import { computeTelemetryRows, computeTelemetrySummary } from "../services/telemetry.service";
 import { getWeatherAtTime } from "../services/weather.service";
 
@@ -76,20 +77,15 @@ export const ReplayPage = () => {
     return getWeatherAtTime(data.weather, replay.currentTimeMs);
   }, [data, replay.currentTimeMs]);
 
-  const activeOvertake = useMemo(() => {
-    if (!data) return null;
-    return getActiveOvertake(data.overtakes, replay.currentTimeMs);
+  const activeOvertakes = useMemo(() => {
+    if (!data) return [];
+    return getActiveOvertakes(data.overtakes, replay.currentTimeMs);
   }, [data, replay.currentTimeMs]);
 
   const [radioEnabled, setRadioEnabled] = useState(true);
   const toggleRadio = useCallback(() => setRadioEnabled((prev) => !prev), []);
 
-  const { isAudioPlaying, playRadio, stopRadio } = useTeamRadio({
-    teamRadios: data?.teamRadios ?? [],
-    currentTimeMs: replay.currentTimeMs,
-    enabled: radioEnabled,
-    isPlaying: replay.isPlaying,
-  });
+  const { isAudioPlaying, playRadio, stopRadio, pauseRadio, resumeRadio } = useTeamRadio();
 
   const handleMarkerClick = useCallback(
     (timestampMs: number) => {
@@ -108,7 +104,12 @@ export const ReplayPage = () => {
       <header className="relative z-10 mx-4 mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/20 bg-white/5 px-4 py-3 backdrop-blur-xl md:absolute md:left-4 md:right-80 md:top-4 md:mx-0 md:mt-0">
         <div className="flex items-center gap-2">
           <h1 className="text-lg font-semibold">F1 Replay</h1>
-          {loading && <span className="animate-pulse text-xs text-white/40">Loading...</span>}
+          {loading && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/20 px-3 py-1 text-xs font-medium text-amber-300">
+              <Loader2 size={14} className="animate-spin" />
+              Loading telemetry data…
+            </span>
+          )}
         </div>
         <WeatherBadge weather={currentWeather} />
         <SessionPicker
@@ -177,6 +178,8 @@ export const ReplayPage = () => {
           onRadioToggle={toggleRadio}
           onPlayRadio={playRadio}
           onStopRadio={stopRadio}
+          onPauseRadio={pauseRadio}
+          onResumeRadio={resumeRadio}
           onMarkerClick={handleMarkerClick}
         />
       </footer>
@@ -185,7 +188,7 @@ export const ReplayPage = () => {
         <TelemetryPanel
           summary={telemetrySummary}
           rows={telemetryRows}
-          activeOvertake={activeOvertake}
+          activeOvertakes={activeOvertakes}
         />
       </aside>
     </div>

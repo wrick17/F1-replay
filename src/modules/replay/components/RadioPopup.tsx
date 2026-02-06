@@ -9,6 +9,7 @@ type RadioPopupProps = {
   isPlaying: boolean;
   onPlay: (radio: TimedSample<OpenF1TeamRadio>) => void;
   onStop: () => void;
+  showAudioControls?: boolean;
 };
 
 const WaveformBars = ({ active }: { active: boolean }) => {
@@ -43,6 +44,7 @@ export const RadioPopup = ({
   isPlaying,
   onPlay,
   onStop,
+  showAudioControls = true,
 }: RadioPopupProps) => {
   const driver = drivers.find((d) => d.driver_number === radio.driver_number);
   const name = driver?.name_acronym ?? String(radio.driver_number);
@@ -57,7 +59,7 @@ export const RadioPopup = ({
           to { height: var(--wave-h, 80%); }
         }
       `}</style>
-      <div className="mb-2 flex items-center gap-2">
+      <div className={`flex items-center gap-2 ${showAudioControls ? "mb-2" : ""}`}>
         <span
           className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-white"
           style={{ backgroundColor: driver?.team_colour ? `#${driver.team_colour}` : "#3b82f6" }}
@@ -69,16 +71,18 @@ export const RadioPopup = ({
           <div className="text-white/40">{elapsed}</div>
         </div>
       </div>
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-500 text-white transition hover:bg-blue-400"
-          onClick={() => (isPlaying ? onStop() : onPlay(radio))}
-        >
-          {isPlaying ? <Pause size={14} /> : <Play size={14} />}
-        </button>
-        <WaveformBars active={isPlaying} />
-      </div>
+      {showAudioControls && (
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-500 text-white transition hover:bg-blue-400"
+            onClick={() => (isPlaying ? onStop() : onPlay(radio))}
+          >
+            {isPlaying ? <Pause size={14} /> : <Play size={14} />}
+          </button>
+          <WaveformBars active={isPlaying} />
+        </div>
+      )}
     </div>
   );
 };
