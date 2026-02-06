@@ -319,7 +319,7 @@ export const ReplayPage = () => {
 
   return (
     <div className="relative min-h-screen w-full overflow-y-auto bg-black text-white md:h-screen md:w-screen md:overflow-hidden">
-      <header className="relative z-10 mx-4 mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/20 bg-white/5 px-4 py-3 backdrop-blur-xl md:absolute md:left-4 md:right-4 md:top-4 md:mx-0 md:mt-0">
+      <header className="relative z-10 mx-4 mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/20 bg-white/5 px-4 py-3 backdrop-blur-xl md:absolute md:left-4 md:right-80 md:top-4 md:mx-0 md:mt-0">
         <div>
           <h1 className="text-lg font-semibold">F1 Replay</h1>
           <p className="text-xs text-white/50">Live telemetry powered by OpenF1.</p>
@@ -382,7 +382,7 @@ export const ReplayPage = () => {
         />
       </footer>
 
-      <aside className="relative z-10 mx-4 mt-4 mb-6 h-[60vh] min-h-[320px] md:absolute md:bottom-4 md:right-4 md:top-40 md:mx-0 md:mb-0 md:h-auto md:min-h-0 md:w-72">
+      <aside className="relative z-10 mx-4 mt-4 mb-6 h-[60vh] min-h-[320px] md:absolute md:bottom-4 md:right-4 md:top-4 md:mx-0 md:mt-0 md:mb-0 md:h-auto md:min-h-0 md:w-72">
         <TelemetryPanel summary={telemetrySummary} rows={telemetryRows} />
       </aside>
 
