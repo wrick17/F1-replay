@@ -1,14 +1,12 @@
 type ControlsBarProps = {
   isPlaying: boolean;
   isBuffering: boolean;
-  isLive: boolean;
   speed: number;
   currentTimeMs: number;
   startTimeMs: number;
   endTimeMs: number;
   canPlay: boolean;
   onTogglePlay: () => void;
-  onToggleLive: () => void;
   onSpeedChange: (value: number) => void;
   onSeek: (timestampMs: number) => void;
 };
@@ -27,14 +25,12 @@ const formatTime = (timestampMs: number) => {
 export const ControlsBar = ({
   isPlaying,
   isBuffering,
-  isLive,
   speed,
   currentTimeMs,
   startTimeMs,
   endTimeMs,
   canPlay,
   onTogglePlay,
-  onToggleLive,
   onSpeedChange,
   onSeek,
 }: ControlsBarProps) => {
@@ -50,18 +46,6 @@ export const ControlsBar = ({
           disabled={!canPlay}
         >
           {canPlay ? (isPlaying ? "Pause" : "Play") : "Loading"}
-        </button>
-        <button
-          type="button"
-          onClick={onToggleLive}
-          className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide transition ${
-            isLive
-              ? "bg-[#E10600] text-white"
-              : "bg-white/10 text-white/70 hover:bg-white/20"
-          }`}
-          aria-pressed={isLive}
-        >
-          Live
         </button>
         {isBuffering && (
           <span className="text-xs text-white/50">Buffering...</span>

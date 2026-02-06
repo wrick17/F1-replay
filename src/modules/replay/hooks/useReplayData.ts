@@ -34,7 +34,6 @@ type ReplayDataParams = {
   year: number;
   round: number;
   sessionType: SessionType;
-  useLiveData: boolean;
 };
 
 const getLatestTelemetryTimestamp = (
@@ -83,7 +82,6 @@ export const useReplayData = ({
   year,
   round,
   sessionType,
-  useLiveData,
 }: ReplayDataParams): ReplayDataState => {
   const [data, setData] = useState<ReplaySessionData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -96,7 +94,6 @@ export const useReplayData = ({
   const abortRef = useRef<AbortController | null>(null);
   const meetingsRequestRef = useRef(0);
   const sessionsRequestRef = useRef(0);
-  const liveCursorRef = useRef<number | null>(null);
 
   const sortedMeetings = useMemo(() => {
     return [...meetings].sort(
@@ -117,7 +114,7 @@ export const useReplayData = ({
     setAvailableEndMs(0);
     setDataRevision(0);
 
-    const cacheMode = useLiveData ? "no-store" : "persist";
+    const cacheMode = "persist";
     fetchOpenF1<OpenF1Meeting[]>(
       "meetings",
       { year },
@@ -156,7 +153,7 @@ export const useReplayData = ({
     setAvailableEndMs(0);
     setDataRevision(0);
 
-    const cacheMode = useLiveData ? "no-store" : "persist";
+    const cacheMode = "persist";
     fetchOpenF1<OpenF1Session[]>(
       "sessions",
       { meeting_key: selectedMeeting.meeting_key },
@@ -194,7 +191,7 @@ export const useReplayData = ({
       return;
     }
     const cached = sessionCacheRef.current.get(session.session_key);
-    if (cached && !useLiveData) {
+    if (cached) {
       setData(cached);
       setAvailableEndMs(getLatestTelemetryTimestamp(cached.telemetryByDriver));
       setLoading(false);
@@ -209,7 +206,7 @@ export const useReplayData = ({
     setAvailableEndMs(0);
     setDataRevision(0);
 
-    const cacheMode = useLiveData ? "no-store" : "persist";
+    const cacheMode = "persist";
     const load = async () => {
       const drivers = await fetchOpenF1<OpenF1Driver[]>(
         "drivers",
@@ -371,105 +368,7 @@ export const useReplayData = ({
     return () => {
       controller.abort();
     };
-  }, [sessions, selectedMeeting, sessionType, useLiveData]);
-
-  useEffect(() => {
-    if (!useLiveData || !data) {
-      liveCursorRef.current = null;
-      return;
-    }
-    const sessionStartMs = data.sessionStartMs;
-    const sessionEndMs = data.sessionEndMs || Date.now();
-    liveCursorRef.current = Math.max(availableEndMs, sessionStartMs);
-    let cancelled = false;
-
-    const poll = async () => {
-      if (cancelled) {
-        return;
-      }
-      const cursor = liveCursorRef.current ?? sessionStartMs;
-      const now = Date.now();
-      const nextEnd = Math.min(now, sessionEndMs);
-      if (nextEnd <= cursor) {
-        return;
-      }
-      const chunkParams = {
-        session_key: data.session.session_key,
-        "date>=": new Date(cursor).toISOString(),
-        "date<=": new Date(nextEnd).toISOString(),
-      };
-      const [locationsChunk, positionsChunk] = await Promise.all([
-        fetchOpenF1<OpenF1Location[]>(
-          "location",
-          chunkParams,
-          undefined,
-          "no-store",
-        ),
-        fetchOpenF1<OpenF1Position[]>(
-          "position",
-          chunkParams,
-          undefined,
-          "no-store",
-        ),
-      ]);
-      if (cancelled) {
-        return;
-      }
-      if (locationsChunk.length) {
-        const normalized = withTimestamp(locationsChunk);
-        chunkAppend(
-          Object.fromEntries(
-            Object.keys(data.telemetryByDriver).map((key) => [
-              Number(key),
-              data.telemetryByDriver[Number(key)].locations,
-            ]),
-          ),
-          normalized,
-        );
-      }
-      if (positionsChunk.length) {
-        const normalized = withTimestamp(positionsChunk);
-        chunkAppend(
-          Object.fromEntries(
-            Object.keys(data.telemetryByDriver).map((key) => [
-              Number(key),
-              data.telemetryByDriver[Number(key)].positions,
-            ]),
-          ),
-          normalized,
-        );
-      }
-      if (locationsChunk.length || positionsChunk.length) {
-        const latestLocation = locationsChunk.length
-          ? Math.max(
-              ...locationsChunk.map((sample) => new Date(sample.date).getTime()),
-            )
-          : 0;
-        const latestPosition = positionsChunk.length
-          ? Math.max(
-              ...positionsChunk.map((sample) => new Date(sample.date).getTime()),
-            )
-          : 0;
-        const latestTimestamp = Math.max(latestLocation, latestPosition);
-        if (latestTimestamp > 0) {
-          setAvailableEndMs((prev) => Math.max(prev, latestTimestamp));
-        }
-        setDataRevision((prev) => prev + 1);
-      }
-      liveCursorRef.current = nextEnd;
-    };
-
-    const intervalId = window.setInterval(() => {
-      void poll();
-    }, 1000);
-
-    void poll();
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-    };
-  }, [useLiveData, data, availableEndMs]);
+  }, [sessions, selectedMeeting, sessionType]);
 
   return {
     data,

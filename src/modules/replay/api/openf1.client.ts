@@ -5,7 +5,7 @@ type CacheMode = "memory" | "no-store" | "persist";
 const responseCache = new Map<string, unknown>();
 const inFlight = new Map<string, Promise<unknown>>();
 let lastRequestAt = 0;
-const minIntervalMs = 300;
+const minIntervalMs = 350;
 
 const IDB_NAME = "openf1-cache";
 const IDB_STORE = "responses";

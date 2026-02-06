@@ -26,6 +26,7 @@ const formatTelemetryLabel = (driver: OpenF1Driver) => {
 
 const ALLOWED_SESSION_TYPES = ["Race", "Sprint", "Qualifying"] as const;
 const TRACK_TIME_GAP_MS = 2000;
+const TRACK_POINT_QUANTIZE = 5;
 
 export const ReplayPage = () => {
   const [year, setYear] = useState(getDefaultYear());
@@ -34,17 +35,15 @@ export const ReplayPage = () => {
     "Race",
   );
   const selectedDrivers: number[] = [];
-  const [useLiveData, setUseLiveData] = useState(false);
   const manualRoundRef = useRef(false);
   const trackBaseRef = useRef<{
-    sessionKey: number | null;
     driverNumber: number | null;
-    sampleCount: number;
+    score: number;
     positions: { x: number; y: number; z: number; timestampMs: number }[];
-  }>({ sessionKey: null, driverNumber: null, sampleCount: 0, positions: [] });
+  }>({ driverNumber: null, score: 0, positions: [] });
 
   const { data, loading, error, meetings, sessions, availableEndMs, dataRevision } =
-    useReplayData({ year, round, sessionType, useLiveData });
+    useReplayData({ year, round, sessionType });
 
   const sessionStartMs = data?.sessionStartMs ?? 0;
   const sessionEndMs = data?.sessionEndMs ?? 0;
@@ -77,14 +76,52 @@ export const ReplayPage = () => {
     if (!data?.drivers.length) {
       return [];
     }
-    const sessionKey = data.session.session_key;
-    const cached = trackBaseRef.current;
+    const quantize = (value: number) =>
+      Math.round(value / TRACK_POINT_QUANTIZE);
+    const getUniqueCount = (
+      positions: { x: number; y: number; z: number; timestampMs: number }[],
+    ) => {
+      const set = new Set<string>();
+      positions.forEach((point) => {
+        if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+          return;
+        }
+        set.add(`${quantize(point.x)},${quantize(point.y)}`);
+      });
+      return set.size;
+    };
+    const getScore = (
+      positions: { x: number; y: number; z: number; timestampMs: number }[],
+    ) => {
+      const finite = positions.filter(
+        (point) => Number.isFinite(point.x) && Number.isFinite(point.y),
+      );
+      if (finite.length < 50) {
+        return 0;
+      }
+      let minX = finite[0].x;
+      let maxX = finite[0].x;
+      let minY = finite[0].y;
+      let maxY = finite[0].y;
+      finite.forEach((point) => {
+        minX = Math.min(minX, point.x);
+        maxX = Math.max(maxX, point.x);
+        minY = Math.min(minY, point.y);
+        maxY = Math.max(maxY, point.y);
+      });
+      const extentX = Math.max(1, maxX - minX);
+      const extentY = Math.max(1, maxY - minY);
+      const aspect =
+        Math.max(extentX, extentY) / Math.max(1, Math.min(extentX, extentY));
+      const area = extentX * extentY;
+      const uniqueCount = Math.max(1, getUniqueCount(positions));
+      const density = Math.min(uniqueCount, 2000);
+      return (area * density) / aspect;
+    };
     let bestPositions: { x: number; y: number; z: number; timestampMs: number }[] =
-      cached.sessionKey === sessionKey ? cached.positions : [];
-    let bestCount =
-      cached.sessionKey === sessionKey ? cached.sampleCount : 0;
-    let bestDriver =
-      cached.sessionKey === sessionKey ? cached.driverNumber : null;
+      [];
+    let bestScore = 0;
+    let bestDriver = null;
 
     for (const driver of data.drivers) {
       const telemetry = data.telemetryByDriver[driver.driver_number];
@@ -94,61 +131,21 @@ export const ReplayPage = () => {
       const sorted = [...telemetry.locations].sort(
         (a, b) => a.timestampMs - b.timestampMs,
       );
-      const laps = telemetry.laps ?? [];
-      let positions = sorted;
-      let sampleCount = sorted.length;
+      const candidatePositions = sorted;
+      const candidateScore = getScore(candidatePositions);
 
-      if (laps.length >= 2) {
-        let bestStart = 0;
-        let bestEnd = 0;
-        let lapBestCount = 0;
-        let cursor = 0;
-        for (let i = 0; i < laps.length; i += 1) {
-          const lapStart = laps[i]?.timestampMs ?? 0;
-          const lapEnd =
-            laps[i + 1]?.timestampMs ?? data.sessionEndMs ?? lapStart;
-          if (lapEnd <= lapStart) {
-            continue;
-          }
-          while (cursor < sorted.length && sorted[cursor].timestampMs < lapStart) {
-            cursor += 1;
-          }
-          let endIndex = cursor;
-          while (endIndex < sorted.length && sorted[endIndex].timestampMs < lapEnd) {
-            endIndex += 1;
-          }
-          const count = endIndex - cursor;
-          if (count > lapBestCount) {
-            lapBestCount = count;
-            bestStart = cursor;
-            bestEnd = endIndex;
-          }
-          cursor = endIndex;
-          if (cursor >= sorted.length) {
-            break;
-          }
-        }
-        if (lapBestCount > 0) {
-          positions = sorted.slice(bestStart, bestEnd);
-          sampleCount = lapBestCount;
-        }
-      }
-
-      if (sampleCount > bestCount) {
-        bestCount = sampleCount;
-        bestPositions = positions;
+      if (candidateScore > bestScore) {
+        bestScore = candidateScore;
+        bestPositions = candidatePositions;
         bestDriver = driver.driver_number;
       }
     }
 
-    if (bestPositions.length > 0) {
-      trackBaseRef.current = {
-        sessionKey,
-        driverNumber: bestDriver,
-        sampleCount: bestCount,
-        positions: bestPositions,
-      };
-    }
+    trackBaseRef.current = {
+      driverNumber: bestDriver,
+      score: bestScore,
+      positions: bestPositions,
+    };
 
     return bestPositions;
   }, [data, dataRevision]);
@@ -291,9 +288,7 @@ export const ReplayPage = () => {
     if (!data) {
       return [];
     }
-    const telemetryTimeMs = useLiveData
-      ? Math.max(availableEndMs, sessionStartMs)
-      : replay.currentTimeMs;
+    const telemetryTimeMs = replay.currentTimeMs;
     return data.drivers
       .map((driver) => {
         const telemetry = data.telemetryByDriver[driver.driver_number];
@@ -320,7 +315,7 @@ export const ReplayPage = () => {
         if (b.position === null) return -1;
         return a.position - b.position;
       });
-  }, [data, replay.currentTimeMs, useLiveData, availableEndMs, sessionStartMs]);
+  }, [data, replay.currentTimeMs]);
 
   return (
     <div className="relative min-h-screen w-full overflow-y-auto bg-black text-white md:h-screen md:w-screen md:overflow-hidden">
@@ -376,14 +371,12 @@ export const ReplayPage = () => {
         <ControlsBar
           isPlaying={replay.isPlaying}
           isBuffering={replay.isBuffering}
-          isLive={useLiveData}
           speed={replay.speed}
           currentTimeMs={replay.currentTimeMs}
           startTimeMs={sessionStartMs}
           endTimeMs={effectiveEndMs}
           canPlay={canPlay}
           onTogglePlay={replay.togglePlay}
-          onToggleLive={() => setUseLiveData((prev) => !prev)}
           onSpeedChange={replay.setSpeed}
           onSeek={replay.seekTo}
         />
