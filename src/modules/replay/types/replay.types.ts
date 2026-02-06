@@ -69,8 +69,14 @@ export type ControlsBarProps = {
   radioEnabled: boolean;
   drivers: OpenF1Driver[];
   isRadioPlaying: boolean;
+  skipIntervalLabel: string;
+  expanded: boolean;
   onTogglePlay: () => void;
-  onSpeedChange: (value: number) => void;
+  onSkipBack: () => void;
+  onSkipForward: () => void;
+  onCycleSpeed: () => void;
+  onCycleSkipInterval: () => void;
+  onToggleExpanded: () => void;
   onSeek: (timestampMs: number) => void;
   onRadioToggle: () => void;
   onPlayRadio: (radio: TimedSample<OpenF1TeamRadio>) => void;
@@ -96,4 +102,12 @@ export type TelemetryPanelProps = {
   summary: TelemetrySummary;
   rows: TelemetryRow[];
   activeOvertakes?: OpenF1Overtake[];
+};
+
+export type MarkerLegendProps = {
+  hasEvents: boolean;
+  legendCollapsed: boolean;
+  onToggleLegendCollapsed: () => void;
+  shortcutsCollapsed: boolean;
+  onToggleShortcutsCollapsed: () => void;
 };

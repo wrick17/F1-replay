@@ -1,22 +1,26 @@
 import { Loader2 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ControlsBar } from "../components/ControlsBar";
 import { MarkerLegend } from "../components/MarkerLegend";
 import { SessionPicker } from "../components/SessionPicker";
 import { TelemetryPanel } from "../components/TelemetryPanel";
 import { TrackView } from "../components/TrackView";
 import { WeatherBadge } from "../components/WeatherBadge";
+import { SKIP_INTERVAL_LABELS } from "../constants/replay.constants";
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useReplayController } from "../hooks/useReplayController";
 import { useReplayData } from "../hooks/useReplayData";
 import { useSessionAutoCorrect, useSessionState } from "../hooks/useSessionSelector";
 import { useTeamRadio } from "../hooks/useTeamRadio";
 import { useTrackComputation } from "../hooks/useTrackComputation";
+import { useUserPreferences } from "../hooks/useUserPreferences";
 import { buildTimelineEvents, getActiveOvertakes } from "../services/events.service";
 import { computeTelemetryRows, computeTelemetrySummary } from "../services/telemetry.service";
 import { getWeatherAtTime } from "../services/weather.service";
 
 export const ReplayPage = () => {
   const session = useSessionState();
+  const prefs = useUserPreferences();
 
   const { data, loading, error, meetings, sessions, availableYears, availableEndMs, dataRevision } =
     useReplayData({
@@ -51,6 +55,12 @@ export const ReplayPage = () => {
     availableEndMs: availableEndMs || sessionStartMs,
   });
 
+  // Sync persisted speed to replay controller
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only re-run when speed preference changes
+  useEffect(() => {
+    replay.setSpeed(prefs.speed);
+  }, [prefs.speed]);
+
   const { trackPath, driverStates, driverNames } = useTrackComputation({
     data,
     dataRevision,
@@ -82,9 +92,6 @@ export const ReplayPage = () => {
     return getActiveOvertakes(data.overtakes, replay.currentTimeMs);
   }, [data, replay.currentTimeMs]);
 
-  const [radioEnabled, setRadioEnabled] = useState(true);
-  const toggleRadio = useCallback(() => setRadioEnabled((prev) => !prev), []);
-
   const { isAudioPlaying, playRadio, stopRadio, pauseRadio, resumeRadio } = useTeamRadio();
 
   const handleMarkerClick = useCallback(
@@ -96,6 +103,37 @@ export const ReplayPage = () => {
     },
     [replay],
   );
+
+  const handleSkipBack = useCallback(
+    () => replay.seekTo(replay.currentTimeMs - prefs.skipIntervalMs),
+    [replay, prefs.skipIntervalMs],
+  );
+
+  const handleSkipForward = useCallback(
+    () => replay.seekTo(replay.currentTimeMs + prefs.skipIntervalMs),
+    [replay, prefs.skipIntervalMs],
+  );
+
+  // Collapsible UI state (lightweight, not persisted)
+  const [legendCollapsed, setLegendCollapsed] = useState(false);
+  const [shortcutsCollapsed, setShortcutsCollapsed] = useState(true);
+
+  const toggleLegendCollapsed = useCallback(() => setLegendCollapsed((prev) => !prev), []);
+  const toggleShortcutsCollapsed = useCallback(() => setShortcutsCollapsed((prev) => !prev), []);
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    togglePlay: replay.togglePlay,
+    seekTo: replay.seekTo,
+    currentTimeMs: replay.currentTimeMs,
+    skipIntervalMs: prefs.skipIntervalMs,
+    cycleSpeed: prefs.cycleSpeed,
+    toggleRadio: prefs.toggleRadio,
+    cycleSkipInterval: prefs.cycleSkipInterval,
+    toggleTimelineExpanded: prefs.toggleTimelineExpanded,
+  });
+
+  const skipIntervalLabel = SKIP_INTERVAL_LABELS[prefs.skipIntervalMs] ?? `${prefs.skipIntervalMs / 1000}s`;
 
   const drivers = data?.drivers ?? [];
 
@@ -168,24 +206,36 @@ export const ReplayPage = () => {
 
       <footer className="relative z-10 mx-4 mt-4 md:absolute md:bottom-4 md:left-4 md:right-80 md:mx-0 md:mt-0">
         <div className="mb-2">
-          <MarkerLegend hasEvents={timelineEvents.length > 0} />
+          <MarkerLegend
+            hasEvents={timelineEvents.length > 0}
+            legendCollapsed={legendCollapsed}
+            onToggleLegendCollapsed={toggleLegendCollapsed}
+            shortcutsCollapsed={shortcutsCollapsed}
+            onToggleShortcutsCollapsed={toggleShortcutsCollapsed}
+          />
         </div>
         <ControlsBar
           isPlaying={replay.isPlaying}
           isBuffering={replay.isBuffering}
-          speed={replay.speed}
+          speed={prefs.speed}
           currentTimeMs={replay.currentTimeMs}
           startTimeMs={sessionStartMs}
           endTimeMs={effectiveEndMs}
           canPlay={canPlay}
           timelineEvents={timelineEvents}
-          radioEnabled={radioEnabled}
+          radioEnabled={prefs.radioEnabled}
           drivers={drivers}
           isRadioPlaying={isAudioPlaying}
+          skipIntervalLabel={skipIntervalLabel}
+          expanded={prefs.timelineExpanded}
           onTogglePlay={replay.togglePlay}
-          onSpeedChange={replay.setSpeed}
+          onSkipBack={handleSkipBack}
+          onSkipForward={handleSkipForward}
+          onCycleSpeed={prefs.cycleSpeed}
+          onCycleSkipInterval={prefs.cycleSkipInterval}
+          onToggleExpanded={prefs.toggleTimelineExpanded}
           onSeek={replay.seekTo}
-          onRadioToggle={toggleRadio}
+          onRadioToggle={prefs.toggleRadio}
           onPlayRadio={playRadio}
           onStopRadio={stopRadio}
           onPauseRadio={pauseRadio}

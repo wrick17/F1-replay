@@ -1,6 +1,14 @@
-import { Loader2, Maximize2, Minimize2, Pause, Play, Volume2, VolumeX } from "lucide-react";
-import { useState } from "react";
-import { SPEED_OPTIONS } from "../constants/replay.constants";
+import {
+  Loader2,
+  Maximize2,
+  Minimize2,
+  Pause,
+  Play,
+  SkipBack,
+  SkipForward,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import type { ControlsBarProps } from "../types/replay.types";
 import { formatTime } from "../utils/format.util";
 import { TimelineSlider } from "./TimelineSlider";
@@ -17,8 +25,14 @@ export const ControlsBar = ({
   radioEnabled,
   drivers,
   isRadioPlaying,
+  skipIntervalLabel,
+  expanded,
   onTogglePlay,
-  onSpeedChange,
+  onSkipBack,
+  onSkipForward,
+  onCycleSpeed,
+  onCycleSkipInterval,
+  onToggleExpanded,
   onSeek,
   onRadioToggle,
   onPlayRadio,
@@ -27,8 +41,6 @@ export const ControlsBar = ({
   onResumeRadio,
   onMarkerClick,
 }: ControlsBarProps) => {
-  const [expanded, setExpanded] = useState(false);
-
   return (
     <div className="flex w-full flex-col gap-2 rounded-xl border border-white/20 bg-white/5 p-4 text-white backdrop-blur-xl">
       {/* Timeline row: time | slider | time | expand */}
@@ -59,22 +71,11 @@ export const ControlsBar = ({
         <span className="shrink-0 font-mono text-xs tabular-nums text-white/50">
           {formatTime(endTimeMs - startTimeMs)}
         </span>
-        <button
-          type="button"
-          onClick={() => setExpanded((prev) => !prev)}
-          className={`shrink-0 rounded-lg px-2 py-1.5 transition ${
-            expanded
-              ? "bg-white/20 text-white hover:bg-white/25"
-              : "bg-white/10 text-white/50 hover:bg-white/15"
-          }`}
-          title={expanded ? "Collapse timeline" : "Expand timeline"}
-        >
-          {expanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-        </button>
       </div>
 
-      {/* Controls row: play | radio | buffering ... speed buttons */}
-      <div className="flex flex-wrap items-center gap-4">
+      {/* Controls row: play | skip back | interval | skip fwd | buffering ... speed | radio | expand */}
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Play/Pause */}
         <button
           type="button"
           className={`flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white transition ${
@@ -93,32 +94,78 @@ export const ControlsBar = ({
             <Loader2 size={18} className="animate-spin" />
           )}
         </button>
+
+        {/* Skip back */}
         <button
           type="button"
-          onClick={onRadioToggle}
-          className={`rounded-lg px-3 py-2 transition ${
-            radioEnabled
-              ? "bg-blue-500/20 text-blue-300 hover:bg-blue-500/30"
-              : "bg-white/10 text-white/50 hover:bg-white/15"
-          }`}
-          title={radioEnabled ? "Disable team radio" : "Enable team radio"}
+          onClick={onSkipBack}
+          className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 text-white/70 transition hover:bg-white/15 hover:text-white"
+          title="Skip back"
         >
-          {radioEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
+          <SkipBack size={16} />
         </button>
+
+        {/* Skip interval toggle */}
+        <button
+          type="button"
+          onClick={onCycleSkipInterval}
+          className="flex h-8 min-w-8 items-center justify-center rounded-lg bg-white/10 px-2.5 text-xs font-medium text-white/70 transition hover:bg-white/15 hover:text-white"
+          title="Change skip interval"
+        >
+          {skipIntervalLabel}
+        </button>
+
+        {/* Skip forward */}
+        <button
+          type="button"
+          onClick={onSkipForward}
+          className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 text-white/70 transition hover:bg-white/15 hover:text-white"
+          title="Skip forward"
+        >
+          <SkipForward size={16} />
+        </button>
+
         {isBuffering && <span className="text-xs text-white/50">Buffering...</span>}
-        <div className="ml-auto flex items-center gap-2 text-xs text-white/60">
-          {SPEED_OPTIONS.map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => onSpeedChange(option)}
-              className={`rounded-md px-2 py-1 ${
-                speed === option ? "bg-white text-black" : "bg-white/15 text-white/70"
-              }`}
-            >
-              {option}x
-            </button>
-          ))}
+
+        {/* Right-aligned group */}
+        <div className="ml-auto flex items-center gap-2">
+          {/* Consolidated speed button */}
+          <button
+            type="button"
+            onClick={onCycleSpeed}
+            className="flex h-8 min-w-8 items-center justify-center rounded-lg bg-white/10 px-2.5 text-xs font-medium text-white/70 transition hover:bg-white/15 hover:text-white"
+            title="Cycle playback speed"
+          >
+            {speed}x
+          </button>
+
+          {/* Radio toggle */}
+          <button
+            type="button"
+            onClick={onRadioToggle}
+            className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
+              radioEnabled
+                ? "bg-blue-500/20 text-blue-300 hover:bg-blue-500/30"
+                : "bg-white/10 text-white/50 hover:bg-white/15"
+            }`}
+            title={radioEnabled ? "Disable team radio" : "Enable team radio"}
+          >
+            {radioEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+          </button>
+
+          {/* Expand/collapse timeline */}
+          <button
+            type="button"
+            onClick={onToggleExpanded}
+            className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
+              expanded
+                ? "bg-white/20 text-white hover:bg-white/25"
+                : "bg-white/10 text-white/50 hover:bg-white/15"
+            }`}
+            title={expanded ? "Collapse timeline" : "Expand timeline"}
+          >
+            {expanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          </button>
         </div>
       </div>
     </div>
