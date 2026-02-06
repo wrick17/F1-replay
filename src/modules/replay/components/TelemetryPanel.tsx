@@ -18,15 +18,37 @@ type TelemetryPanelProps = {
   rows: TelemetryRow[];
 };
 
-const getCompoundBadge = (compound: string | null) => {
+const normalizeCompound = (compound: string | null) => {
   if (!compound) {
+    return null;
+  }
+  return compound.trim().toUpperCase();
+};
+
+const getCompoundBadge = (compound: string | null) => {
+  const upper = normalizeCompound(compound);
+  if (!upper) {
     return "-";
   }
-  const upper = compound.toUpperCase();
-  if (upper.startsWith("H")) return "H";
-  if (upper.startsWith("M")) return "M";
-  if (upper.startsWith("S")) return "S";
+  if (upper.startsWith("HARD")) return "H";
+  if (upper.startsWith("MED")) return "M";
+  if (upper.startsWith("SOF")) return "S";
+  if (upper.startsWith("INT")) return "I";
+  if (upper.startsWith("WET")) return "W";
   return upper.charAt(0) || "-";
+};
+
+const getCompoundLabel = (compound: string | null) => {
+  const upper = normalizeCompound(compound);
+  if (!upper) {
+    return "Unknown";
+  }
+  if (upper.startsWith("HARD")) return "Hard";
+  if (upper.startsWith("MED")) return "Medium";
+  if (upper.startsWith("SOF")) return "Soft";
+  if (upper.startsWith("INT")) return "Intermediate";
+  if (upper.startsWith("WET")) return "Wet";
+  return compound ?? "Unknown";
 };
 
 export const TelemetryPanel = ({ summary, rows }: TelemetryPanelProps) => {
@@ -49,7 +71,7 @@ export const TelemetryPanel = ({ summary, rows }: TelemetryPanelProps) => {
       </div>
 
       <div className="flex-1 overflow-y-auto pr-1">
-        <div className="grid grid-cols-[0.6fr_1.5fr_0.7fr_0.7fr] gap-2 text-[10px] uppercase text-white/40">
+        <div className="grid grid-cols-[0.45fr_2fr_0.55fr_0.55fr] gap-1 text-[10px] uppercase text-white/40">
           <span className="text-center">Pos</span>
           <span>Driver</span>
           <span className="text-center">Lap</span>
@@ -59,7 +81,7 @@ export const TelemetryPanel = ({ summary, rows }: TelemetryPanelProps) => {
           {rows.map((row) => (
             <div
               key={row.driverNumber}
-              className="grid grid-cols-[0.6fr_1.5fr_0.7fr_0.7fr] items-center gap-2 rounded-lg bg-white/5 px-3 py-2"
+              className="grid grid-cols-[0.45fr_2fr_0.55fr_0.55fr] items-center gap-1 rounded-lg bg-white/5 px-2 py-2"
             >
               <div className="text-center text-white/80">
                 {row.position ?? "-"}
@@ -73,7 +95,10 @@ export const TelemetryPanel = ({ summary, rows }: TelemetryPanelProps) => {
               </div>
               <div className="text-center text-white/80">{row.lap ?? "-"}</div>
               <div className="flex justify-center">
-                <span className="rounded-full border border-white/20 px-2 py-0.5 text-[10px] font-semibold uppercase text-white/70">
+                <span
+                  className="rounded-full border border-white/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white/70"
+                  title={getCompoundLabel(row.compound)}
+                >
                   {getCompoundBadge(row.compound)}
                 </span>
               </div>

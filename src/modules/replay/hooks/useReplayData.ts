@@ -26,6 +26,7 @@ type ReplayDataState = {
   error: string | null;
   meetings: OpenF1Meeting[];
   sessions: OpenF1Session[];
+  availableYears: number[];
   availableEndMs: number;
   dataRevision: number;
 };
@@ -64,6 +65,17 @@ const createTelemetryMap = (
   }, {});
 };
 
+const buildYearOptions = (currentYear: number) =>
+  Array.from({ length: 6 }, (_, index) => currentYear - index);
+
+const filterEndedMeetings = (meetings: OpenF1Meeting[], now: number) => {
+  return meetings.filter((meeting) => {
+    const name = `${meeting.meeting_name} ${meeting.meeting_official_name}`;
+    const endMs = new Date(meeting.date_end).getTime();
+    return !/pre[- ]season/i.test(name) && endMs <= now;
+  });
+};
+
 const chunkAppend = <T extends { driver_number: number }>(
   map: Record<number, T[]>,
   chunk: T[],
@@ -88,12 +100,17 @@ export const useReplayData = ({
   const [error, setError] = useState<string | null>(null);
   const [meetings, setMeetings] = useState<OpenF1Meeting[]>([]);
   const [sessions, setSessions] = useState<OpenF1Session[]>([]);
+  const [availableYears, setAvailableYears] = useState<number[]>([]);
   const [availableEndMs, setAvailableEndMs] = useState(0);
   const [dataRevision, setDataRevision] = useState(0);
   const sessionCacheRef = useRef<Map<number, ReplaySessionData>>(new Map());
   const abortRef = useRef<AbortController | null>(null);
   const meetingsRequestRef = useRef(0);
   const sessionsRequestRef = useRef(0);
+  const yearOptions = useMemo(
+    () => buildYearOptions(new Date().getFullYear()),
+    [],
+  );
 
   const sortedMeetings = useMemo(() => {
     return [...meetings].sort(
@@ -125,7 +142,8 @@ export const useReplayData = ({
         if (meetingsRequestRef.current !== requestId) {
           return;
         }
-        setMeetings(result);
+        const now = Date.now();
+        setMeetings(filterEndedMeetings(result, now));
       })
       .catch((err: Error) => {
         if (meetingsRequestRef.current !== requestId) {
@@ -139,6 +157,41 @@ export const useReplayData = ({
         }
       });
   }, [year]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadYears = async () => {
+      const now = Date.now();
+      const available: number[] = [];
+      for (const option of yearOptions) {
+        try {
+          const result = await fetchOpenF1<OpenF1Meeting[]>(
+            "meetings",
+            { year: option },
+            undefined,
+            "persist",
+          );
+          if (cancelled) {
+            return;
+          }
+          if (filterEndedMeetings(result, now).length > 0) {
+            available.push(option);
+          }
+        } catch {
+          if (cancelled) {
+            return;
+          }
+        }
+      }
+      if (!cancelled) {
+        setAvailableYears(available);
+      }
+    };
+    void loadYears();
+    return () => {
+      cancelled = true;
+    };
+  }, [yearOptions]);
 
   useEffect(() => {
     if (!selectedMeeting) {
@@ -164,7 +217,12 @@ export const useReplayData = ({
         if (sessionsRequestRef.current !== requestId) {
           return;
         }
-        setSessions(result);
+        const now = Date.now();
+        const filtered = result.filter((session) => {
+          const endMs = new Date(session.date_end).getTime();
+          return endMs <= now;
+        });
+        setSessions(filtered);
       })
       .catch((err: Error) => {
         if (sessionsRequestRef.current !== requestId) {
@@ -376,6 +434,7 @@ export const useReplayData = ({
     error,
     meetings: sortedMeetings,
     sessions,
+    availableYears,
     availableEndMs,
     dataRevision,
   };

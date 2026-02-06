@@ -7,6 +7,7 @@ type SessionPickerProps = {
   sessionType: SessionType;
   meetings: OpenF1Meeting[];
   sessions: OpenF1Session[];
+  yearOptions?: number[];
   onYearChange: (year: number) => void;
   onRoundChange: (round: number) => void;
   onSessionTypeChange: (sessionType: SessionType) => void;
@@ -28,11 +29,15 @@ export const SessionPicker = ({
   sessionType,
   meetings,
   sessions,
+  yearOptions: availableYears,
   onYearChange,
   onRoundChange,
   onSessionTypeChange,
 }: SessionPickerProps) => {
-  const yearOptions = buildYearOptions(new Date().getFullYear());
+  const yearOptions =
+    availableYears && availableYears.length > 0
+      ? availableYears
+      : buildYearOptions(new Date().getFullYear());
   const rounds = meetings.map((meeting, index) => ({
     round: index + 1,
     label: meeting.meeting_name,

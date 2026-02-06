@@ -133,10 +133,11 @@ export const fetchOpenF1 = async <T>(
         throw new Error(`OpenF1 request failed: ${response.status}`);
       }
       const payload = (await response.json()) as T;
-      if (cacheMode !== "no-store") {
+      const isEmptyArray = Array.isArray(payload) && payload.length === 0;
+      if (cacheMode !== "no-store" && !isEmptyArray) {
         responseCache.set(key, payload);
       }
-      if (cacheMode === "persist") {
+      if (cacheMode === "persist" && !isEmptyArray) {
         await setPersisted(key, payload).catch(() => undefined);
       }
       return payload;

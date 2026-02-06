@@ -42,8 +42,16 @@ export const ReplayPage = () => {
     positions: { x: number; y: number; z: number; timestampMs: number }[];
   }>({ driverNumber: null, score: 0, positions: [] });
 
-  const { data, loading, error, meetings, sessions, availableEndMs, dataRevision } =
-    useReplayData({ year, round, sessionType });
+  const {
+    data,
+    loading,
+    error,
+    meetings,
+    sessions,
+    availableYears,
+    availableEndMs,
+    dataRevision,
+  } = useReplayData({ year, round, sessionType });
 
   const sessionStartMs = data?.sessionStartMs ?? 0;
   const sessionEndMs = data?.sessionEndMs ?? 0;
@@ -249,6 +257,20 @@ export const ReplayPage = () => {
   }, [sessions, hasSelectedSession, sessionType]);
 
   useEffect(() => {
+    if (availableYears.length === 0) {
+      return;
+    }
+    if (!availableYears.includes(year)) {
+      const nextYear = availableYears[0];
+      if (nextYear !== year) {
+        setYear(nextYear);
+        setRound(1);
+        manualRoundRef.current = false;
+      }
+    }
+  }, [availableYears, year]);
+
+  useEffect(() => {
     if (manualRoundRef.current) {
       return;
     }
@@ -300,14 +322,17 @@ export const ReplayPage = () => {
           latestPosition ?? getCurrentPosition(positions, telemetryTimeMs);
         const lapNumber =
           latestLap?.lap_number ?? getCurrentLap(laps, telemetryTimeMs);
-        const stint = getCurrentStint(telemetry?.stints ?? [], lapNumber);
+        const stints = telemetry?.stints ?? [];
+        const stint = getCurrentStint(stints, lapNumber);
+        const fallbackStint =
+          stint ?? (stints.length > 0 ? stints[stints.length - 1] : null);
         return {
           driverNumber: driver.driver_number,
           driverName: formatTelemetryLabel(driver),
           driverAcronym: driver.name_acronym,
           position: positionSample?.position ?? null,
           lap: lapNumber,
-          compound: stint?.compound ?? null,
+          compound: fallbackStint?.compound ?? null,
         };
       })
       .sort((a, b) => {
@@ -330,6 +355,7 @@ export const ReplayPage = () => {
           sessionType={sessionType}
           meetings={meetings}
           sessions={sessions}
+          yearOptions={availableYears}
           onYearChange={(nextYear) => {
             setYear(nextYear);
             setRound(1);
