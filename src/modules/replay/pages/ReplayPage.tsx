@@ -101,6 +101,16 @@ export const ReplayPage = () => {
 
   return (
     <div className="relative min-h-screen w-full overflow-y-auto text-white md:h-screen md:w-screen md:overflow-hidden">
+      {/* Noise texture overlay */}
+      <div
+        className="pointer-events-none absolute inset-0 z-0 opacity-55 mix-blend-overlay"
+        style={{
+          backgroundImage: "url('/noise.svg')",
+          backgroundRepeat: "repeat",
+          backgroundSize: "256px 256px",
+          filter: "contrast(200%) brightness(400%)",
+        }}
+      />
       <header className="relative z-10 mx-4 mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/20 bg-white/5 px-4 py-3 backdrop-blur-xl md:absolute md:left-4 md:right-80 md:top-4 md:mx-0 md:mt-0">
         <div className="flex items-center gap-2">
           <h1 className="text-lg font-semibold">F1 Replay</h1>

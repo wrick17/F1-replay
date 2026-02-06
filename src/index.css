@@ -9,21 +9,25 @@ body,
 body {
   margin: 0;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  background-color: #000000;
+  background-color: #050505;
   background-image:
-    radial-gradient(1000px 500px at 10% 0%, rgba(225, 6, 0, 0.18), transparent 55%),
-    radial-gradient(800px 500px at 90% 5%, rgba(255, 255, 255, 0.08), transparent 55%),
-    radial-gradient(900px 600px at 80% 95%, rgba(225, 6, 0, 0.12), transparent 55%),
-    radial-gradient(700px 500px at 5% 90%, rgba(255, 255, 255, 0.06), transparent 55%),
-    radial-gradient(600px 400px at 50% 50%, rgba(225, 6, 0, 0.06), transparent 60%),
-    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.04) 1px, transparent 0);
+    /* Primary red glow — top-left */
+    radial-gradient(ellipse 1200px 700px at 5% 0%, rgba(225, 6, 0, 0.14), transparent 65%),
+    /* Faint warm accent — top-right */
+    radial-gradient(ellipse 900px 500px at 90% 5%, rgba(160, 30, 15, 0.06), transparent 60%),
+    /* Subtle red — bottom-right */
+    radial-gradient(ellipse 1000px 600px at 95% 95%, rgba(225, 6, 0, 0.10), transparent 65%),
+    /* Very faint cool tint — bottom-left */
+    radial-gradient(ellipse 800px 600px at 5% 90%, rgba(20, 40, 50, 0.08), transparent 60%),
+    /* Faint warm center fill */
+    radial-gradient(ellipse 1200px 800px at 50% 50%, rgba(225, 6, 0, 0.04), transparent 65%),
+    /* Subtle green accent — bottom-center */
+    radial-gradient(ellipse 900px 500px at 40% 85%, rgba(20, 120, 50, 0.07), transparent 60%),
+    /* Dot grid texture */
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.025) 1px, transparent 0);
   background-size:
-    auto,
-    auto,
-    auto,
-    auto,
-    auto,
-    120px 120px;
+    auto, auto, auto, auto, auto, auto,
+    110px 110px;
   background-attachment: fixed;
   color: #ffffff;
 }
