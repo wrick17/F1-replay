@@ -136,11 +136,10 @@ export const fetchOpenF1 = <T>(
         throw new Error(`OpenF1 request failed: ${response.status}`);
       }
       const payload = (await response.json()) as T;
-      const isEmptyArray = Array.isArray(payload) && payload.length === 0;
-      if (cacheMode !== "no-store" && !isEmptyArray) {
+      if (cacheMode !== "no-store") {
         responseCache.set(key, payload);
       }
-      if (cacheMode === "persist" && !isEmptyArray) {
+      if (cacheMode === "persist") {
         await setPersisted(key, payload).catch(() => undefined);
       }
       return payload;
@@ -186,9 +185,6 @@ export const fetchChunked = async <T extends { date?: string }>(
     }
     onChunk?.(chunk, chunkEnd);
     cursor = chunkEnd;
-    if (cursor < endMs) {
-      await sleep(50);
-    }
   }
   return results;
 };

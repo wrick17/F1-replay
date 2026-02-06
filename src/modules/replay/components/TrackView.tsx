@@ -4,6 +4,7 @@ import type { NormalizedPosition } from "../utils/telemetry.util";
 type DriverRenderState = {
   position: NormalizedPosition | null;
   color: string;
+  racePosition?: number | null;
 };
 
 type TrackViewProps = {
@@ -173,7 +174,8 @@ export const TrackView = ({
         }
         const driverNumber = Number(driverKey);
         const position = toPoint2D(state.position);
-        const labelText = driverNames[driverNumber] ?? String(driverNumber);
+        const name = driverNames[driverNumber] ?? String(driverNumber);
+        const labelText = state.racePosition ? `P${state.racePosition} ${name}` : name;
         const labelOffset = computeLabelOffset(position, bounds.center);
         const labelX = position.x + labelOffset.x;
         const labelY = position.y + labelOffset.y;

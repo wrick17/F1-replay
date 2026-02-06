@@ -133,13 +133,18 @@ export const ReplayPage = () => {
     if (!data) {
       return {};
     }
-    const map: Record<number, { position: { x: number; y: number; z: number } | null; color: string }> = {};
+    const map: Record<number, { position: { x: number; y: number; z: number } | null; color: string; racePosition?: number | null }> = {};
     data.drivers.forEach((driver) => {
       const telemetry = data.telemetryByDriver[driver.driver_number];
       const locationSample = interpolateLocation(
         telemetry?.locations ?? [],
         replay.currentTimeMs,
       );
+      const positionSample = getCurrentPosition(
+        telemetry?.positions ?? [],
+        replay.currentTimeMs,
+      );
+      const racePosition = positionSample?.position ?? null;
       if (
         locationSample &&
         Number.isFinite(locationSample.x) &&
@@ -153,11 +158,13 @@ export const ReplayPage = () => {
             z: (locationSample.z - normalization.offset.z) * normalization.scale,
           },
           color: `#${driver.team_colour}`,
+          racePosition,
         };
       } else {
         map[driver.driver_number] = {
           position: null,
           color: `#${driver.team_colour}`,
+          racePosition,
         };
       }
     });
@@ -307,8 +314,11 @@ export const ReplayPage = () => {
   return (
     <div className="relative min-h-screen w-full overflow-y-auto text-white md:h-screen md:w-screen md:overflow-hidden">
       <header className="relative z-10 mx-4 mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/20 bg-white/5 px-4 py-3 backdrop-blur-xl md:absolute md:left-4 md:right-80 md:top-4 md:mx-0 md:mt-0">
-        <div>
+        <div className="flex items-center gap-2">
           <h1 className="text-lg font-semibold">F1 Replay</h1>
+          {loading && (
+            <span className="animate-pulse text-xs text-white/40">Loading...</span>
+          )}
         </div>
         <SessionPicker
           year={year}
@@ -373,11 +383,6 @@ export const ReplayPage = () => {
         <TelemetryPanel summary={telemetrySummary} rows={telemetryRows} />
       </aside>
 
-      {loading && (
-        <div className="relative z-10 mx-4 mb-6 mt-2 text-xs text-white/40 md:absolute md:bottom-20 md:left-4 md:mx-0 md:mb-0 md:mt-0">
-          Loading telemetry data...
-        </div>
-      )}
     </div>
   );
 };
