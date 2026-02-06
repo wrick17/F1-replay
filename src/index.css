@@ -17,7 +17,13 @@ body {
     radial-gradient(700px 500px at 5% 90%, rgba(255, 255, 255, 0.06), transparent 55%),
     radial-gradient(600px 400px at 50% 50%, rgba(225, 6, 0, 0.06), transparent 60%),
     radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.04) 1px, transparent 0);
-  background-size: auto, auto, auto, auto, auto, 120px 120px;
+  background-size:
+    auto,
+    auto,
+    auto,
+    auto,
+    auto,
+    120px 120px;
   background-attachment: fixed;
   color: #ffffff;
 }

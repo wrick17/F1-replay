@@ -1,55 +1,5 @@
-type TelemetrySummary = {
-  sessionLabel: string;
-  coverageLabel: string;
-  totalDrivers: number;
-};
-
-type TelemetryRow = {
-  driverNumber: number;
-  driverName: string;
-  driverAcronym: string;
-  position: number | null;
-  lap: number | null;
-  compound: string | null;
-};
-
-type TelemetryPanelProps = {
-  summary: TelemetrySummary;
-  rows: TelemetryRow[];
-};
-
-const normalizeCompound = (compound: string | null) => {
-  if (!compound) {
-    return null;
-  }
-  return compound.trim().toUpperCase();
-};
-
-const getCompoundBadge = (compound: string | null) => {
-  const upper = normalizeCompound(compound);
-  if (!upper) {
-    return "-";
-  }
-  if (upper.startsWith("HARD")) return "H";
-  if (upper.startsWith("MED")) return "M";
-  if (upper.startsWith("SOF")) return "S";
-  if (upper.startsWith("INT")) return "I";
-  if (upper.startsWith("WET")) return "W";
-  return upper.charAt(0) || "-";
-};
-
-const getCompoundLabel = (compound: string | null) => {
-  const upper = normalizeCompound(compound);
-  if (!upper) {
-    return "Unknown";
-  }
-  if (upper.startsWith("HARD")) return "Hard";
-  if (upper.startsWith("MED")) return "Medium";
-  if (upper.startsWith("SOF")) return "Soft";
-  if (upper.startsWith("INT")) return "Intermediate";
-  if (upper.startsWith("WET")) return "Wet";
-  return compound ?? "Unknown";
-};
+import type { TelemetryPanelProps } from "../types/replay.types";
+import { getCompoundBadge, getCompoundLabel } from "../utils/format.util";
 
 export const TelemetryPanel = ({ summary, rows }: TelemetryPanelProps) => {
   return (
@@ -83,9 +33,7 @@ export const TelemetryPanel = ({ summary, rows }: TelemetryPanelProps) => {
               key={row.driverNumber}
               className="grid grid-cols-[0.45fr_2fr_0.55fr_0.55fr] items-center gap-1 rounded-lg bg-white/5 px-2 py-2"
             >
-              <div className="text-center text-white/80">
-                {row.position ?? "-"}
-              </div>
+              <div className="text-center text-white/80">{row.position ?? "-"}</div>
               <div className="min-w-0">
                 <div className="truncate text-white">{row.driverName}</div>
                 <div className="text-[10px] text-white/40">

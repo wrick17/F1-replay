@@ -33,9 +33,7 @@ export const groupByDriverNumber = <T extends { driver_number: number }>(
   }, {});
 };
 
-export const sortByTimestamp = <T extends { timestampMs: number }>(
-  items: T[],
-): T[] => {
+export const sortByTimestamp = <T extends { timestampMs: number }>(items: T[]): T[] => {
   return [...items].sort((a, b) => a.timestampMs - b.timestampMs);
 };
 
@@ -88,8 +86,7 @@ export const interpolateLocation = (
   if (left.timestampMs === right.timestampMs) {
     return left;
   }
-  const ratio =
-    (timestampMs - left.timestampMs) / (right.timestampMs - left.timestampMs);
+  const ratio = (timestampMs - left.timestampMs) / (right.timestampMs - left.timestampMs);
   return {
     ...left,
     x: left.x + (right.x - left.x) * ratio,
@@ -107,10 +104,7 @@ export type NormalizedPosition = {
 
 export const normalizePositions = (samples: NormalizedPosition[]) => {
   const validSamples = samples.filter(
-    (sample) =>
-      Number.isFinite(sample.x) &&
-      Number.isFinite(sample.y) &&
-      Number.isFinite(sample.z),
+    (sample) => Number.isFinite(sample.x) && Number.isFinite(sample.y) && Number.isFinite(sample.z),
   );
   if (!validSamples.length) {
     return { normalized: [], scale: 1, offset: { x: 0, y: 0, z: 0 } };
@@ -141,26 +135,16 @@ export const normalizePositions = (samples: NormalizedPosition[]) => {
   return { normalized, scale, offset };
 };
 
-export const getCurrentLap = (
-  laps: TimedSample<OpenF1Lap>[],
-  timestampMs: number,
-) => {
+export const getCurrentLap = (laps: TimedSample<OpenF1Lap>[], timestampMs: number) => {
   const sample = findSampleAtTime(laps, timestampMs);
   return sample?.lap_number ?? null;
 };
 
-export const getCurrentStint = (
-  stints: OpenF1Stint[],
-  lapNumber: number | null,
-) => {
+export const getCurrentStint = (stints: OpenF1Stint[], lapNumber: number | null) => {
   if (lapNumber === null) {
     return null;
   }
-  return (
-    stints.find(
-      (stint) => lapNumber >= stint.lap_start && lapNumber <= stint.lap_end,
-    ) ?? null
-  );
+  return stints.find((stint) => lapNumber >= stint.lap_start && lapNumber <= stint.lap_end) ?? null;
 };
 
 export const getCurrentPosition = (

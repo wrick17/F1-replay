@@ -1,7 +1,16 @@
+import { createRouter, RouterProvider } from "@tanstack/react-router";
 import React from "react";
 import { createRoot } from "react-dom/client";
-import App from "./App";
+import { routeTree } from "./routes/routeTree";
 import "./index.css";
+
+const router = createRouter({ routeTree });
+
+declare module "@tanstack/react-router" {
+  interface Register {
+    router: typeof router;
+  }
+}
 
 const container = document.getElementById("root");
 
@@ -11,6 +20,6 @@ if (!container) {
 
 createRoot(container).render(
   <React.StrictMode>
-    <App />
+    <RouterProvider router={router} />
   </React.StrictMode>,
 );

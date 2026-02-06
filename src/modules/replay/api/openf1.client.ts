@@ -1,80 +1,9 @@
+import { type CacheMode, getPersisted, inFlight, responseCache, setPersisted } from "./cache";
+import { rateLimit, sleep } from "./rateLimiter";
+
 const API_BASE_URL = "https://api.openf1.org/v1";
 
-type CacheMode = "memory" | "no-store" | "persist";
-
-const responseCache = new Map<string, unknown>();
-const inFlight = new Map<string, Promise<unknown>>();
-const minIntervalMs = 400;
-let rateLimitChain = Promise.resolve(0);
-
-const IDB_NAME = "openf1-cache";
-const IDB_STORE = "responses";
-let idbPromise: Promise<IDBDatabase> | null = null;
-
-const getDb = () => {
-  if (idbPromise) {
-    return idbPromise;
-  }
-  if (typeof indexedDB === "undefined") {
-    return Promise.reject(new Error("IndexedDB unavailable"));
-  }
-  idbPromise = new Promise((resolve, reject) => {
-    const request = indexedDB.open(IDB_NAME, 1);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(IDB_STORE)) {
-        db.createObjectStore(IDB_STORE);
-      }
-    };
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
-  });
-  return idbPromise;
-};
-
-const getPersisted = async <T>(key: string): Promise<T | null> => {
-  const db = await getDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(IDB_STORE, "readonly");
-    const store = tx.objectStore(IDB_STORE);
-    const request = store.get(key);
-    request.onsuccess = () => resolve((request.result as T) ?? null);
-    request.onerror = () => reject(request.error);
-  });
-};
-
-const setPersisted = async (key: string, value: unknown) => {
-  const db = await getDb();
-  return new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(IDB_STORE, "readwrite");
-    const store = tx.objectStore(IDB_STORE);
-    const request = store.put(value, key);
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
-};
-
-const sleep = (ms: number) =>
-  new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-
-const rateLimit = () => {
-  rateLimitChain = rateLimitChain.then(async (lastRequestAt) => {
-    const now = Date.now();
-    const elapsed = now - lastRequestAt;
-    if (elapsed < minIntervalMs) {
-      await sleep(minIntervalMs - elapsed);
-    }
-    return Date.now();
-  });
-  return rateLimitChain;
-};
-
-export type QueryParams = Record<
-  string,
-  string | number | boolean | null | undefined
->;
+export type QueryParams = Record<string, string | number | boolean | null | undefined>;
 
 export const buildQuery = (params: QueryParams) => {
   const entries = Object.entries(params).filter(
@@ -126,9 +55,7 @@ export const fetchOpenF1 = <T>(
       if (!response.ok) {
         if (response.status === 429 && attempt < 2) {
           const retryAfter = Number(response.headers.get("retry-after"));
-          const waitMs = Number.isNaN(retryAfter)
-            ? 1000 * (attempt + 1)
-            : retryAfter * 1000;
+          const waitMs = Number.isNaN(retryAfter) ? 1000 * (attempt + 1) : retryAfter * 1000;
           await sleep(waitMs);
           attempt += 1;
           continue;
@@ -145,10 +72,9 @@ export const fetchOpenF1 = <T>(
       return payload;
     }
     throw new Error("OpenF1 request failed after retries");
-  })()
-    .finally(() => {
-      inFlight.delete(key);
-    });
+  })().finally(() => {
+    inFlight.delete(key);
+  });
   if (cacheMode !== "no-store") {
     inFlight.set(key, request);
   }
@@ -174,12 +100,7 @@ export const fetchChunked = async <T extends { date?: string }>(
       "date>=": new Date(cursor).toISOString(),
       "date<=": new Date(chunkEnd).toISOString(),
     };
-    const chunk = await fetchOpenF1<T[]>(
-      path,
-      chunkParams,
-      signal,
-      cacheMode,
-    );
+    const chunk = await fetchOpenF1<T[]>(path, chunkParams, signal, cacheMode);
     if (chunk.length) {
       results.push(...chunk);
     }

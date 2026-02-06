@@ -1,26 +1,6 @@
-type ControlsBarProps = {
-  isPlaying: boolean;
-  isBuffering: boolean;
-  speed: number;
-  currentTimeMs: number;
-  startTimeMs: number;
-  endTimeMs: number;
-  canPlay: boolean;
-  onTogglePlay: () => void;
-  onSpeedChange: (value: number) => void;
-  onSeek: (timestampMs: number) => void;
-};
-
-const SPEED_OPTIONS = [0.5, 1, 2, 4];
-
-const formatTime = (timestampMs: number) => {
-  const totalSeconds = Math.max(0, Math.floor(timestampMs / 1000));
-  const minutes = Math.floor(totalSeconds / 60)
-    .toString()
-    .padStart(2, "0");
-  const seconds = (totalSeconds % 60).toString().padStart(2, "0");
-  return `${minutes}:${seconds}`;
-};
+import { SPEED_OPTIONS } from "../constants/replay.constants";
+import type { ControlsBarProps } from "../types/replay.types";
+import { formatTime } from "../utils/format.util";
 
 export const ControlsBar = ({
   isPlaying,
@@ -47,9 +27,7 @@ export const ControlsBar = ({
         >
           {canPlay ? (isPlaying ? "Pause" : "Play") : "Loading"}
         </button>
-        {isBuffering && (
-          <span className="text-xs text-white/50">Buffering...</span>
-        )}
+        {isBuffering && <span className="text-xs text-white/50">Buffering...</span>}
         <div className="ml-auto flex items-center gap-2 text-xs text-white/60">
           {SPEED_OPTIONS.map((option) => (
             <button
@@ -57,9 +35,7 @@ export const ControlsBar = ({
               type="button"
               onClick={() => onSpeedChange(option)}
               className={`rounded-md px-2 py-1 ${
-                speed === option
-                  ? "bg-white text-black"
-                  : "bg-white/15 text-white/70"
+                speed === option ? "bg-white text-black" : "bg-white/15 text-white/70"
               }`}
             >
               {option}x
@@ -68,9 +44,7 @@ export const ControlsBar = ({
         </div>
       </div>
       <div className="flex min-w-0 items-center gap-3 text-xs text-white/60">
-        <span className="text-xs text-white/50">
-          {formatTime(currentTimeMs - startTimeMs)}
-        </span>
+        <span className="text-xs text-white/50">{formatTime(currentTimeMs - startTimeMs)}</span>
         <input
           type="range"
           min={startTimeMs}
@@ -79,9 +53,7 @@ export const ControlsBar = ({
           onChange={(event) => onSeek(Number(event.target.value))}
           className="h-1 flex-1 accent-[#E10600]"
         />
-        <span className="text-xs text-white/50">
-          {formatTime(endTimeMs - startTimeMs)}
-        </span>
+        <span className="text-xs text-white/50">{formatTime(endTimeMs - startTimeMs)}</span>
       </div>
     </div>
   );

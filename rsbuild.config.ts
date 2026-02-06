@@ -30,5 +30,6 @@ export default defineConfig({
   server: {
     strictPort: true,
     port: 3001,
+    historyApiFallback: true,
   }
 });

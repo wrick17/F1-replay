@@ -1,73 +1,43 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import { ControlsBar } from "../components/ControlsBar";
 import { SessionPicker } from "../components/SessionPicker";
 import { TelemetryPanel } from "../components/TelemetryPanel";
 import { TrackView } from "../components/TrackView";
 import { useReplayController } from "../hooks/useReplayController";
 import { useReplayData } from "../hooks/useReplayData";
-import type { OpenF1Driver } from "../types/openf1.types";
-import {
-  getCurrentLap,
-  getCurrentPosition,
-  getCurrentStint,
-  interpolateLocation,
-  normalizePositions,
-} from "../utils/telemetry.util";
-
-const getDefaultYear = () => new Date().getFullYear() - 1;
-
-const formatTrackLabel = (driver: OpenF1Driver) => {
-  return driver.name_acronym || driver.full_name;
-};
-
-const formatTelemetryLabel = (driver: OpenF1Driver) => {
-  return driver.broadcast_name || driver.full_name;
-};
-
-const ALLOWED_SESSION_TYPES = ["Race", "Sprint", "Qualifying"] as const;
-const TRACK_TIME_GAP_MS = 2000;
-const TRACK_POINT_QUANTIZE = 5;
+import { useSessionAutoCorrect, useSessionState } from "../hooks/useSessionSelector";
+import { useTrackComputation } from "../hooks/useTrackComputation";
+import { computeTelemetryRows, computeTelemetrySummary } from "../services/telemetry.service";
 
 export const ReplayPage = () => {
-  const [year, setYear] = useState(getDefaultYear());
-  const [round, setRound] = useState(1);
-  const [sessionType, setSessionType] = useState<"Race" | "Sprint" | "Qualifying">(
-    "Race",
-  );
-  const selectedDrivers: number[] = [];
-  const manualRoundRef = useRef(false);
+  const session = useSessionState();
 
-  const {
-    data,
-    loading,
-    error,
+  const { data, loading, error, meetings, sessions, availableYears, availableEndMs, dataRevision } =
+    useReplayData({
+      year: session.year,
+      round: session.round,
+      sessionType: session.sessionType,
+    });
+
+  const { hasSupportedSession } = useSessionAutoCorrect({
     meetings,
     sessions,
     availableYears,
-    availableEndMs,
-    dataRevision,
-  } = useReplayData({ year, round, sessionType });
+    year: session.year,
+    round: session.round,
+    sessionType: session.sessionType,
+    setYear: session.setYear,
+    setRound: session.setRound,
+    setSessionType: session.setSessionType,
+    manualRoundRef: session.manualRoundRef,
+  });
 
   const sessionStartMs = data?.sessionStartMs ?? 0;
   const sessionEndMs = data?.sessionEndMs ?? 0;
   const effectiveEndMs =
-    availableEndMs > sessionStartMs
-      ? availableEndMs
-      : Math.max(sessionEndMs, sessionStartMs);
-  const hasSupportedSession = useMemo(() => {
-    return sessions.some((session) =>
-      ALLOWED_SESSION_TYPES.includes(
-        session.session_type as (typeof ALLOWED_SESSION_TYPES)[number],
-      ),
-    );
-  }, [sessions]);
-  const hasSelectedSession = useMemo(() => {
-    return sessions.some((session) => session.session_type === sessionType);
-  }, [sessions, sessionType]);
+    availableEndMs > sessionStartMs ? availableEndMs : Math.max(sessionEndMs, sessionStartMs);
   const canPlay =
-    Boolean(data) &&
-    effectiveEndMs > sessionStartMs &&
-    availableEndMs > sessionStartMs;
+    Boolean(data) && effectiveEndMs > sessionStartMs && availableEndMs > sessionStartMs;
 
   const replay = useReplayController({
     startTimeMs: sessionStartMs,
@@ -75,268 +45,46 @@ export const ReplayPage = () => {
     availableEndMs: availableEndMs || sessionStartMs,
   });
 
-  const referencePositions = useMemo(() => {
-    if (!data?.drivers.length) {
-      return [];
-    }
-    const quantize = (value: number) =>
-      Math.round(value / TRACK_POINT_QUANTIZE);
-    const seen = new Set<string>();
-    const gap = {
-      x: Number.NaN,
-      y: Number.NaN,
-      z: Number.NaN,
-      timestampMs: Number.NaN,
-    };
-    const merged: { x: number; y: number; z: number; timestampMs: number }[] =
-      [];
+  const { trackPath, driverStates, driverNames } = useTrackComputation({
+    data,
+    dataRevision,
+    currentTimeMs: replay.currentTimeMs,
+  });
 
-    for (const driver of data.drivers) {
-      const telemetry = data.telemetryByDriver[driver.driver_number];
-      if (!telemetry?.locations?.length) {
-        continue;
-      }
-      const sorted = [...telemetry.locations].sort(
-        (a, b) => a.timestampMs - b.timestampMs,
-      );
-      let addedForDriver = false;
-      sorted.forEach((sample) => {
-        if (!Number.isFinite(sample.x) || !Number.isFinite(sample.y)) {
-          return;
-        }
-        const key = `${quantize(sample.x)},${quantize(sample.y)}`;
-        if (seen.has(key)) {
-          return;
-        }
-        seen.add(key);
-        if (!addedForDriver && merged.length > 0) {
-          merged.push(gap);
-        }
-        addedForDriver = true;
-        merged.push(sample);
-      });
-    }
+  const telemetrySummary = useMemo(
+    () => computeTelemetrySummary(data, availableEndMs, effectiveEndMs, sessionStartMs),
+    [data, availableEndMs, effectiveEndMs, sessionStartMs],
+  );
 
-    return merged;
-  }, [data, dataRevision]);
-
-  const normalization = useMemo(() => {
-    const positions = referencePositions.map((sample) => ({
-      x: sample.x,
-      y: sample.y,
-      z: sample.z,
-    }));
-    return normalizePositions(positions);
-  }, [referencePositions, dataRevision]);
-
-  const driverStates = useMemo(() => {
-    if (!data) {
-      return {};
-    }
-    const map: Record<number, { position: { x: number; y: number; z: number } | null; color: string; racePosition?: number | null }> = {};
-    data.drivers.forEach((driver) => {
-      const telemetry = data.telemetryByDriver[driver.driver_number];
-      const locationSample = interpolateLocation(
-        telemetry?.locations ?? [],
-        replay.currentTimeMs,
-      );
-      const positionSample = getCurrentPosition(
-        telemetry?.positions ?? [],
-        replay.currentTimeMs,
-      );
-      const racePosition = positionSample?.position ?? null;
-      if (
-        locationSample &&
-        Number.isFinite(locationSample.x) &&
-        Number.isFinite(locationSample.y) &&
-        Number.isFinite(locationSample.z)
-      ) {
-        map[driver.driver_number] = {
-          position: {
-            x: (locationSample.x - normalization.offset.x) * normalization.scale,
-            y: (locationSample.y - normalization.offset.y) * normalization.scale,
-            z: (locationSample.z - normalization.offset.z) * normalization.scale,
-          },
-          color: `#${driver.team_colour}`,
-          racePosition,
-        };
-      } else {
-        map[driver.driver_number] = {
-          position: null,
-          color: `#${driver.team_colour}`,
-          racePosition,
-        };
-      }
-    });
-    return map;
-  }, [data, dataRevision, normalization.offset, normalization.scale, replay.currentTimeMs]);
-
-  const trackPath = useMemo(() => {
-    if (!referencePositions.length) {
-      return [];
-    }
-    const points: { x: number; y: number; z: number }[] = [];
-    let lastTimestamp: number | null = null;
-    referencePositions.forEach((sample) => {
-      if (
-        !Number.isFinite(sample.x) ||
-        !Number.isFinite(sample.y) ||
-        !Number.isFinite(sample.z)
-      ) {
-        lastTimestamp = null;
-        return;
-      }
-      if (
-        lastTimestamp !== null &&
-        sample.timestampMs - lastTimestamp > TRACK_TIME_GAP_MS
-      ) {
-        points.push({ x: Number.NaN, y: Number.NaN, z: Number.NaN });
-      }
-      points.push({
-        x: (sample.x - normalization.offset.x) * normalization.scale,
-        y: (sample.y - normalization.offset.y) * normalization.scale,
-        z: (sample.z - normalization.offset.z) * normalization.scale,
-      });
-      lastTimestamp = sample.timestampMs;
-    });
-    return points;
-  }, [normalization.offset, normalization.scale, referencePositions]);
-  const driverNames = useMemo(() => {
-    if (!data) {
-      return {};
-    }
-    return data.drivers.reduce<Record<number, string>>((acc, driver) => {
-      acc[driver.driver_number] = formatTrackLabel(driver);
-      return acc;
-    }, {});
-  }, [data]);
-
-  useEffect(() => {
-    if (sessions.length === 0 || hasSelectedSession) {
-      return;
-    }
-    const fallback = sessions.find((session) =>
-      ALLOWED_SESSION_TYPES.includes(
-        session.session_type as (typeof ALLOWED_SESSION_TYPES)[number],
-      ),
-    );
-    if (fallback) {
-      setSessionType(fallback.session_type as typeof sessionType);
-    }
-  }, [sessions, hasSelectedSession, sessionType]);
-
-  useEffect(() => {
-    if (availableYears.length === 0) {
-      return;
-    }
-    if (!availableYears.includes(year)) {
-      const nextYear = availableYears[0];
-      if (nextYear !== year) {
-        setYear(nextYear);
-        setRound(1);
-        manualRoundRef.current = false;
-      }
-    }
-  }, [availableYears, year]);
-
-  useEffect(() => {
-    if (manualRoundRef.current) {
-      return;
-    }
-    if (sessions.length === 0 || hasSupportedSession) {
-      return;
-    }
-    if (round < meetings.length) {
-      setRound((prev) => Math.min(prev + 1, meetings.length));
-    }
-  }, [sessions, hasSupportedSession, meetings.length, round]);
-
-  const telemetrySummary = useMemo(() => {
-    if (!data) {
-      return {
-        sessionLabel: "No session loaded",
-        coverageLabel: "--",
-        totalDrivers: 0,
-        totalSamples: 0,
-      };
-    }
-    const sessionLabel = `${data.session.session_name} · ${data.session.session_type}`;
-    const coverageLabel = `${Math.max(
-      0,
-      Math.floor((availableEndMs - sessionStartMs) / 60000),
-    )} / ${Math.max(
-      1,
-      Math.floor((effectiveEndMs - sessionStartMs) / 60000),
-    )} min`;
-      return {
-        sessionLabel,
-        coverageLabel,
-        totalDrivers: data.drivers.length,
-      };
-  }, [data, availableEndMs, effectiveEndMs, sessionStartMs]);
-
-  const telemetryRows = useMemo(() => {
-    if (!data) {
-      return [];
-    }
-    const telemetryTimeMs = replay.currentTimeMs;
-    return data.drivers
-      .map((driver) => {
-        const telemetry = data.telemetryByDriver[driver.driver_number];
-        const positions = telemetry?.positions ?? [];
-        const laps = telemetry?.laps ?? [];
-        const latestPosition = positions[positions.length - 1];
-        const latestLap = laps[laps.length - 1];
-        const positionSample =
-          latestPosition ?? getCurrentPosition(positions, telemetryTimeMs);
-        const lapNumber =
-          latestLap?.lap_number ?? getCurrentLap(laps, telemetryTimeMs);
-        const stints = telemetry?.stints ?? [];
-        const stint = getCurrentStint(stints, lapNumber);
-        const fallbackStint =
-          stint ?? (stints.length > 0 ? stints[stints.length - 1] : null);
-        return {
-          driverNumber: driver.driver_number,
-          driverName: formatTelemetryLabel(driver),
-          driverAcronym: driver.name_acronym,
-          position: positionSample?.position ?? null,
-          lap: lapNumber,
-          compound: fallbackStint?.compound ?? null,
-        };
-      })
-      .sort((a, b) => {
-        if (a.position === null) return 1;
-        if (b.position === null) return -1;
-        return a.position - b.position;
-      });
-  }, [data, replay.currentTimeMs]);
+  const telemetryRows = useMemo(
+    () => computeTelemetryRows(data, replay.currentTimeMs),
+    [data, replay.currentTimeMs],
+  );
 
   return (
     <div className="relative min-h-screen w-full overflow-y-auto text-white md:h-screen md:w-screen md:overflow-hidden">
       <header className="relative z-10 mx-4 mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/20 bg-white/5 px-4 py-3 backdrop-blur-xl md:absolute md:left-4 md:right-80 md:top-4 md:mx-0 md:mt-0">
         <div className="flex items-center gap-2">
           <h1 className="text-lg font-semibold">F1 Replay</h1>
-          {loading && (
-            <span className="animate-pulse text-xs text-white/40">Loading...</span>
-          )}
+          {loading && <span className="animate-pulse text-xs text-white/40">Loading...</span>}
         </div>
         <SessionPicker
-          year={year}
-          round={round}
-          sessionType={sessionType}
+          year={session.year}
+          round={session.round}
+          sessionType={session.sessionType}
           meetings={meetings}
           sessions={sessions}
           yearOptions={availableYears}
           onYearChange={(nextYear) => {
-            setYear(nextYear);
-            setRound(1);
-            manualRoundRef.current = false;
+            session.setYear(nextYear);
+            session.setRound(1);
+            session.manualRoundRef.current = false;
           }}
           onRoundChange={(nextRound) => {
-            manualRoundRef.current = true;
-            setRound(nextRound);
+            session.manualRoundRef.current = true;
+            session.setRound(nextRound);
           }}
-          onSessionTypeChange={setSessionType}
+          onSessionTypeChange={session.setSessionType}
         />
       </header>
 
@@ -348,8 +96,8 @@ export const ReplayPage = () => {
         )}
         {!hasSupportedSession && sessions.length > 0 && (
           <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-            No supported session types (Race, Sprint, Qualifying) for this round.
-            Choose another round.
+            No supported session types (Race, Sprint, Qualifying) for this round. Choose another
+            round.
           </div>
         )}
       </div>
@@ -359,7 +107,7 @@ export const ReplayPage = () => {
           trackPath={trackPath}
           driverStates={driverStates}
           driverNames={driverNames}
-          selectedDrivers={selectedDrivers}
+          selectedDrivers={[]}
           className="h-full w-full"
         />
       </div>
@@ -382,7 +130,6 @@ export const ReplayPage = () => {
       <aside className="relative z-10 mx-4 mt-4 mb-6 h-[60vh] min-h-[320px] md:absolute md:bottom-4 md:right-4 md:top-4 md:mx-0 md:mt-0 md:mb-0 md:h-auto md:min-h-0 md:w-72">
         <TelemetryPanel summary={telemetrySummary} rows={telemetryRows} />
       </aside>
-
     </div>
   );
 };

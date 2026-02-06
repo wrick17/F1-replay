@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchChunked, fetchOpenF1 } from "../api/openf1.client";
+import {
+  buildYearOptions,
+  chunkAppend,
+  createTelemetryMap,
+  filterEndedMeetings,
+  getLatestTelemetryTimestamp,
+} from "../services/telemetry.service";
 import type {
   OpenF1Driver,
   OpenF1Lap,
@@ -9,16 +16,10 @@ import type {
   OpenF1Session,
   OpenF1Stint,
   ReplaySessionData,
-  ReplayTelemetry,
   TimedSample,
 } from "../types/openf1.types";
-import {
-  groupByDriverNumber,
-  sortByTimestamp,
-  withTimestamp,
-} from "../utils/telemetry.util";
-
-export type SessionType = "Race" | "Sprint" | "Qualifying";
+import type { SessionType } from "../types/replay.types";
+import { groupByDriverNumber, sortByTimestamp, withTimestamp } from "../utils/telemetry.util";
 
 type ReplayDataState = {
   data: ReplaySessionData | null;
@@ -37,64 +38,7 @@ type ReplayDataParams = {
   sessionType: SessionType;
 };
 
-const getLatestTelemetryTimestamp = (
-  telemetryByDriver: Record<number, ReplayTelemetry>,
-) => {
-  let latest = 0;
-  Object.values(telemetryByDriver).forEach((telemetry) => {
-    const lastSample =
-      telemetry.locations[telemetry.locations.length - 1] ?? null;
-    if (lastSample && lastSample.timestampMs > latest) {
-      latest = lastSample.timestampMs;
-    }
-  });
-  return latest;
-};
-
-const createTelemetryMap = (
-  drivers: OpenF1Driver[],
-): Record<number, ReplayTelemetry> => {
-  return drivers.reduce<Record<number, ReplayTelemetry>>((acc, driver) => {
-    acc[driver.driver_number] = {
-      locations: [],
-      positions: [],
-      stints: [],
-      laps: [],
-    };
-    return acc;
-  }, {});
-};
-
-const buildYearOptions = (currentYear: number) =>
-  Array.from({ length: 6 }, (_, index) => currentYear - index);
-
-const filterEndedMeetings = (meetings: OpenF1Meeting[], now: number) => {
-  return meetings.filter((meeting) => {
-    const name = `${meeting.meeting_name} ${meeting.meeting_official_name}`;
-    const endMs = new Date(meeting.date_end).getTime();
-    return !/pre[- ]season/i.test(name) && endMs <= now;
-  });
-};
-
-const chunkAppend = <T extends { driver_number: number }>(
-  map: Record<number, T[]>,
-  chunk: T[],
-) => {
-  const grouped = groupByDriverNumber(chunk);
-  Object.entries(grouped).forEach(([driverKey, samples]) => {
-    const driverNumber = Number(driverKey);
-    if (!map[driverNumber]) {
-      map[driverNumber] = [];
-    }
-    map[driverNumber].push(...samples);
-  });
-};
-
-export const useReplayData = ({
-  year,
-  round,
-  sessionType,
-}: ReplayDataParams): ReplayDataState => {
+export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): ReplayDataState => {
   const [data, setData] = useState<ReplaySessionData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -107,10 +51,7 @@ export const useReplayData = ({
   const abortRef = useRef<AbortController | null>(null);
   const meetingsRequestRef = useRef(0);
   const sessionsRequestRef = useRef(0);
-  const yearOptions = useMemo(
-    () => buildYearOptions(new Date().getFullYear()),
-    [],
-  );
+  const yearOptions = useMemo(() => buildYearOptions(new Date().getFullYear()), []);
 
   const sortedMeetings = useMemo(() => {
     return [...meetings].sort(
@@ -119,6 +60,9 @@ export const useReplayData = ({
   }, [meetings]);
 
   const selectedMeeting = sortedMeetings[round - 1] ?? sortedMeetings[0] ?? null;
+  const selectedMeetingKey = selectedMeeting?.meeting_key ?? null;
+  const selectedMeetingRef = useRef(selectedMeeting);
+  selectedMeetingRef.current = selectedMeeting;
 
   useEffect(() => {
     const requestId = meetingsRequestRef.current + 1;
@@ -131,19 +75,12 @@ export const useReplayData = ({
     setAvailableEndMs(0);
     setDataRevision(0);
 
-    const cacheMode = "persist";
-    fetchOpenF1<OpenF1Meeting[]>(
-      "meetings",
-      { year },
-      undefined,
-      cacheMode,
-    )
+    fetchOpenF1<OpenF1Meeting[]>("meetings", { year }, undefined, "persist")
       .then((result) => {
         if (meetingsRequestRef.current !== requestId) {
           return;
         }
-        const now = Date.now();
-        setMeetings(filterEndedMeetings(result, now));
+        setMeetings(filterEndedMeetings(result, Date.now()));
       })
       .catch((err: Error) => {
         if (meetingsRequestRef.current !== requestId) {
@@ -194,7 +131,7 @@ export const useReplayData = ({
   }, [yearOptions]);
 
   useEffect(() => {
-    if (!selectedMeeting) {
+    if (!selectedMeetingKey) {
       return;
     }
     const requestId = sessionsRequestRef.current + 1;
@@ -206,12 +143,11 @@ export const useReplayData = ({
     setAvailableEndMs(0);
     setDataRevision(0);
 
-    const cacheMode = "persist";
     fetchOpenF1<OpenF1Session[]>(
       "sessions",
-      { meeting_key: selectedMeeting.meeting_key },
+      { meeting_key: selectedMeetingKey },
       undefined,
-      cacheMode,
+      "persist",
     )
       .then((result) => {
         if (sessionsRequestRef.current !== requestId) {
@@ -235,14 +171,14 @@ export const useReplayData = ({
           setLoading(false);
         }
       });
-  }, [selectedMeeting?.meeting_key]);
+  }, [selectedMeetingKey]);
 
   useEffect(() => {
-    if (!selectedMeeting) {
+    const meeting = selectedMeetingRef.current;
+    if (!meeting) {
       return;
     }
-    const session =
-      sessions.find((entry) => entry.session_type === sessionType) ?? null;
+    const session = sessions.find((entry) => entry.session_type === sessionType) ?? null;
     if (!session) {
       setLoading(false);
       setData(null);
@@ -264,13 +200,12 @@ export const useReplayData = ({
     setAvailableEndMs(0);
     setDataRevision(0);
 
-    const cacheMode = "persist";
     const load = async () => {
       const drivers = await fetchOpenF1<OpenF1Driver[]>(
         "drivers",
         { session_key: session.session_key },
         controller.signal,
-        cacheMode,
+        "persist",
       );
       const telemetryByDriver = createTelemetryMap(drivers);
 
@@ -282,13 +217,13 @@ export const useReplayData = ({
           "stints",
           { session_key: session.session_key },
           controller.signal,
-          cacheMode,
+          "persist",
         ),
         fetchOpenF1<OpenF1Lap[]>(
           "laps",
           { session_key: session.session_key },
           controller.signal,
-          cacheMode,
+          "persist",
         ),
       ]);
       const lapsTimed = withTimestamp(laps);
@@ -322,7 +257,7 @@ export const useReplayData = ({
       });
 
       const baseData = {
-        meeting: selectedMeeting,
+        meeting: meeting,
         session,
         drivers,
         telemetryByDriver,
@@ -333,10 +268,7 @@ export const useReplayData = ({
         setData(baseData);
       }
 
-      const handleLocationsChunk = (
-        chunk: OpenF1Location[],
-        chunkEndMs: number,
-      ) => {
+      const handleLocationsChunk = (chunk: OpenF1Location[]) => {
         const normalized = withTimestamp(chunk);
         chunkAppend(
           Object.fromEntries(
@@ -381,7 +313,7 @@ export const useReplayData = ({
           180_000,
           handleLocationsChunk,
           controller.signal,
-          cacheMode,
+          "persist",
         ),
         fetchChunked<OpenF1Position>(
           "position",
@@ -391,17 +323,13 @@ export const useReplayData = ({
           600_000,
           handlePositionChunk,
           controller.signal,
-          cacheMode,
+          "persist",
         ),
       ]);
 
       Object.values(telemetryByDriver).forEach((telemetry) => {
-        telemetry.locations = sortByTimestamp(
-          telemetry.locations as TimedSample<OpenF1Location>[],
-        );
-        telemetry.positions = sortByTimestamp(
-          telemetry.positions as TimedSample<OpenF1Position>[],
-        );
+        telemetry.locations = sortByTimestamp(telemetry.locations as TimedSample<OpenF1Location>[]);
+        telemetry.positions = sortByTimestamp(telemetry.positions as TimedSample<OpenF1Position>[]);
       });
 
       sessionCacheRef.current.set(session.session_key, baseData);
@@ -429,7 +357,7 @@ export const useReplayData = ({
     return () => {
       controller.abort();
     };
-  }, [sessions, selectedMeeting, sessionType]);
+  }, [sessions, sessionType]);
 
   return {
     data,

@@ -1,17 +1,4 @@
-import type { OpenF1Meeting, OpenF1Session } from "../types/openf1.types";
-import type { SessionType } from "../hooks/useReplayData";
-
-type SessionPickerProps = {
-  year: number;
-  round: number;
-  sessionType: SessionType;
-  meetings: OpenF1Meeting[];
-  sessions: OpenF1Session[];
-  yearOptions?: number[];
-  onYearChange: (year: number) => void;
-  onRoundChange: (round: number) => void;
-  onSessionTypeChange: (sessionType: SessionType) => void;
-};
+import type { SessionPickerProps, SessionType } from "../types/replay.types";
 
 const SESSION_TYPES: SessionType[] = ["Race", "Sprint", "Qualifying"];
 
@@ -85,9 +72,7 @@ export const SessionPicker = ({
           id="replay-session"
           name="replay-session"
           value={sessionType}
-          onChange={(event) =>
-            onSessionTypeChange(event.target.value as SessionType)
-          }
+          onChange={(event) => onSessionTypeChange(event.target.value as SessionType)}
           className="w-full appearance-none rounded-md border border-white/20 bg-white/5 px-2 py-2 text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E10600]/70 md:px-3"
         >
           {SESSION_TYPES.map((type) => (
@@ -98,9 +83,7 @@ export const SessionPicker = ({
         </select>
       </div>
       {!hasSessionType && (
-        <div className="text-[11px] text-amber-300">
-          Session not available for this round.
-        </div>
+        <div className="text-[11px] text-amber-300">Session not available for this round.</div>
       )}
     </div>
   );

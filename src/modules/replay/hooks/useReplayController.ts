@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export type ReplayController = {
   currentTimeMs: number;
@@ -28,38 +28,48 @@ export const useReplayController = ({
   const lastFrameRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
 
-  const stop = () => {
+  const speedRef = useRef(speed);
+  speedRef.current = speed;
+  const endTimeMsRef = useRef(endTimeMs);
+  endTimeMsRef.current = endTimeMs;
+  const availableEndMsRef = useRef(availableEndMs);
+  availableEndMsRef.current = availableEndMs;
+
+  const stop = useCallback(() => {
     setIsPlaying(false);
     setIsBuffering(false);
     if (rafRef.current !== null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
-  };
+  }, []);
 
-  const tick = (timestamp: number) => {
-    if (!lastFrameRef.current) {
+  const tick = useCallback(
+    (timestamp: number) => {
+      if (!lastFrameRef.current) {
+        lastFrameRef.current = timestamp;
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+      const delta = timestamp - lastFrameRef.current;
       lastFrameRef.current = timestamp;
+      setCurrentTimeMs((prev) => {
+        const next = prev + delta * speedRef.current;
+        if (next >= endTimeMsRef.current) {
+          stop();
+          return endTimeMsRef.current;
+        }
+        if (next >= availableEndMsRef.current) {
+          setIsBuffering(true);
+          setIsPlaying(false);
+          return availableEndMsRef.current;
+        }
+        return next;
+      });
       rafRef.current = requestAnimationFrame(tick);
-      return;
-    }
-    const delta = timestamp - lastFrameRef.current;
-    lastFrameRef.current = timestamp;
-    setCurrentTimeMs((prev) => {
-      const next = prev + delta * speed;
-      if (next >= endTimeMs) {
-        stop();
-        return endTimeMs;
-      }
-      if (next >= availableEndMs) {
-        setIsBuffering(true);
-        setIsPlaying(false);
-        return availableEndMs;
-      }
-      return next;
-    });
-    rafRef.current = requestAnimationFrame(tick);
-  };
+    },
+    [stop],
+  );
 
   useEffect(() => {
     if (!isPlaying) {
@@ -78,7 +88,7 @@ export const useReplayController = ({
       rafRef.current = null;
       lastFrameRef.current = null;
     };
-  }, [isPlaying, speed, endTimeMs, availableEndMs]);
+  }, [isPlaying, tick]);
 
   useEffect(() => {
     if (isBuffering && currentTimeMs < availableEndMs - 1000) {
@@ -90,7 +100,7 @@ export const useReplayController = ({
   useEffect(() => {
     setCurrentTimeMs(startTimeMs);
     stop();
-  }, [startTimeMs, endTimeMs]);
+  }, [startTimeMs, stop]);
 
   const togglePlay = () => {
     setIsPlaying((prev) => !prev);
