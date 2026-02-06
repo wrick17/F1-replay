@@ -277,18 +277,20 @@ export const useReplayData = ({
       const sessionStartMs = new Date(session.date_start).getTime();
       const sessionEndMs = new Date(session.date_end).getTime();
 
-      const stints = await fetchOpenF1<OpenF1Stint[]>(
-        "stints",
-        { session_key: session.session_key },
-        controller.signal,
-        cacheMode,
-      );
-      const laps = await fetchOpenF1<OpenF1Lap[]>(
-        "laps",
-        { session_key: session.session_key },
-        controller.signal,
-        cacheMode,
-      );
+      const [stints, laps] = await Promise.all([
+        fetchOpenF1<OpenF1Stint[]>(
+          "stints",
+          { session_key: session.session_key },
+          controller.signal,
+          cacheMode,
+        ),
+        fetchOpenF1<OpenF1Lap[]>(
+          "laps",
+          { session_key: session.session_key },
+          controller.signal,
+          cacheMode,
+        ),
+      ]);
       const lapsTimed = withTimestamp(laps);
       const lapsGrouped = groupByDriverNumber(lapsTimed);
 
@@ -369,28 +371,29 @@ export const useReplayData = ({
         setDataRevision((prev) => prev + 1);
       };
 
-      await fetchChunked<OpenF1Location>(
-        "location",
-        { session_key: session.session_key },
-        sessionStartMs,
-        sessionEndMs,
-        180_000,
-        handleLocationsChunk,
-        controller.signal,
-        cacheMode,
-      );
-
       const positionStartMs = Math.max(0, sessionStartMs - 60 * 60 * 1000);
-      await fetchChunked<OpenF1Position>(
-        "position",
-        { session_key: session.session_key },
-        positionStartMs,
-        sessionEndMs,
-        600_000,
-        handlePositionChunk,
-        controller.signal,
-        cacheMode,
-      );
+      await Promise.all([
+        fetchChunked<OpenF1Location>(
+          "location",
+          { session_key: session.session_key },
+          sessionStartMs,
+          sessionEndMs,
+          180_000,
+          handleLocationsChunk,
+          controller.signal,
+          cacheMode,
+        ),
+        fetchChunked<OpenF1Position>(
+          "position",
+          { session_key: session.session_key },
+          positionStartMs,
+          sessionEndMs,
+          600_000,
+          handlePositionChunk,
+          controller.signal,
+          cacheMode,
+        ),
+      ]);
 
       Object.values(telemetryByDriver).forEach((telemetry) => {
         telemetry.locations = sortByTimestamp(

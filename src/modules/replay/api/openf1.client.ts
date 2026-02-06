@@ -4,8 +4,8 @@ type CacheMode = "memory" | "no-store" | "persist";
 
 const responseCache = new Map<string, unknown>();
 const inFlight = new Map<string, Promise<unknown>>();
-let lastRequestAt = 0;
-const minIntervalMs = 350;
+const minIntervalMs = 400;
+let rateLimitChain = Promise.resolve(0);
 
 const IDB_NAME = "openf1-cache";
 const IDB_STORE = "responses";
@@ -59,13 +59,16 @@ const sleep = (ms: number) =>
     setTimeout(resolve, ms);
   });
 
-const rateLimit = async () => {
-  const now = Date.now();
-  const elapsed = now - lastRequestAt;
-  if (elapsed < minIntervalMs) {
-    await sleep(minIntervalMs - elapsed);
-  }
-  lastRequestAt = Date.now();
+const rateLimit = () => {
+  rateLimitChain = rateLimitChain.then(async (lastRequestAt) => {
+    const now = Date.now();
+    const elapsed = now - lastRequestAt;
+    if (elapsed < minIntervalMs) {
+      await sleep(minIntervalMs - elapsed);
+    }
+    return Date.now();
+  });
+  return rateLimitChain;
 };
 
 export type QueryParams = Record<
@@ -92,7 +95,7 @@ export const buildQuery = (params: QueryParams) => {
   return `?${query}`;
 };
 
-export const fetchOpenF1 = async <T>(
+export const fetchOpenF1 = <T>(
   path: string,
   params: QueryParams,
   signal?: AbortSignal,
@@ -101,21 +104,21 @@ export const fetchOpenF1 = async <T>(
   const key = `${path}${buildQuery(params)}`;
   if (cacheMode !== "no-store") {
     if (responseCache.has(key)) {
-      return responseCache.get(key) as T;
+      return Promise.resolve(responseCache.get(key) as T);
     }
     const existing = inFlight.get(key);
     if (existing) {
       return existing as Promise<T>;
     }
   }
-  if (cacheMode === "persist") {
-    const persisted = await getPersisted<T>(key).catch(() => null);
-    if (persisted) {
-      responseCache.set(key, persisted);
-      return persisted;
-    }
-  }
   const request = (async () => {
+    if (cacheMode === "persist") {
+      const persisted = await getPersisted<T>(key).catch(() => null);
+      if (persisted) {
+        responseCache.set(key, persisted);
+        return persisted;
+      }
+    }
     let attempt = 0;
     while (attempt < 3) {
       await rateLimit();
