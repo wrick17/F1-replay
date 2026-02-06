@@ -36,11 +36,6 @@ export const ReplayPage = () => {
   );
   const selectedDrivers: number[] = [];
   const manualRoundRef = useRef(false);
-  const trackBaseRef = useRef<{
-    driverNumber: number | null;
-    score: number;
-    positions: { x: number; y: number; z: number; timestampMs: number }[];
-  }>({ driverNumber: null, score: 0, positions: [] });
 
   const {
     data,
@@ -86,50 +81,15 @@ export const ReplayPage = () => {
     }
     const quantize = (value: number) =>
       Math.round(value / TRACK_POINT_QUANTIZE);
-    const getUniqueCount = (
-      positions: { x: number; y: number; z: number; timestampMs: number }[],
-    ) => {
-      const set = new Set<string>();
-      positions.forEach((point) => {
-        if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
-          return;
-        }
-        set.add(`${quantize(point.x)},${quantize(point.y)}`);
-      });
-      return set.size;
+    const seen = new Set<string>();
+    const gap = {
+      x: Number.NaN,
+      y: Number.NaN,
+      z: Number.NaN,
+      timestampMs: Number.NaN,
     };
-    const getScore = (
-      positions: { x: number; y: number; z: number; timestampMs: number }[],
-    ) => {
-      const finite = positions.filter(
-        (point) => Number.isFinite(point.x) && Number.isFinite(point.y),
-      );
-      if (finite.length < 50) {
-        return 0;
-      }
-      let minX = finite[0].x;
-      let maxX = finite[0].x;
-      let minY = finite[0].y;
-      let maxY = finite[0].y;
-      finite.forEach((point) => {
-        minX = Math.min(minX, point.x);
-        maxX = Math.max(maxX, point.x);
-        minY = Math.min(minY, point.y);
-        maxY = Math.max(maxY, point.y);
-      });
-      const extentX = Math.max(1, maxX - minX);
-      const extentY = Math.max(1, maxY - minY);
-      const aspect =
-        Math.max(extentX, extentY) / Math.max(1, Math.min(extentX, extentY));
-      const area = extentX * extentY;
-      const uniqueCount = Math.max(1, getUniqueCount(positions));
-      const density = Math.min(uniqueCount, 2000);
-      return (area * density) / aspect;
-    };
-    let bestPositions: { x: number; y: number; z: number; timestampMs: number }[] =
+    const merged: { x: number; y: number; z: number; timestampMs: number }[] =
       [];
-    let bestScore = 0;
-    let bestDriver = null;
 
     for (const driver of data.drivers) {
       const telemetry = data.telemetryByDriver[driver.driver_number];
@@ -139,23 +99,25 @@ export const ReplayPage = () => {
       const sorted = [...telemetry.locations].sort(
         (a, b) => a.timestampMs - b.timestampMs,
       );
-      const candidatePositions = sorted;
-      const candidateScore = getScore(candidatePositions);
-
-      if (candidateScore > bestScore) {
-        bestScore = candidateScore;
-        bestPositions = candidatePositions;
-        bestDriver = driver.driver_number;
-      }
+      let addedForDriver = false;
+      sorted.forEach((sample) => {
+        if (!Number.isFinite(sample.x) || !Number.isFinite(sample.y)) {
+          return;
+        }
+        const key = `${quantize(sample.x)},${quantize(sample.y)}`;
+        if (seen.has(key)) {
+          return;
+        }
+        seen.add(key);
+        if (!addedForDriver && merged.length > 0) {
+          merged.push(gap);
+        }
+        addedForDriver = true;
+        merged.push(sample);
+      });
     }
 
-    trackBaseRef.current = {
-      driverNumber: bestDriver,
-      score: bestScore,
-      positions: bestPositions,
-    };
-
-    return bestPositions;
+    return merged;
   }, [data, dataRevision]);
 
   const normalization = useMemo(() => {
@@ -347,7 +309,6 @@ export const ReplayPage = () => {
       <header className="relative z-10 mx-4 mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/20 bg-white/5 px-4 py-3 backdrop-blur-xl md:absolute md:left-4 md:right-80 md:top-4 md:mx-0 md:mt-0">
         <div>
           <h1 className="text-lg font-semibold">F1 Replay</h1>
-          <p className="text-xs text-white/50">Live telemetry powered by OpenF1.</p>
         </div>
         <SessionPicker
           year={year}
