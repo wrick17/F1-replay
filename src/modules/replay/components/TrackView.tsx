@@ -154,7 +154,7 @@ export const TrackView = ({
         y={bounds.minY - VIEWBOX_PADDING}
         width={bounds.width + VIEWBOX_PADDING * 2}
         height={bounds.height + VIEWBOX_PADDING * 2}
-        fill="#000000"
+        fill="transparent"
       />
       {pathD && (
         <path

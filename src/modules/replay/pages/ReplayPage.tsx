@@ -343,7 +343,7 @@ export const ReplayPage = () => {
   }, [data, replay.currentTimeMs]);
 
   return (
-    <div className="relative min-h-screen w-full overflow-y-auto bg-black text-white md:h-screen md:w-screen md:overflow-hidden">
+    <div className="relative min-h-screen w-full overflow-y-auto text-white md:h-screen md:w-screen md:overflow-hidden">
       <header className="relative z-10 mx-4 mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/20 bg-white/5 px-4 py-3 backdrop-blur-xl md:absolute md:left-4 md:right-80 md:top-4 md:mx-0 md:mt-0">
         <div>
           <h1 className="text-lg font-semibold">F1 Replay</h1>
