@@ -1,13 +1,17 @@
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ControlsBar } from "../components/ControlsBar";
 import { SessionPicker } from "../components/SessionPicker";
 import { TelemetryPanel } from "../components/TelemetryPanel";
 import { TrackView } from "../components/TrackView";
+import { WeatherBadge } from "../components/WeatherBadge";
 import { useReplayController } from "../hooks/useReplayController";
 import { useReplayData } from "../hooks/useReplayData";
 import { useSessionAutoCorrect, useSessionState } from "../hooks/useSessionSelector";
+import { useTeamRadio } from "../hooks/useTeamRadio";
 import { useTrackComputation } from "../hooks/useTrackComputation";
+import { buildTimelineEvents, getActiveOvertake } from "../services/events.service";
 import { computeTelemetryRows, computeTelemetrySummary } from "../services/telemetry.service";
+import { getWeatherAtTime } from "../services/weather.service";
 
 export const ReplayPage = () => {
   const session = useSessionState();
@@ -61,6 +65,35 @@ export const ReplayPage = () => {
     [data, replay.currentTimeMs],
   );
 
+  // Timeline events
+  const timelineEvents = useMemo(() => {
+    if (!data) return [];
+    return buildTimelineEvents(data, data.drivers);
+  }, [data]);
+
+  // Weather
+  const currentWeather = useMemo(() => {
+    if (!data) return null;
+    return getWeatherAtTime(data.weather, replay.currentTimeMs);
+  }, [data, replay.currentTimeMs]);
+
+  // Overtake detection
+  const activeOvertake = useMemo(() => {
+    if (!data) return null;
+    return getActiveOvertake(data.overtakes, replay.currentTimeMs);
+  }, [data, replay.currentTimeMs]);
+
+  // Team radio
+  const [radioEnabled, setRadioEnabled] = useState(false);
+  const toggleRadio = useCallback(() => setRadioEnabled((prev) => !prev), []);
+
+  useTeamRadio({
+    teamRadios: data?.teamRadios ?? [],
+    currentTimeMs: replay.currentTimeMs,
+    enabled: radioEnabled,
+    isPlaying: replay.isPlaying,
+  });
+
   return (
     <div className="relative min-h-screen w-full overflow-y-auto text-white md:h-screen md:w-screen md:overflow-hidden">
       <header className="relative z-10 mx-4 mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/20 bg-white/5 px-4 py-3 backdrop-blur-xl md:absolute md:left-4 md:right-80 md:top-4 md:mx-0 md:mt-0">
@@ -68,6 +101,7 @@ export const ReplayPage = () => {
           <h1 className="text-lg font-semibold">F1 Replay</h1>
           {loading && <span className="animate-pulse text-xs text-white/40">Loading...</span>}
         </div>
+        <WeatherBadge weather={currentWeather} />
         <SessionPicker
           year={session.year}
           round={session.round}
@@ -121,14 +155,21 @@ export const ReplayPage = () => {
           startTimeMs={sessionStartMs}
           endTimeMs={effectiveEndMs}
           canPlay={canPlay}
+          timelineEvents={timelineEvents}
+          radioEnabled={radioEnabled}
           onTogglePlay={replay.togglePlay}
           onSpeedChange={replay.setSpeed}
           onSeek={replay.seekTo}
+          onRadioToggle={toggleRadio}
         />
       </footer>
 
       <aside className="relative z-10 mx-4 mt-4 mb-6 h-[60vh] min-h-[320px] md:absolute md:bottom-4 md:right-4 md:top-4 md:mx-0 md:mt-0 md:mb-0 md:h-auto md:min-h-0 md:w-72">
-        <TelemetryPanel summary={telemetrySummary} rows={telemetryRows} />
+        <TelemetryPanel
+          summary={telemetrySummary}
+          rows={telemetryRows}
+          activeOvertake={activeOvertake}
+        />
       </aside>
     </div>
   );

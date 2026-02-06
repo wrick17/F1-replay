@@ -1,6 +1,7 @@
 import { SPEED_OPTIONS } from "../constants/replay.constants";
 import type { ControlsBarProps } from "../types/replay.types";
 import { formatTime } from "../utils/format.util";
+import { TimelineSlider } from "./TimelineSlider";
 
 export const ControlsBar = ({
   isPlaying,
@@ -10,12 +11,15 @@ export const ControlsBar = ({
   startTimeMs,
   endTimeMs,
   canPlay,
+  timelineEvents,
+  radioEnabled,
   onTogglePlay,
   onSpeedChange,
   onSeek,
+  onRadioToggle,
 }: ControlsBarProps) => {
   return (
-    <div className="flex w-full flex-col gap-3 rounded-xl border border-white/20 bg-white/5 p-4 text-white backdrop-blur-xl">
+    <div className="flex w-full flex-col gap-2 rounded-xl border border-white/20 bg-white/5 p-4 text-white backdrop-blur-xl">
       <div className="flex flex-wrap items-center gap-4">
         <button
           type="button"
@@ -28,6 +32,18 @@ export const ControlsBar = ({
           {canPlay ? (isPlaying ? "Pause" : "Play") : "Loading"}
         </button>
         {isBuffering && <span className="text-xs text-white/50">Buffering...</span>}
+        <button
+          type="button"
+          onClick={onRadioToggle}
+          className={`rounded-lg px-3 py-2 text-sm transition ${
+            radioEnabled
+              ? "bg-blue-500/20 text-blue-300 hover:bg-blue-500/30"
+              : "bg-white/10 text-white/50 hover:bg-white/15"
+          }`}
+          title={radioEnabled ? "Disable team radio" : "Enable team radio"}
+        >
+          🔊
+        </button>
         <div className="ml-auto flex items-center gap-2 text-xs text-white/60">
           {SPEED_OPTIONS.map((option) => (
             <button
@@ -44,16 +60,21 @@ export const ControlsBar = ({
         </div>
       </div>
       <div className="flex min-w-0 items-center gap-3 text-xs text-white/60">
-        <span className="text-xs text-white/50">{formatTime(currentTimeMs - startTimeMs)}</span>
-        <input
-          type="range"
-          min={startTimeMs}
-          max={endTimeMs}
-          value={currentTimeMs}
-          onChange={(event) => onSeek(Number(event.target.value))}
-          className="h-1 flex-1 accent-[#E10600]"
-        />
-        <span className="text-xs text-white/50">{formatTime(endTimeMs - startTimeMs)}</span>
+        <span className="shrink-0 text-xs text-white/50">
+          {formatTime(currentTimeMs - startTimeMs)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <TimelineSlider
+            currentTimeMs={currentTimeMs}
+            startTimeMs={startTimeMs}
+            endTimeMs={endTimeMs}
+            events={timelineEvents}
+            onSeek={onSeek}
+          />
+        </div>
+        <span className="shrink-0 text-xs text-white/50">
+          {formatTime(endTimeMs - startTimeMs)}
+        </span>
       </div>
     </div>
   );

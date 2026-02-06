@@ -1,5 +1,5 @@
 import type { NormalizedPosition } from "../utils/telemetry.util";
-import type { OpenF1Meeting, OpenF1Session } from "./openf1.types";
+import type { OpenF1Meeting, OpenF1Overtake, OpenF1Session } from "./openf1.types";
 
 export type SessionType = "Race" | "Sprint" | "Qualifying";
 
@@ -24,6 +24,24 @@ export type TelemetryRow = {
   compound: string | null;
 };
 
+export type TimelineEventType =
+  | "radio"
+  | "overtake"
+  | "flag"
+  | "safety-car"
+  | "pit"
+  | "race-control";
+
+export type TimelineEvent = {
+  timestampMs: number;
+  type: TimelineEventType;
+  color: string;
+  label: string;
+  detail: string;
+  driverNumbers?: number[];
+  data: unknown;
+};
+
 export type TrackViewProps = {
   trackPath: NormalizedPosition[];
   driverStates: Record<number, DriverRenderState>;
@@ -40,9 +58,12 @@ export type ControlsBarProps = {
   startTimeMs: number;
   endTimeMs: number;
   canPlay: boolean;
+  timelineEvents: TimelineEvent[];
+  radioEnabled: boolean;
   onTogglePlay: () => void;
   onSpeedChange: (value: number) => void;
   onSeek: (timestampMs: number) => void;
+  onRadioToggle: () => void;
 };
 
 export type SessionPickerProps = {
@@ -60,4 +81,5 @@ export type SessionPickerProps = {
 export type TelemetryPanelProps = {
   summary: TelemetrySummary;
   rows: TelemetryRow[];
+  activeOvertake?: OpenF1Overtake | null;
 };

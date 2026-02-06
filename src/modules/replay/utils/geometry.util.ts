@@ -112,3 +112,72 @@ export const buildPathD = (points: Point2D[]) => {
 
 export const getLabelWidth = (text: string) =>
   Math.max(MIN_LABEL_WIDTH, text.length * 7 + LABEL_PADDING * 2);
+
+export type LabelRect = {
+  key: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  anchorX: number;
+  anchorY: number;
+};
+
+const COLLISION_PAD = 4;
+const DEFAULT_ITERATIONS = 6;
+
+const rectsOverlap = (a: LabelRect, b: LabelRect): boolean => {
+  const aLeft = a.x - a.width / 2 - COLLISION_PAD;
+  const aRight = a.x + a.width / 2 + COLLISION_PAD;
+  const aTop = a.y - a.height / 2 - COLLISION_PAD;
+  const aBottom = a.y + a.height / 2 + COLLISION_PAD;
+  const bLeft = b.x - b.width / 2 - COLLISION_PAD;
+  const bRight = b.x + b.width / 2 + COLLISION_PAD;
+  const bTop = b.y - b.height / 2 - COLLISION_PAD;
+  const bBottom = b.y + b.height / 2 + COLLISION_PAD;
+  return aLeft < bRight && aRight > bLeft && aTop < bBottom && aBottom > bTop;
+};
+
+export const resolveCollisions = (
+  labels: LabelRect[],
+  iterations = DEFAULT_ITERATIONS,
+): LabelRect[] => {
+  const result = labels.map((l) => ({ ...l }));
+  const count = result.length;
+
+  for (let iter = 0; iter < iterations; iter++) {
+    for (let i = 0; i < count; i++) {
+      for (let j = i + 1; j < count; j++) {
+        const a = result[i];
+        const b = result[j];
+        if (!rectsOverlap(a, b)) continue;
+
+        const overlapX = (a.width + b.width) / 2 + COLLISION_PAD * 2 - Math.abs(a.x - b.x);
+        const overlapY = (a.height + b.height) / 2 + COLLISION_PAD * 2 - Math.abs(a.y - b.y);
+
+        // Push apart along axis with least overlap
+        if (overlapY <= overlapX) {
+          const pushY = overlapY / 2 + 1;
+          if (a.y <= b.y) {
+            a.y -= pushY;
+            b.y += pushY;
+          } else {
+            a.y += pushY;
+            b.y -= pushY;
+          }
+        } else {
+          const pushX = overlapX / 2 + 1;
+          if (a.x <= b.x) {
+            a.x -= pushX;
+            b.x += pushX;
+          } else {
+            a.x += pushX;
+            b.x -= pushX;
+          }
+        }
+      }
+    }
+  }
+
+  return result;
+};

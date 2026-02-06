@@ -12,9 +12,14 @@ import type {
   OpenF1Lap,
   OpenF1Location,
   OpenF1Meeting,
+  OpenF1Overtake,
+  OpenF1Pit,
   OpenF1Position,
+  OpenF1RaceControl,
   OpenF1Session,
   OpenF1Stint,
+  OpenF1TeamRadio,
+  OpenF1Weather,
   ReplaySessionData,
   TimedSample,
 } from "../types/openf1.types";
@@ -212,7 +217,7 @@ export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): R
       const sessionStartMs = new Date(session.date_start).getTime();
       const sessionEndMs = new Date(session.date_end).getTime();
 
-      const [stints, laps] = await Promise.all([
+      const [stints, laps, teamRadios, overtakes, weather, raceControl, pits] = await Promise.all([
         fetchOpenF1<OpenF1Stint[]>(
           "stints",
           { session_key: session.session_key },
@@ -221,6 +226,36 @@ export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): R
         ),
         fetchOpenF1<OpenF1Lap[]>(
           "laps",
+          { session_key: session.session_key },
+          controller.signal,
+          "persist",
+        ),
+        fetchOpenF1<OpenF1TeamRadio[]>(
+          "team_radio",
+          { session_key: session.session_key },
+          controller.signal,
+          "persist",
+        ),
+        fetchOpenF1<OpenF1Overtake[]>(
+          "overtaking",
+          { session_key: session.session_key },
+          controller.signal,
+          "persist",
+        ),
+        fetchOpenF1<OpenF1Weather[]>(
+          "weather",
+          { session_key: session.session_key },
+          controller.signal,
+          "persist",
+        ),
+        fetchOpenF1<OpenF1RaceControl[]>(
+          "race_control",
+          { session_key: session.session_key },
+          controller.signal,
+          "persist",
+        ),
+        fetchOpenF1<OpenF1Pit[]>(
+          "pit",
           { session_key: session.session_key },
           controller.signal,
           "persist",
@@ -263,6 +298,11 @@ export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): R
         telemetryByDriver,
         sessionStartMs,
         sessionEndMs,
+        teamRadios: withTimestamp(teamRadios),
+        overtakes: withTimestamp(overtakes),
+        weather: withTimestamp(weather),
+        raceControl: withTimestamp(raceControl),
+        pits: withTimestamp(pits),
       } satisfies ReplaySessionData;
       if (!controller.signal.aborted) {
         setData(baseData);

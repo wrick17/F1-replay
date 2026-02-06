@@ -58,6 +58,58 @@ export type OpenF1Lap = {
   is_pit_out_lap: boolean;
 };
 
+export type OpenF1TeamRadio = {
+  date: string;
+  driver_number: number;
+  recording_url: string;
+  session_key: number;
+  meeting_key: number;
+};
+
+export type OpenF1Overtake = {
+  date: string;
+  overtaking_driver_number: number;
+  overtaken_driver_number: number;
+  position: number;
+  session_key: number;
+  meeting_key: number;
+};
+
+export type OpenF1Weather = {
+  date: string;
+  air_temperature: number;
+  humidity: number;
+  pressure: number;
+  rainfall: number;
+  track_temperature: number;
+  wind_direction: number;
+  wind_speed: number;
+  session_key: number;
+  meeting_key: number;
+};
+
+export type OpenF1RaceControl = {
+  date: string;
+  category: string;
+  driver_number?: number | null;
+  flag?: string | null;
+  lap_number?: number | null;
+  message: string;
+  scope?: string | null;
+  sector?: number | null;
+  session_key: number;
+  meeting_key: number;
+};
+
+export type OpenF1Pit = {
+  date: string;
+  driver_number: number;
+  lap_number: number;
+  pit_duration: number | null;
+  session_key: number;
+  meeting_key: number;
+};
+
 export type TimedSample<T> = T & {
   timestampMs: number;
 };
@@ -76,4 +128,9 @@ export type ReplaySessionData = {
   telemetryByDriver: Record<number, ReplayTelemetry>;
   sessionStartMs: number;
   sessionEndMs: number;
+  teamRadios: TimedSample<OpenF1TeamRadio>[];
+  overtakes: TimedSample<OpenF1Overtake>[];
+  weather: TimedSample<OpenF1Weather>[];
+  raceControl: TimedSample<OpenF1RaceControl>[];
+  pits: TimedSample<OpenF1Pit>[];
 };
