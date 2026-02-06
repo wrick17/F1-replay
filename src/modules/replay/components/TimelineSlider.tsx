@@ -1,13 +1,21 @@
 import { useCallback, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import type { OpenF1Driver, OpenF1TeamRadio, TimedSample } from "../types/openf1.types";
 import type { TimelineEvent } from "../types/replay.types";
 import { EventMarkerPopup } from "./EventMarkerPopup";
+import { RadioPopup } from "./RadioPopup";
 
 type TimelineSliderProps = {
   currentTimeMs: number;
   startTimeMs: number;
   endTimeMs: number;
   events: TimelineEvent[];
+  drivers: OpenF1Driver[];
+  isRadioPlaying: boolean;
   onSeek: (timestampMs: number) => void;
+  onPlayRadio: (radio: TimedSample<OpenF1TeamRadio>) => void;
+  onStopRadio: () => void;
+  onMarkerClick?: (timestampMs: number) => void;
 };
 
 export const TimelineSlider = ({
@@ -15,12 +23,18 @@ export const TimelineSlider = ({
   startTimeMs,
   endTimeMs,
   events,
+  drivers,
+  isRadioPlaying,
   onSeek,
+  onPlayRadio,
+  onStopRadio,
+  onMarkerClick,
 }: TimelineSliderProps) => {
   const trackRef = useRef<HTMLDivElement>(null);
   const [hoveredEvent, setHoveredEvent] = useState<TimelineEvent | null>(null);
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
   const isDragging = useRef(false);
+  const hoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const duration = Math.max(1, endTimeMs - startTimeMs);
   const progress = ((currentTimeMs - startTimeMs) / duration) * 100;
@@ -62,6 +76,33 @@ export const TimelineSlider = ({
     return ((timestampMs - startTimeMs) / duration) * 100;
   };
 
+  const handleMarkerEnter = (event: TimelineEvent, buttonEl: HTMLButtonElement) => {
+    if (hoverTimeout.current) clearTimeout(hoverTimeout.current);
+    setHoveredEvent(event);
+    const rect = buttonEl.getBoundingClientRect();
+    setHoverPos({ x: rect.left + rect.width / 2, y: rect.top });
+  };
+
+  const closePopup = useCallback(() => {
+    if (hoveredEvent?.type === "radio" && isRadioPlaying) {
+      onStopRadio();
+    }
+    setHoveredEvent(null);
+    setHoverPos(null);
+  }, [hoveredEvent, isRadioPlaying, onStopRadio]);
+
+  const handleMarkerLeave = () => {
+    hoverTimeout.current = setTimeout(closePopup, 200);
+  };
+
+  const handlePopupEnter = () => {
+    if (hoverTimeout.current) clearTimeout(hoverTimeout.current);
+  };
+
+  const handlePopupLeave = () => {
+    closePopup();
+  };
+
   return (
     <div className="relative w-full select-none py-2">
       {/* Event markers row */}
@@ -73,23 +114,20 @@ export const TimelineSlider = ({
             <button
               type="button"
               key={`${event.type}-${event.timestampMs}-${index}`}
-              className="absolute top-0 h-3 w-[2px] cursor-pointer rounded-sm border-none bg-transparent p-0 transition-opacity hover:opacity-100"
+              className="absolute bottom-0 w-[3px] cursor-pointer border-none bg-transparent p-0 pb-0 pt-4"
               style={{
                 left: `${left}%`,
-                backgroundColor: event.color,
-                opacity: 0.7,
                 transform: "translateX(-50%)",
               }}
-              onMouseEnter={(e) => {
-                setHoveredEvent(event);
-                const rect = e.currentTarget.getBoundingClientRect();
-                setHoverPos({ x: rect.left + rect.width / 2, y: rect.top });
-              }}
-              onMouseLeave={() => {
-                setHoveredEvent(null);
-                setHoverPos(null);
-              }}
-            />
+              onClick={() => onMarkerClick?.(event.timestampMs)}
+              onMouseEnter={(e) => handleMarkerEnter(event, e.currentTarget)}
+              onMouseLeave={handleMarkerLeave}
+            >
+              <span
+                className="block h-3 w-[3px] rounded-sm"
+                style={{ backgroundColor: event.color, opacity: 0.8 }}
+              />
+            </button>
           );
         })}
       </div>
@@ -102,31 +140,46 @@ export const TimelineSlider = ({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
       >
-        {/* Progress fill */}
         <div
           className="absolute inset-y-0 left-0 rounded-full bg-[#E10600]"
           style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
         />
-        {/* Thumb */}
         <div
           className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#E10600] bg-white shadow-md"
           style={{ left: `${Math.min(100, Math.max(0, progress))}%` }}
         />
       </div>
 
-      {/* Hover popup */}
-      {hoveredEvent && hoverPos && (
-        <div
-          className="pointer-events-none fixed z-50"
-          style={{
-            left: hoverPos.x,
-            top: hoverPos.y - 8,
-            transform: "translate(-50%, -100%)",
-          }}
-        >
-          <EventMarkerPopup event={hoveredEvent} startTimeMs={startTimeMs} />
-        </div>
-      )}
+      {/* Hover popup — rendered via portal to escape backdrop-filter containing block */}
+      {hoveredEvent &&
+        hoverPos &&
+        createPortal(
+          <div
+            role="tooltip"
+            className="fixed z-9999"
+            style={{
+              left: hoverPos.x,
+              top: hoverPos.y - 8,
+              transform: "translate(-50%, -100%)",
+            }}
+            onMouseEnter={handlePopupEnter}
+            onMouseLeave={handlePopupLeave}
+          >
+            {hoveredEvent.type === "radio" ? (
+              <RadioPopup
+                radio={hoveredEvent.data as TimedSample<OpenF1TeamRadio>}
+                drivers={drivers}
+                startTimeMs={startTimeMs}
+                isPlaying={isRadioPlaying}
+                onPlay={onPlayRadio}
+                onStop={onStopRadio}
+              />
+            ) : (
+              <EventMarkerPopup event={hoveredEvent} startTimeMs={startTimeMs} />
+            )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 };

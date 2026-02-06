@@ -13,11 +13,11 @@ export type Bounds = {
 };
 
 export const SCALE = 1000;
-export const LABEL_OFFSET = 80;
-export const MIN_LABEL_WIDTH = 40;
-export const LABEL_HEIGHT = 20;
-export const LABEL_PADDING = 8;
-export const VIEWBOX_PADDING = 140;
+export const LABEL_OFFSET = 55;
+export const MIN_LABEL_WIDTH = 50;
+export const LABEL_HEIGHT = 24;
+export const LABEL_PADDING = 10;
+export const VIEWBOX_PADDING = 200;
 
 const MIN_SEGMENT_JUMP = 60;
 const JUMP_MULTIPLIER = 8;
@@ -111,7 +111,7 @@ export const buildPathD = (points: Point2D[]) => {
 };
 
 export const getLabelWidth = (text: string) =>
-  Math.max(MIN_LABEL_WIDTH, text.length * 7 + LABEL_PADDING * 2);
+  Math.max(MIN_LABEL_WIDTH, text.length * 8.5 + LABEL_PADDING * 2);
 
 export type LabelRect = {
   key: string;
@@ -123,8 +123,9 @@ export type LabelRect = {
   anchorY: number;
 };
 
-const COLLISION_PAD = 4;
-const DEFAULT_ITERATIONS = 6;
+const COLLISION_PAD = 3;
+const MAX_ITERATIONS = 60;
+const DOT_OBSTACLE_SIZE = 16;
 
 const rectsOverlap = (a: LabelRect, b: LabelRect): boolean => {
   const aLeft = a.x - a.width / 2 - COLLISION_PAD;
@@ -138,24 +139,46 @@ const rectsOverlap = (a: LabelRect, b: LabelRect): boolean => {
   return aLeft < bRight && aRight > bLeft && aTop < bBottom && aBottom > bTop;
 };
 
+export type ViewboxBounds = {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+};
+
 export const resolveCollisions = (
   labels: LabelRect[],
-  iterations = DEFAULT_ITERATIONS,
+  _iterations?: number,
+  viewbox?: ViewboxBounds,
 ): LabelRect[] => {
   const result = labels.map((l) => ({ ...l }));
   const count = result.length;
 
-  for (let iter = 0; iter < iterations; iter++) {
+  // Build dot obstacles from all anchors (driver positions)
+  const dotObstacles: LabelRect[] = result.map((l, i) => ({
+    key: `dot-${i}`,
+    x: l.anchorX,
+    y: l.anchorY,
+    width: DOT_OBSTACLE_SIZE,
+    height: DOT_OBSTACLE_SIZE,
+    anchorX: l.anchorX,
+    anchorY: l.anchorY,
+  }));
+
+  for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
+    let anyOverlap = false;
+
+    // Label-label collisions
     for (let i = 0; i < count; i++) {
       for (let j = i + 1; j < count; j++) {
         const a = result[i];
         const b = result[j];
         if (!rectsOverlap(a, b)) continue;
+        anyOverlap = true;
 
         const overlapX = (a.width + b.width) / 2 + COLLISION_PAD * 2 - Math.abs(a.x - b.x);
         const overlapY = (a.height + b.height) / 2 + COLLISION_PAD * 2 - Math.abs(a.y - b.y);
 
-        // Push apart along axis with least overlap
         if (overlapY <= overlapX) {
           const pushY = overlapY / 2 + 1;
           if (a.y <= b.y) {
@@ -177,7 +200,66 @@ export const resolveCollisions = (
         }
       }
     }
+
+    // Label-dot collisions (push label away from other drivers' dots)
+    for (let i = 0; i < count; i++) {
+      const label = result[i];
+      for (let d = 0; d < dotObstacles.length; d++) {
+        if (d === i) continue; // skip own anchor dot
+        const dot = dotObstacles[d];
+        if (!rectsOverlap(label, dot)) continue;
+        anyOverlap = true;
+
+        const overlapX =
+          (label.width + dot.width) / 2 + COLLISION_PAD * 2 - Math.abs(label.x - dot.x);
+        const overlapY =
+          (label.height + dot.height) / 2 + COLLISION_PAD * 2 - Math.abs(label.y - dot.y);
+
+        // Only push the label, not the dot (dot is fixed)
+        if (overlapY <= overlapX) {
+          label.y += label.y <= dot.y ? -overlapY - 1 : overlapY + 1;
+        } else {
+          label.x += label.x <= dot.x ? -overlapX - 1 : overlapX + 1;
+        }
+      }
+    }
+
+    if (!anyOverlap) break;
+  }
+
+  // Clamp to viewbox only after convergence (not during iterations)
+  if (viewbox) {
+    for (let i = 0; i < count; i++) {
+      const label = result[i];
+      const halfW = label.width / 2;
+      const halfH = label.height / 2;
+      label.x = Math.max(viewbox.minX + halfW, Math.min(viewbox.maxX - halfW, label.x));
+      label.y = Math.max(viewbox.minY + halfH, Math.min(viewbox.maxY - halfH, label.y));
+    }
   }
 
   return result;
+};
+
+const DEFAULT_SMOOTH_FACTOR = 0.5;
+
+export const smoothLabels = (
+  previous: LabelRect[],
+  current: LabelRect[],
+  factor = DEFAULT_SMOOTH_FACTOR,
+): LabelRect[] => {
+  if (!previous.length) return current;
+  const prevMap = new Map<string, LabelRect>();
+  for (const label of previous) {
+    prevMap.set(label.key, label);
+  }
+  return current.map((cur) => {
+    const prev = prevMap.get(cur.key);
+    if (!prev) return cur;
+    return {
+      ...cur,
+      x: prev.x + (cur.x - prev.x) * factor,
+      y: prev.y + (cur.y - prev.y) * factor,
+    };
+  });
 };

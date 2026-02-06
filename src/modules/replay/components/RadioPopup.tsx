@@ -1,3 +1,4 @@
+import { Pause, Play } from "lucide-react";
 import type { OpenF1Driver, OpenF1TeamRadio, TimedSample } from "../types/openf1.types";
 import { formatTime } from "../utils/format.util";
 
@@ -74,7 +75,7 @@ export const RadioPopup = ({
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-500 text-white transition hover:bg-blue-400"
           onClick={() => (isPlaying ? onStop() : onPlay(radio))}
         >
-          {isPlaying ? "⏸" : "▶"}
+          {isPlaying ? <Pause size={14} /> : <Play size={14} />}
         </button>
         <WaveformBars active={isPlaying} />
       </div>

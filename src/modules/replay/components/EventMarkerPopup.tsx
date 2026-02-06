@@ -20,7 +20,7 @@ export const EventMarkerPopup = ({ event, startTimeMs }: EventMarkerPopupProps) 
   const elapsed = formatTime(event.timestampMs - startTimeMs);
 
   return (
-    <div className="pointer-events-none w-56 rounded-lg border border-white/20 bg-black/90 p-3 text-xs text-white shadow-xl backdrop-blur-xl">
+    <div className="w-56 rounded-lg border border-white/20 bg-black/90 p-3 text-xs text-white shadow-xl backdrop-blur-xl">
       <div className="mb-1 flex items-center gap-2">
         <span
           className="inline-block h-2 w-2 rounded-full"

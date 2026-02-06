@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import type { TrackViewProps } from "../types/replay.types";
 import {
   buildPathD,
@@ -6,11 +6,11 @@ import {
   computeLabelOffset,
   getLabelWidth,
   LABEL_HEIGHT,
-  LABEL_OFFSET,
   type LabelRect,
   resolveCollisions,
   toPoint2D,
   VIEWBOX_PADDING,
+  type ViewboxBounds,
 } from "../utils/geometry.util";
 
 export const TrackView = ({
@@ -36,7 +36,6 @@ export const TrackView = ({
       .filter(([, state]) => state.position !== null)
       .map(([driverKey, state]) => {
         const driverNumber = Number(driverKey);
-        // position is guaranteed non-null by the filter above
         const position = toPoint2D(state.position as NonNullable<typeof state.position>);
         const name = driverNames[driverNumber] ?? String(driverNumber);
         const labelText = state.racePosition ? `P${state.racePosition} ${name}` : name;
@@ -55,19 +54,55 @@ export const TrackView = ({
       });
   }, [driverStates, driverNames, bounds.center, selectedDrivers]);
 
+  const prevLabelsRef = useRef<LabelRect[]>([]);
+
+  const viewboxBounds: ViewboxBounds = useMemo(
+    () => ({
+      minX: bounds.minX - VIEWBOX_PADDING,
+      minY: bounds.minY - VIEWBOX_PADDING,
+      maxX: bounds.maxX + VIEWBOX_PADDING,
+      maxY: bounds.maxY + VIEWBOX_PADDING,
+    }),
+    [bounds],
+  );
+
   const resolvedLabels = useMemo(() => {
-    if (driverEntries.length === 0) return [];
-    const rects: LabelRect[] = driverEntries.map((entry) => ({
-      key: entry.driverKey,
-      x: entry.initialLabelX,
-      y: entry.initialLabelY,
-      width: entry.labelWidth,
-      height: LABEL_HEIGHT,
-      anchorX: entry.position.x,
-      anchorY: entry.position.y,
-    }));
-    return resolveCollisions(rects);
-  }, [driverEntries]);
+    if (driverEntries.length === 0) {
+      prevLabelsRef.current = [];
+      return [];
+    }
+
+    const prevMap = new Map<string, LabelRect>();
+    for (const label of prevLabelsRef.current) {
+      prevMap.set(label.key, label);
+    }
+    const hasPrev = prevMap.size > 0;
+    const smoothFactor = 0.18;
+
+    // Build rects starting from previous resolved positions (if available)
+    // and gently pulling toward new ideal positions.
+    // Since previous positions are already non-overlapping, collision
+    // resolution only needs small adjustments -> stable, no jumping.
+    const rects: LabelRect[] = driverEntries.map((entry) => {
+      const targetX = entry.initialLabelX;
+      const targetY = entry.initialLabelY;
+      const prev = hasPrev ? prevMap.get(entry.driverKey) : undefined;
+
+      return {
+        key: entry.driverKey,
+        x: prev ? prev.x + (targetX - prev.x) * smoothFactor : targetX,
+        y: prev ? prev.y + (targetY - prev.y) * smoothFactor : targetY,
+        width: entry.labelWidth,
+        height: LABEL_HEIGHT,
+        anchorX: entry.position.x,
+        anchorY: entry.position.y,
+      };
+    });
+
+    const resolved = resolveCollisions(rects, undefined, viewboxBounds);
+    prevLabelsRef.current = resolved;
+    return resolved;
+  }, [driverEntries, viewboxBounds]);
 
   const labelMap = useMemo(() => {
     const map = new Map<string, LabelRect>();
@@ -107,38 +142,22 @@ export const TrackView = ({
         const resolved = labelMap.get(entry.driverKey);
         const labelX = resolved?.x ?? entry.initialLabelX;
         const labelY = resolved?.y ?? entry.initialLabelY;
-
-        const displacement = Math.hypot(labelX - entry.position.x, labelY - entry.position.y);
-        const isFar = displacement > LABEL_OFFSET * 1.5;
-        const labelOpacity = isFar ? 0.7 : 1;
-
-        // Use a quadratic bezier for displaced labels to avoid crossing leader lines
-        const midX = (entry.position.x + labelX) / 2;
-        const midY = (entry.position.y + labelY) / 2;
-        const perpX = -(labelY - entry.position.y) * 0.15;
-        const perpY = (labelX - entry.position.x) * 0.15;
-        const useCurve = displacement > LABEL_OFFSET * 1.2;
+        const colorBarWidth = 4;
 
         return (
           <g key={entry.driverKey}>
-            {useCurve ? (
-              <path
-                d={`M ${entry.position.x} ${entry.position.y} Q ${midX + perpX} ${midY + perpY} ${labelX} ${labelY}`}
-                fill="none"
-                stroke="rgba(255,255,255,0.3)"
-                strokeWidth="1"
-              />
-            ) : (
-              <line
-                x1={entry.position.x}
-                y1={entry.position.y}
-                x2={labelX}
-                y2={labelY}
-                stroke="rgba(255,255,255,0.4)"
-                strokeWidth="1"
-              />
-            )}
-            <g transform={`translate(${labelX}, ${labelY})`} opacity={labelOpacity}>
+            {/* Leader line in driver team color */}
+            <line
+              x1={entry.position.x}
+              y1={entry.position.y}
+              x2={labelX}
+              y2={labelY}
+              stroke={entry.color}
+              strokeWidth="1"
+              strokeOpacity={0.5}
+            />
+            {/* Label pill */}
+            <g transform={`translate(${labelX}, ${labelY})`}>
               <rect
                 x={-entry.labelWidth / 2}
                 y={-LABEL_HEIGHT / 2}
@@ -146,19 +165,39 @@ export const TrackView = ({
                 height={LABEL_HEIGHT}
                 rx="4"
                 fill="rgba(0,0,0,0.85)"
-                stroke="rgba(255,255,255,0.3)"
+                stroke="rgba(255,255,255,0.2)"
+                strokeWidth="0.8"
+              />
+              {/* Color accent bar on left edge */}
+              <rect
+                x={-entry.labelWidth / 2}
+                y={-LABEL_HEIGHT / 2}
+                width={colorBarWidth}
+                height={LABEL_HEIGHT}
+                rx="4"
+                fill={entry.color}
+              />
+              {/* Cover the right-side rounding of the color bar */}
+              <rect
+                x={-entry.labelWidth / 2 + colorBarWidth - 2}
+                y={-LABEL_HEIGHT / 2}
+                width={4}
+                height={LABEL_HEIGHT}
+                fill="rgba(0,0,0,0.85)"
               />
               <text
                 textAnchor="middle"
-                dy="4"
+                x={colorBarWidth / 2}
+                dy="4.5"
                 fill="#FFFFFF"
-                fontSize="10"
+                fontSize="13"
                 fontWeight="600"
                 fontFamily="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif"
               >
                 {entry.labelText}
               </text>
             </g>
+            {/* Driver dot */}
             <circle
               cx={entry.position.x}
               cy={entry.position.y}

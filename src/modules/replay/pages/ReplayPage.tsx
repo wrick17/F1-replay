@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { ControlsBar } from "../components/ControlsBar";
+import { MarkerLegend } from "../components/MarkerLegend";
 import { SessionPicker } from "../components/SessionPicker";
 import { TelemetryPanel } from "../components/TelemetryPanel";
 import { TrackView } from "../components/TrackView";
@@ -65,34 +66,42 @@ export const ReplayPage = () => {
     [data, replay.currentTimeMs],
   );
 
-  // Timeline events
   const timelineEvents = useMemo(() => {
     if (!data) return [];
     return buildTimelineEvents(data, data.drivers);
   }, [data]);
 
-  // Weather
   const currentWeather = useMemo(() => {
     if (!data) return null;
     return getWeatherAtTime(data.weather, replay.currentTimeMs);
   }, [data, replay.currentTimeMs]);
 
-  // Overtake detection
   const activeOvertake = useMemo(() => {
     if (!data) return null;
     return getActiveOvertake(data.overtakes, replay.currentTimeMs);
   }, [data, replay.currentTimeMs]);
 
-  // Team radio
-  const [radioEnabled, setRadioEnabled] = useState(false);
+  const [radioEnabled, setRadioEnabled] = useState(true);
   const toggleRadio = useCallback(() => setRadioEnabled((prev) => !prev), []);
 
-  useTeamRadio({
+  const { isAudioPlaying, playRadio, stopRadio } = useTeamRadio({
     teamRadios: data?.teamRadios ?? [],
     currentTimeMs: replay.currentTimeMs,
     enabled: radioEnabled,
     isPlaying: replay.isPlaying,
   });
+
+  const handleMarkerClick = useCallback(
+    (timestampMs: number) => {
+      replay.seekTo(timestampMs);
+      if (!replay.isPlaying) {
+        replay.togglePlay();
+      }
+    },
+    [replay],
+  );
+
+  const drivers = data?.drivers ?? [];
 
   return (
     <div className="relative min-h-screen w-full overflow-y-auto text-white md:h-screen md:w-screen md:overflow-hidden">
@@ -136,7 +145,7 @@ export const ReplayPage = () => {
         )}
       </div>
 
-      <div className="relative mx-4 mt-4 min-h-[260px] md:absolute md:inset-0 md:mx-0 md:mt-0 md:pb-16 md:pl-4 md:pr-72 md:pt-24">
+      <div className="relative mx-4 mt-4 min-h-[260px] md:absolute md:inset-0 md:mx-0 md:mt-0 md:pb-56 md:pl-4 md:pr-80 md:pt-24">
         <TrackView
           trackPath={trackPath}
           driverStates={driverStates}
@@ -147,6 +156,9 @@ export const ReplayPage = () => {
       </div>
 
       <footer className="relative z-10 mx-4 mt-4 md:absolute md:bottom-4 md:left-4 md:right-80 md:mx-0 md:mt-0">
+        <div className="mb-2">
+          <MarkerLegend hasEvents={timelineEvents.length > 0} />
+        </div>
         <ControlsBar
           isPlaying={replay.isPlaying}
           isBuffering={replay.isBuffering}
@@ -157,10 +169,15 @@ export const ReplayPage = () => {
           canPlay={canPlay}
           timelineEvents={timelineEvents}
           radioEnabled={radioEnabled}
+          drivers={drivers}
+          isRadioPlaying={isAudioPlaying}
           onTogglePlay={replay.togglePlay}
           onSpeedChange={replay.setSpeed}
           onSeek={replay.seekTo}
           onRadioToggle={toggleRadio}
+          onPlayRadio={playRadio}
+          onStopRadio={stopRadio}
+          onMarkerClick={handleMarkerClick}
         />
       </footer>
 
