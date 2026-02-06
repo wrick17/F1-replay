@@ -7,6 +7,8 @@ import { RadioPopup } from "./RadioPopup";
 
 const EVENT_WINDOW_MS = 2000;
 const EVENT_DISPLAY_DURATION_MS = 5000;
+const EXPAND_SCALE = 10;
+const HANDLE_VIEWPORT_RATIO = 0.3;
 
 type TimelineSliderProps = {
   currentTimeMs: number;
@@ -17,11 +19,13 @@ type TimelineSliderProps = {
   isPlaying: boolean;
   radioEnabled: boolean;
   isRadioPlaying: boolean;
+  expanded: boolean;
   onSeek: (timestampMs: number) => void;
   onPlayRadio: (radio: TimedSample<OpenF1TeamRadio>) => void;
   onStopRadio: () => void;
   onPauseRadio: () => void;
   onResumeRadio: () => void;
+  onTogglePlay: () => void;
   onMarkerClick?: (timestampMs: number) => void;
 };
 
@@ -34,16 +38,23 @@ export const TimelineSlider = ({
   isPlaying,
   radioEnabled,
   isRadioPlaying,
+  expanded,
   onSeek,
   onPlayRadio,
   onStopRadio,
   onPauseRadio,
   onResumeRadio,
+  onTogglePlay,
   onMarkerClick,
 }: TimelineSliderProps) => {
   const trackRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
   const hoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Drag-pause refs for expanded mode
+  const userDraggingRef = useRef(false);
+  const wasPlayingBeforeDragRef = useRef(false);
 
   // Manual hover state (user-initiated)
   const [hoveredEvent, setHoveredEvent] = useState<TimelineEvent | null>(null);
@@ -60,7 +71,7 @@ export const TimelineSlider = ({
   const wasPlayingBeforePauseRef = useRef(false);
   const prevIsPlayingRef = useRef(isPlaying);
 
-  // Refs for stable access in the auto-popup effect (avoids stale closures and dependency churn)
+  // Refs for stable access in effects
   const eventsRef = useRef(events);
   eventsRef.current = events;
   const isPlayingRef = useRef(isPlaying);
@@ -77,6 +88,10 @@ export const TimelineSlider = ({
   onPlayRadioRef.current = onPlayRadio;
   const onStopRadioRef = useRef(onStopRadio);
   onStopRadioRef.current = onStopRadio;
+  const expandedRef = useRef(expanded);
+  expandedRef.current = expanded;
+  const onTogglePlayRef = useRef(onTogglePlay);
+  onTogglePlayRef.current = onTogglePlay;
 
   const duration = Math.max(1, endTimeMs - startTimeMs);
   const progress = ((currentTimeMs - startTimeMs) / duration) * 100;
@@ -100,6 +115,18 @@ export const TimelineSlider = ({
     (e: React.PointerEvent) => {
       isDragging.current = true;
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
+
+      // In expanded mode, pause race on drag start
+      if (expandedRef.current) {
+        userDraggingRef.current = true;
+        if (isPlayingRef.current) {
+          wasPlayingBeforeDragRef.current = true;
+          onTogglePlayRef.current();
+        } else {
+          wasPlayingBeforeDragRef.current = false;
+        }
+      }
+
       seekFromPointer(e.clientX);
     },
     [seekFromPointer],
@@ -116,6 +143,15 @@ export const TimelineSlider = ({
 
   const onPointerUp = useCallback(() => {
     isDragging.current = false;
+
+    // In expanded mode, resume race on drag end if it was playing before
+    if (expandedRef.current && userDraggingRef.current) {
+      userDraggingRef.current = false;
+      if (wasPlayingBeforeDragRef.current) {
+        wasPlayingBeforeDragRef.current = false;
+        onTogglePlayRef.current();
+      }
+    }
   }, []);
 
   const computeMarkerPercent = useCallback(
@@ -259,52 +295,98 @@ export const TimelineSlider = ({
     lastTimeMsRef.current = currentTimeMs;
   }, [currentTimeMs]);
 
-  return (
-    <div className="relative w-full select-none py-2">
-      {/* Event markers row */}
-      <div className="relative mb-1 h-3">
-        {events.map((event, index) => {
-          const left = computeMarkerPercent(event.timestampMs);
-          if (left < 0 || left > 100) return null;
-          return (
-            <button
-              type="button"
-              key={`${event.type}-${event.timestampMs}-${index}`}
-              className="absolute bottom-0 w-[3px] cursor-pointer border-none bg-transparent p-0 pb-0 pt-4"
-              style={{
-                left: `${left}%`,
-                transform: "translateX(-50%)",
-              }}
-              onClick={() => onMarkerClick?.(event.timestampMs)}
-              onMouseEnter={(e) => handleMarkerEnter(event, e.currentTarget)}
-              onMouseLeave={handleMarkerLeave}
-            >
-              <span
-                className="block h-3 w-[3px] rounded-sm"
-                style={{ backgroundColor: event.color, opacity: 0.8 }}
-              />
-            </button>
-          );
-        })}
-      </div>
+  // Auto-scroll in expanded mode: keep handle at 30% from left
+  useEffect(() => {
+    if (!expanded || userDraggingRef.current) return;
+    const container = scrollContainerRef.current;
+    if (!container) return;
 
-      {/* Slider track */}
+    const visibleWidth = container.clientWidth;
+    const innerWidth = visibleWidth * EXPAND_SCALE;
+    const handlePixelX = (progress / 100) * innerWidth;
+    const targetScroll = handlePixelX - visibleWidth * HANDLE_VIEWPORT_RATIO;
+
+    container.scrollLeft = Math.max(0, Math.min(targetScroll, innerWidth - visibleWidth));
+  }, [expanded, progress]);
+
+  // Marker row shared between both modes
+  const markerRow = (
+    <div className="relative h-3">
+      {events.map((event, index) => {
+        const left = computeMarkerPercent(event.timestampMs);
+        if (left < 0 || left > 100) return null;
+        return (
+          <button
+            type="button"
+            key={`${event.type}-${event.timestampMs}-${index}`}
+            className="absolute bottom-0 w-[3px] cursor-pointer border-none bg-transparent p-0 pb-0 pt-4"
+            style={{
+              left: `${left}%`,
+              transform: "translateX(-50%)",
+            }}
+            onClick={() => onMarkerClick?.(event.timestampMs)}
+            onMouseEnter={(e) => handleMarkerEnter(event, e.currentTarget)}
+            onMouseLeave={handleMarkerLeave}
+          >
+            <span
+              className="block h-3 w-[3px] rounded-sm"
+              style={{ backgroundColor: event.color, opacity: 0.8 }}
+            />
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  // Track bar shared between both modes
+  const trackBar = (
+    <div
+      ref={trackRef}
+      className="relative h-2 cursor-pointer rounded-full bg-white/10"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+    >
       <div
-        ref={trackRef}
-        className="relative h-2 cursor-pointer rounded-full bg-white/10"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-      >
+        className="absolute inset-y-0 left-0 rounded-full bg-[#E10600]"
+        style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
+      />
+      <div
+        className="absolute top-1/2 h-4 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-md transition-[height,width] duration-150 hover:h-5 hover:w-2"
+        style={{ left: `${Math.min(100, Math.max(0, progress))}%` }}
+      />
+    </div>
+  );
+
+  return (
+    <div className="relative w-full select-none">
+      {expanded ? (
         <div
-          className="absolute inset-y-0 left-0 rounded-full bg-[#E10600]"
-          style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
-        />
-        <div
-          className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#E10600] bg-white shadow-md"
-          style={{ left: `${Math.min(100, Math.max(0, progress))}%` }}
-        />
-      </div>
+          ref={scrollContainerRef}
+          className="overflow-x-auto"
+          style={{ scrollbarWidth: "none" }}
+        >
+          <style>{`
+            .timeline-scroll-hide::-webkit-scrollbar { display: none; }
+          `}</style>
+          <div
+            className="timeline-scroll-hide"
+            style={{ width: `${EXPAND_SCALE * 100}%` }}
+          >
+            <div className="mb-1">{markerRow}</div>
+            {trackBar}
+          </div>
+        </div>
+      ) : (
+        /* Non-expanded: markers absolutely positioned above track so they
+           don't affect component height — keeps timers aligned with the track bar */
+        <div className="relative">
+          <div className="absolute inset-x-0 bottom-full mb-1">
+            {markerRow}
+          </div>
+          {trackBar}
+        </div>
+      )}
 
       {/* Hover/auto popup — rendered via portal to escape backdrop-filter containing block */}
       {displayedEvent &&

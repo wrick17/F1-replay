@@ -77,10 +77,7 @@ export const computeTelemetrySummary = (
     };
   }
   const sessionLabel = `${data.session.session_name} · ${data.session.session_type}`;
-  const coverageLabel = `${Math.max(
-    0,
-    Math.floor((availableEndMs - sessionStartMs) / 60000),
-  )} / ${Math.max(1, Math.floor((effectiveEndMs - sessionStartMs) / 60000))} min`;
+  const coverageLabel = `${Math.max(1, Math.floor((effectiveEndMs - sessionStartMs) / 60000))} min`;
   return {
     sessionLabel,
     coverageLabel,

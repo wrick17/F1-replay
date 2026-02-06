@@ -16,13 +16,13 @@ const raceControlColor = (category: string, flag?: string | null): string => {
     const upper = flag.toUpperCase();
     if (upper.includes("RED")) return "#ef4444";
     if (upper.includes("YELLOW") || upper.includes("DOUBLE")) return "#eab308";
-    if (upper.includes("GREEN")) return "#22c55e";
+    if (upper.includes("GREEN")) return "#eab308";
     if (upper.includes("BLUE")) return "#3b82f6";
     if (upper.includes("BLACK")) return "#6b7280";
     if (upper.includes("CHEQUERED")) return "#f5f5f5";
   }
   const upper = category.toUpperCase();
-  if (upper.includes("SAFETY") || upper.includes("VSC")) return "#f97316";
+  if (upper.includes("SAFETY") || upper.includes("VSC")) return "#ef4444";
   if (upper.includes("DRS")) return "#a855f7";
   return "#a855f7";
 };

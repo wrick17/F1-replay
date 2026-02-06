@@ -4,7 +4,7 @@ const LEGEND_ITEMS = [
   { type: "radio", color: "#3b82f6", label: "Team Radio", icon: Radio },
   { type: "overtake", color: "#22c55e", label: "Overtake", icon: ArrowRightLeft },
   { type: "flag", color: "#eab308", label: "Flag", icon: Flag },
-  { type: "safety-car", color: "#f97316", label: "Safety Car", icon: ShieldAlert },
+  { type: "safety-car", color: "#ef4444", label: "Safety Car", icon: ShieldAlert },
   { type: "pit", color: "#6b7280", label: "Pit Stop", icon: CircleDot },
   { type: "race-control", color: "#a855f7", label: "Race Control", icon: AlertTriangle },
 ] as const;
