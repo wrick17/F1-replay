@@ -1,4 +1,4 @@
-import { inFlight, responseCache, setPersisted } from "./cache";
+import { getPersisted, inFlight, responseCache, setPersisted } from "./cache";
 import { rateLimit } from "./rateLimiter";
 
 const API_BASE_URL = "https://api.openf1.org/v1";
