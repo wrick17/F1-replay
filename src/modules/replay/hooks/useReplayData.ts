@@ -324,7 +324,13 @@ export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): R
       }
 
       const handleLocationsChunk = (chunk: OpenF1Location[]) => {
-        const normalized = withTimestamp(chunk);
+        const normalized = sortByTimestamp(withTimestamp(chunk)).filter(
+          (sample) =>
+            Number.isFinite(sample.x) &&
+            Number.isFinite(sample.y) &&
+            Number.isFinite(sample.z) &&
+            Number.isFinite(sample.timestampMs),
+        );
         chunkAppend(
           Object.fromEntries(
             Object.keys(telemetryByDriver).map((key) => [
@@ -334,10 +340,7 @@ export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): R
           ),
           normalized,
         );
-        const latestTimestamp = normalized.reduce(
-          (max, sample) => Math.max(max, sample.timestampMs),
-          0,
-        );
+        const latestTimestamp = normalized[normalized.length - 1]?.timestampMs ?? 0;
         if (latestTimestamp > 0) {
           setAvailableEndMs((prev) => Math.max(prev, latestTimestamp));
         }
@@ -345,7 +348,7 @@ export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): R
       };
 
       const handlePositionChunk = (chunk: OpenF1Position[]) => {
-        const normalized = withTimestamp(chunk);
+        const normalized = sortByTimestamp(withTimestamp(chunk));
         chunkAppend(
           Object.fromEntries(
             Object.keys(telemetryByDriver).map((key) => [

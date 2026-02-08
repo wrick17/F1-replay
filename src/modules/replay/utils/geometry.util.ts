@@ -17,7 +17,7 @@ export const LABEL_OFFSET = 55;
 export const MIN_LABEL_WIDTH = 50;
 export const LABEL_HEIGHT = 24;
 export const LABEL_PADDING = 10;
-export const VIEWBOX_PADDING = 200;
+export const VIEWBOX_PADDING = 80;
 
 const MIN_SEGMENT_JUMP = 60;
 const JUMP_MULTIPLIER = 8;
@@ -123,8 +123,8 @@ export type LabelRect = {
   anchorY: number;
 };
 
-const COLLISION_PAD = 3;
-const MAX_ITERATIONS = 60;
+const COLLISION_PAD = 6;
+const MAX_ITERATIONS = 120;
 const DOT_OBSTACLE_SIZE = 16;
 
 const rectsOverlap = (a: LabelRect, b: LabelRect): boolean => {
@@ -137,6 +137,78 @@ const rectsOverlap = (a: LabelRect, b: LabelRect): boolean => {
   const bTop = b.y - b.height / 2 - COLLISION_PAD;
   const bBottom = b.y + b.height / 2 + COLLISION_PAD;
   return aLeft < bRight && aRight > bLeft && aTop < bBottom && aBottom > bTop;
+};
+
+const clampToViewbox = (labels: LabelRect[], viewbox?: ViewboxBounds) => {
+  if (!viewbox) return;
+  for (let i = 0; i < labels.length; i++) {
+    const label = labels[i];
+    const halfW = label.width / 2;
+    const halfH = label.height / 2;
+    label.x = Math.max(viewbox.minX + halfW, Math.min(viewbox.maxX - halfW, label.x));
+    label.y = Math.max(viewbox.minY + halfH, Math.min(viewbox.maxY - halfH, label.y));
+  }
+};
+
+const sweepLayout = (labels: LabelRect[], viewbox?: ViewboxBounds) => {
+  const ordered = [...labels].sort((a, b) => a.y - b.y);
+  const sweepPad = COLLISION_PAD * 2 + 2;
+  const maxPasses = 6;
+
+  const hasOverlap = () => {
+    for (let i = 0; i < ordered.length; i++) {
+      for (let j = i + 1; j < ordered.length; j++) {
+        if (rectsOverlap(ordered[i], ordered[j])) return true;
+      }
+    }
+    return false;
+  };
+
+  for (let pass = 0; pass < maxPasses; pass++) {
+    for (let i = 1; i < ordered.length; i++) {
+      const cur = ordered[i];
+      for (let j = i - 1; j >= 0; j--) {
+        const prev = ordered[j];
+        if (!rectsOverlap(cur, prev)) continue;
+        cur.y = prev.y + (prev.height + cur.height) / 2 + sweepPad;
+      }
+    }
+    clampToViewbox(ordered, viewbox);
+
+    for (let i = ordered.length - 2; i >= 0; i--) {
+      const cur = ordered[i];
+      for (let j = i + 1; j < ordered.length; j++) {
+        const next = ordered[j];
+        if (!rectsOverlap(cur, next)) continue;
+        cur.y = next.y - (next.height + cur.height) / 2 - sweepPad;
+      }
+    }
+    clampToViewbox(ordered, viewbox);
+
+    if (!hasOverlap()) break;
+  }
+
+  if (hasOverlap()) {
+    const maxWidth = Math.max(...ordered.map((label) => label.width));
+    const columnShift = maxWidth * 0.5 + COLLISION_PAD * 3;
+    for (let i = 0; i < ordered.length; i++) {
+      ordered[i].x += i % 2 === 0 ? -columnShift : columnShift;
+    }
+    clampToViewbox(ordered, viewbox);
+
+    for (let pass = 0; pass < maxPasses; pass++) {
+      for (let i = 1; i < ordered.length; i++) {
+        const cur = ordered[i];
+        for (let j = i - 1; j >= 0; j--) {
+          const prev = ordered[j];
+          if (!rectsOverlap(cur, prev)) continue;
+          cur.y = prev.y + (prev.height + cur.height) / 2 + sweepPad;
+        }
+      }
+      clampToViewbox(ordered, viewbox);
+      if (!hasOverlap()) break;
+    }
+  }
 };
 
 export type ViewboxBounds = {
@@ -224,19 +296,14 @@ export const resolveCollisions = (
       }
     }
 
+    clampToViewbox(result, viewbox);
+
     if (!anyOverlap) break;
   }
 
   // Clamp to viewbox only after convergence (not during iterations)
-  if (viewbox) {
-    for (let i = 0; i < count; i++) {
-      const label = result[i];
-      const halfW = label.width / 2;
-      const halfH = label.height / 2;
-      label.x = Math.max(viewbox.minX + halfW, Math.min(viewbox.maxX - halfW, label.x));
-      label.y = Math.max(viewbox.minY + halfH, Math.min(viewbox.maxY - halfH, label.y));
-    }
-  }
+  clampToViewbox(result, viewbox);
+  sweepLayout(result, viewbox);
 
   return result;
 };

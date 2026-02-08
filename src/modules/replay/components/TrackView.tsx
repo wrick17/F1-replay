@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { TrackViewProps } from "../types/replay.types";
 import {
   buildPathD,
@@ -8,10 +8,26 @@ import {
   LABEL_HEIGHT,
   type LabelRect,
   resolveCollisions,
+  smoothLabels,
   toPoint2D,
   VIEWBOX_PADDING,
   type ViewboxBounds,
 } from "../utils/geometry.util";
+
+type LabelWorkerRequest = {
+  type: "resolve";
+  requestId: number;
+  payload: {
+    labels: LabelRect[];
+    viewbox?: ViewboxBounds | null;
+  };
+};
+
+type LabelWorkerResponse = {
+  type: "resolved";
+  requestId: number;
+  payload: LabelRect[];
+};
 
 export const TrackView = ({
   trackPath,
@@ -55,9 +71,13 @@ export const TrackView = ({
   }, [driverStates, driverNames, bounds.center, selectedDrivers]);
 
   const prevLabelsRef = useRef<LabelRect[]>([]);
+  const workerRef = useRef<Worker | null>(null);
+  const requestIdRef = useRef(0);
+  const latestRequestRef = useRef(0);
+  const [resolvedLabels, setResolvedLabels] = useState<LabelRect[]>([]);
 
   // Inset the clamping bounds so labels stay away from edges that overlap UI panels
-  const LABEL_SAFE_INSET = 80;
+  const LABEL_SAFE_INSET = 64;
   const viewboxBounds: ViewboxBounds = useMemo(
     () => ({
       minX: bounds.minX - VIEWBOX_PADDING + LABEL_SAFE_INSET,
@@ -68,10 +88,33 @@ export const TrackView = ({
     [bounds],
   );
 
-  const resolvedLabels = useMemo(() => {
+  useEffect(() => {
+    if (typeof Worker === "undefined") {
+      return;
+    }
+    const worker = new Worker(new URL("../workers/labelPlacement.worker.ts", import.meta.url), {
+      type: "module",
+    });
+    workerRef.current = worker;
+    worker.onmessage = (event: MessageEvent<LabelWorkerResponse>) => {
+      const message = event.data;
+      if (message.type !== "resolved") return;
+      if (message.requestId !== latestRequestRef.current) return;
+      const smoothed = smoothLabels(prevLabelsRef.current, message.payload, 0.2);
+      prevLabelsRef.current = smoothed;
+      setResolvedLabels(smoothed);
+    };
+    return () => {
+      worker.terminate();
+      workerRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
     if (driverEntries.length === 0) {
       prevLabelsRef.current = [];
-      return [];
+      setResolvedLabels([]);
+      return;
     }
 
     const prevMap = new Map<string, LabelRect>();
@@ -101,9 +144,27 @@ export const TrackView = ({
       };
     });
 
-    const resolved = resolveCollisions(rects, undefined, viewboxBounds);
-    prevLabelsRef.current = resolved;
-    return resolved;
+    const worker = workerRef.current;
+    if (!worker) {
+      const resolved = resolveCollisions(rects, undefined, viewboxBounds);
+      const smoothed = smoothLabels(prevLabelsRef.current, resolved, 0.2);
+      prevLabelsRef.current = smoothed;
+      setResolvedLabels(smoothed);
+      return;
+    }
+
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    latestRequestRef.current = requestId;
+    const message: LabelWorkerRequest = {
+      type: "resolve",
+      requestId,
+      payload: {
+        labels: rects,
+        viewbox: viewboxBounds,
+      },
+    };
+    worker.postMessage(message);
   }, [driverEntries, viewboxBounds]);
 
   const labelMap = useMemo(() => {
