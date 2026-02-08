@@ -5,10 +5,7 @@ import { getCompoundBadge, getCompoundLabel } from "../utils/format.util";
 
 type OvertakeRole = "overtaking" | "overtaken" | null;
 
-const getOvertakeRole = (
-  driverNumber: number,
-  activeOvertakes: OpenF1Overtake[],
-): OvertakeRole => {
+const getOvertakeRole = (driverNumber: number, activeOvertakes: OpenF1Overtake[]): OvertakeRole => {
   for (const ot of activeOvertakes) {
     if (driverNumber === ot.overtaking_driver_number) return "overtaking";
     if (driverNumber === ot.overtaken_driver_number) return "overtaken";
@@ -21,16 +18,11 @@ const overtakeStyles: Record<string, string> = {
   overtaken: "ring-2 ring-inset ring-red-400/70 bg-red-500/10",
 };
 
-export const TelemetryPanel = ({
-  summary,
-  rows,
-  activeOvertakes = [],
-}: TelemetryPanelProps) => {
+export const TelemetryPanel = ({ summary, rows, activeOvertakes = [] }: TelemetryPanelProps) => {
   return (
     <div className="flex h-full flex-col gap-3 rounded-xl border border-white/20 bg-white/5 p-4 backdrop-blur-xl">
       <div>
-        <div className="text-sm font-semibold text-white">Telemetry</div>
-        <div className="text-xs text-white/60">{summary.sessionLabel}</div>
+        <div className="text-sm font-semibold text-white">Leaderboard</div>
       </div>
 
       <div className="grid grid-cols-2 gap-2 text-[11px] text-white/70">
