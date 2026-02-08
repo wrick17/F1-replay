@@ -1,7 +1,11 @@
-import { type CacheMode, getPersisted, inFlight, responseCache, setPersisted } from "./cache";
-import { rateLimit, sleep } from "./rateLimiter";
+import { inFlight, responseCache, setPersisted } from "./cache";
+import { rateLimit } from "./rateLimiter";
 
 const API_BASE_URL = "https://api.openf1.org/v1";
+const WORKER_BASE_URL =
+  import.meta.env.RSBUILD_WORKER_URL ??
+  import.meta.env.VITE_WORKER_URL ??
+  "https://openf1-proxy.wrick17worker.workers.dev";
 
 export type QueryParams = Record<string, string | number | boolean | null | undefined>;
 
@@ -108,4 +112,53 @@ export const fetchChunked = async <T extends { date?: string }>(
     cursor = chunkEnd;
   }
   return results;
+};
+
+type WorkerReplayHit = {
+  status: "hit";
+  payload: ReplaySessionData;
+};
+
+type WorkerReplayMiss = {
+  status: "miss";
+  uploadToken: string;
+  expiresAt: string;
+};
+
+export const fetchReplayFromWorker = async (
+  sessionKey: number,
+  signal?: AbortSignal,
+): Promise<WorkerReplayHit | WorkerReplayMiss> => {
+  const url = `${WORKER_BASE_URL}/replay${buildQuery({ session_key: sessionKey })}`;
+  const response = await fetch(url, { signal });
+  if (response.status === 200) {
+    const payload = (await response.json()) as ReplaySessionData;
+    return { status: "hit", payload };
+  }
+  if (response.status === 202) {
+    const data = (await response.json()) as { uploadToken: string; expiresAt: string };
+    return { status: "miss", uploadToken: data.uploadToken, expiresAt: data.expiresAt };
+  }
+  throw new Error(`Replay cache request failed: ${response.status}`);
+};
+
+export const uploadReplayToWorker = async (
+  sessionKey: number,
+  payload: ReplaySessionData,
+  uploadToken: string,
+  signal?: AbortSignal,
+): Promise<void> => {
+  const url = `${WORKER_BASE_URL}/replay`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${uploadToken}`,
+    },
+    body: JSON.stringify({ session_key: sessionKey, payload }),
+    signal,
+  });
+  if (!response.ok && response.status !== 204) {
+    throw new Error(`Replay cache upload failed: ${response.status}`);
+  }
 };

@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fetchChunked, fetchOpenF1 } from "../api/openf1.client";
+import {
+  fetchChunked,
+  fetchOpenF1,
+  fetchReplayFromWorker,
+  uploadReplayToWorker,
+} from "../api/openf1.client";
 import {
   buildYearOptions,
   chunkAppend,
@@ -206,6 +211,16 @@ export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): R
     setDataRevision(0);
 
     const load = async () => {
+      const cached = await fetchReplayFromWorker(session.session_key, controller.signal);
+      if (cached.status === "hit") {
+        sessionCacheRef.current.set(session.session_key, cached.payload);
+        const latest = getLatestTelemetryTimestamp(cached.payload.telemetryByDriver);
+        if (!controller.signal.aborted) {
+          setAvailableEndMs(latest > 0 ? latest : cached.payload.sessionEndMs);
+        }
+        return cached.payload;
+      }
+
       const drivers = await fetchOpenF1<OpenF1Driver[]>(
         "drivers",
         { session_key: session.session_key },
@@ -373,6 +388,14 @@ export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): R
       });
 
       sessionCacheRef.current.set(session.session_key, baseData);
+      if (!controller.signal.aborted) {
+        void uploadReplayToWorker(
+          session.session_key,
+          baseData,
+          cached.uploadToken,
+          controller.signal,
+        ).catch(() => undefined);
+      }
       return baseData;
     };
 

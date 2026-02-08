@@ -1,3 +1,6 @@
 node_modules
 dist
 .env
+.wrangler/
+workers/openf1-proxy/.wrangler/
+workers/openf1-proxy/.dev.vars

@@ -1,0 +1,15 @@
+name = "openf1-proxy"
+main = "src/index.ts"
+compatibility_date = "2026-02-08"
+
+# Required secret (set via `wrangler secret put REPLAY_UPLOAD_SECRET`)
+# REPLAY_UPLOAD_SECRET = "<set in secret store>"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "openf1-replay"
+database_id = "8a38bf6e-2dcc-4dc9-a7cf-2d491aac3c6e"
+
+[[r2_buckets]]
+binding = "REPLAY_BUCKET"
+bucket_name = "openf1-replay-cache"

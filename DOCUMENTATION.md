@@ -16,7 +16,7 @@
 
 ## Overview
 
-F1 Replay is a frontend-only replay viewer for Formula 1 telemetry data. Built with React and powered by the OpenF1 API, this application allows users to visualize and replay F1 race sessions with real-time telemetry data, driver positions, team radio communications, and weather conditions.
+F1 Replay is a replay viewer for Formula 1 telemetry data. Built with React and powered by the OpenF1 API, this application uses a Cloudflare Worker to cache replay payloads so users can visualize and replay F1 race sessions with telemetry data, driver positions, team radio communications, and weather conditions.
 
 ## Features
 
@@ -173,19 +173,39 @@ bun run format
 bun run test
 ```
 
+### Worker Configuration
+
+The Cloudflare Worker requires:
+
+- D1 binding for replay cache metadata (table `replay_cache` keyed by `session_key`)
+- R2 bucket for replay payload storage
+- A secret used to sign short-lived upload tokens (e.g., `REPLAY_UPLOAD_SECRET`)
+- A public worker URL that the frontend can call
+
+Frontend configuration:
+
+- `RSBUILD_WORKER_URL` env var pointing to the worker base URL (for example: `http://127.0.0.1:8787` in local dev)
+
+Database setup:
+
+- Apply D1 migrations from `workers/openf1-proxy/migrations`
+- Example: `wrangler d1 migrations apply openf1-replay --local`
+
 ## Architecture
 
 ### Data Flow
 
 1. **Session Selection**: User selects year, round, and session type via `SessionPicker`
-2. **Data Fetching**: `useReplayData` hook fetches data from OpenF1 API in chunks
+2. **Data Fetching**: `useReplayData` requests a replay payload from the worker; on cache miss, the client aggregates OpenF1 data and backfills the cache
 3. **Data Processing**: Services transform raw API data into usable formats
 4. **State Management**: Replay state managed by `useReplayController`
 5. **Rendering**: Components react to state changes and display data
 
 ### API Integration
 
-The app uses the [OpenF1 API](https://openf1.org/) which provides:
+The app calls the [OpenF1 API](https://openf1.org/) directly for live data and uses a Cloudflare Worker for replay caching at `GET /replay` and `POST /replay`.
+
+OpenF1 endpoints used by the client include:
 - Meeting and session information
 - Driver position data
 - Telemetry (speed, gear, RPM, throttle, brake)
@@ -196,19 +216,15 @@ The app uses the [OpenF1 API](https://openf1.org/) which provides:
 
 ### Caching Strategy
 
-The application implements a multi-layer caching system:
+The application uses a write-once, read-forever caching system using Cloudflare D1 and R2:
 
-1. **In-Memory Cache**: Fast access to recently fetched data
-2. **Persistent Cache**: localStorage for session data across page reloads
-3. **In-Flight Deduplication**: Prevents duplicate concurrent requests
-4. **Chunked Loading**: Fetches large datasets in time-based chunks for better UX
+1. **Worker Cache (D1 + R2)**: Replay payload stored in R2 with metadata in D1 by `session_key`
+2. **Client Backfill**: On cache miss, the browser fetches OpenF1 data and uploads the payload to the worker
+3. **Optional Client Cache**: In-memory and IndexedDB caches remain as a secondary layer
 
 ### Rate Limiting
 
-Built-in rate limiting ensures compliance with OpenF1 API limits:
-- Automatic retry with exponential backoff
-- Respects `Retry-After` headers
-- Configurable request throttling
+The client performs sequential OpenF1 requests on cache miss to comply with API limits. The worker only handles cache reads and secure backfill writes.
 
 ## Components
 
@@ -278,8 +294,7 @@ Tooltips displaying event and radio communication details
 
 ### `useReplayData`
 Primary data management hook that:
-- Fetches all session data from OpenF1 API
-- Handles chunked loading for large datasets
+- Fetches aggregated session data from the worker
 - Manages loading states and errors
 - Provides available years and sessions
 - Returns structured `ReplaySessionData`
@@ -366,42 +381,48 @@ Weather data management:
 
 ## API Integration
 
-### OpenF1 Client (`openf1.client.ts`)
+### OpenF1 Worker (`workers/openf1-proxy`)
 
-#### `fetchOpenF1<T>(path, params, signal?, cacheMode?)`
-Main API client function:
-- Handles rate limiting
-- Implements retry logic
-- Supports caching modes: `no-store`, `cache`, `persist`
-- Returns typed responses
+The frontend calls a worker endpoint to read cached replay payloads. On cache miss, the worker returns a short-lived upload token so the browser can backfill the cache after aggregating OpenF1 data.
+
+#### `GET /replay?session_key=<id>`
+Behavior:
+- Checks D1 for a cached payload keyed by `session_key`
+- If present, streams payload from R2 (or legacy D1 payload if present)
+- If absent, returns `202` with `{ uploadToken, expiresAt }`
+
+#### `POST /replay`
+Body:
+- `session_key`: number
+- `payload`: `ReplaySessionData`
+
+Headers:
+- `Authorization: Bearer <uploadToken>`
+
+Behavior:
+- Validates the signed token (HMAC) and expiry for the given `session_key`
+- Stores payload in R2 and writes metadata to D1, then returns `204`
 
 **Example:**
 ```typescript
-const sessions = await fetchOpenF1<OpenF1Session[]>(
-  'sessions',
-  { year: 2024, session_name: 'Race' }
-);
+const response = await fetch(`/replay?session_key=${sessionKey}`);
+if (response.status === 202) {
+  const { uploadToken } = await response.json();
+  const payload = await buildReplayPayload(sessionKey);
+  await fetch("/replay", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${uploadToken}`,
+    },
+    body: JSON.stringify({ session_key: sessionKey, payload }),
+  });
+}
 ```
 
-#### `fetchChunked<T>(path, params, startMs, endMs, windowMs, onChunk?, signal?, cacheMode?)`
-Fetches large datasets in time-based chunks:
-- Prevents overwhelming the browser
-- Provides progress callbacks
-- Supports incremental rendering
+### OpenF1 API Endpoints
 
-**Example:**
-```typescript
-const positions = await fetchChunked<OpenF1Position>(
-  'position',
-  { session_key: sessionKey },
-  sessionStart,
-  sessionEnd,
-  60000, // 1 minute chunks
-  (chunk) => console.log(`Loaded ${chunk.length} positions`)
-);
-```
-
-### Available Endpoints
+These endpoints are called directly from the client (not via the worker).
 
 - `meetings`: Race weekend information
 - `sessions`: Session details
