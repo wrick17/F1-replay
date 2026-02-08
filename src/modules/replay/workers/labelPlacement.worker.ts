@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-import { resolveCollisions, type LabelRect, type ViewboxBounds } from "../utils/geometry.util";
+import { type LabelRect, resolveCollisions, type ViewboxBounds } from "../utils/geometry.util";
 
 type LabelWorkerRequest = {
   type: "resolve";
