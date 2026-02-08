@@ -115,7 +115,7 @@ export const ReplayPage = () => {
   );
 
   // Collapsible UI state (lightweight, not persisted)
-  const [legendCollapsed, setLegendCollapsed] = useState(false);
+  const [legendCollapsed, setLegendCollapsed] = useState(true);
   const [shortcutsCollapsed, setShortcutsCollapsed] = useState(true);
 
   const toggleLegendCollapsed = useCallback(() => setLegendCollapsed((prev) => !prev), []);
@@ -133,7 +133,8 @@ export const ReplayPage = () => {
     toggleTimelineExpanded: prefs.toggleTimelineExpanded,
   });
 
-  const skipIntervalLabel = SKIP_INTERVAL_LABELS[prefs.skipIntervalMs] ?? `${prefs.skipIntervalMs / 1000}s`;
+  const skipIntervalLabel =
+    SKIP_INTERVAL_LABELS[prefs.skipIntervalMs] ?? `${prefs.skipIntervalMs / 1000}s`;
 
   const drivers = data?.drivers ?? [];
 
