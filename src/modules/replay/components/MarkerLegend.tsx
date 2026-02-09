@@ -22,6 +22,9 @@ const LEGEND_ITEMS = [
 const SHORTCUT_ITEMS = [
   { key: "Space", description: "Play / Pause" },
   { key: "← / →", description: "Skip back / forward" },
+  { key: "↑ / ↓", description: "Next / previous round" },
+  { key: "Shift + ↑ / ↓", description: "Next / previous year" },
+  { key: "Ctrl + Shift + ↑ / ↓", description: "Next / previous session" },
   { key: "S", description: "Cycle speed" },
   { key: "M", description: "Toggle radio" },
   { key: "I", description: "Cycle skip interval" },

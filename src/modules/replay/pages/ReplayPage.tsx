@@ -6,7 +6,7 @@ import { SessionPicker } from "../components/SessionPicker";
 import { TelemetryPanel } from "../components/TelemetryPanel";
 import { TrackView } from "../components/TrackView";
 import { WeatherBadge } from "../components/WeatherBadge";
-import { SKIP_INTERVAL_LABELS } from "../constants/replay.constants";
+import { ALLOWED_SESSION_TYPES, SKIP_INTERVAL_LABELS } from "../constants/replay.constants";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useReplayController } from "../hooks/useReplayController";
 import { useReplayData } from "../hooks/useReplayData";
@@ -129,6 +129,78 @@ export const ReplayPage = () => {
   const toggleLegendCollapsed = useCallback(() => setLegendCollapsed((prev) => !prev), []);
   const toggleShortcutsCollapsed = useCallback(() => setShortcutsCollapsed((prev) => !prev), []);
 
+  const availableSessionTypes = useMemo(() => {
+    const sessionSet = new Set(sessions.map((entry) => entry.session_type));
+    return ALLOWED_SESSION_TYPES.filter((entry) => sessionSet.has(entry));
+  }, [sessions]);
+
+  const nextRound = useCallback(() => {
+    if (!meetings.length) {
+      return;
+    }
+    session.manualRoundRef.current = true;
+    session.setRound((prev) => Math.min(prev + 1, meetings.length));
+  }, [meetings.length, session]);
+
+  const prevRound = useCallback(() => {
+    if (!meetings.length) {
+      return;
+    }
+    session.manualRoundRef.current = true;
+    session.setRound((prev) => Math.max(prev - 1, 1));
+  }, [meetings.length, session]);
+
+  const nextYear = useCallback(() => {
+    if (!availableYears.length) {
+      return;
+    }
+    const sorted = [...availableYears].sort((a, b) => b - a);
+    const index = sorted.indexOf(session.year);
+    const nextIndex = Math.max(0, index - 1);
+    session.setYear(sorted[nextIndex] ?? sorted[0]);
+  }, [availableYears, session]);
+
+  const prevYear = useCallback(() => {
+    if (!availableYears.length) {
+      return;
+    }
+    const sorted = [...availableYears].sort((a, b) => b - a);
+    const index = sorted.indexOf(session.year);
+    const nextIndex = Math.min(sorted.length - 1, index + 1);
+    session.setYear(sorted[nextIndex] ?? sorted[sorted.length - 1]);
+  }, [availableYears, session]);
+
+  const nextSession = useCallback(() => {
+    if (!availableSessionTypes.length) {
+      return;
+    }
+    const currentIndex = ALLOWED_SESSION_TYPES.indexOf(session.sessionType);
+    for (let i = 1; i <= ALLOWED_SESSION_TYPES.length; i += 1) {
+      const nextType = ALLOWED_SESSION_TYPES[(currentIndex + i) % ALLOWED_SESSION_TYPES.length];
+      if (availableSessionTypes.includes(nextType)) {
+        session.setSessionType(nextType);
+        return;
+      }
+    }
+  }, [availableSessionTypes, session]);
+
+  const prevSession = useCallback(() => {
+    if (!availableSessionTypes.length) {
+      return;
+    }
+    const currentIndex = ALLOWED_SESSION_TYPES.indexOf(session.sessionType);
+    for (let i = 1; i <= ALLOWED_SESSION_TYPES.length; i += 1) {
+      const nextType =
+        ALLOWED_SESSION_TYPES[
+          (currentIndex - i + ALLOWED_SESSION_TYPES.length) % ALLOWED_SESSION_TYPES.length
+        ];
+      if (availableSessionTypes.includes(nextType)) {
+        session.setSessionType(nextType);
+        return;
+      }
+    }
+  }, [availableSessionTypes, session]);
+
   // Keyboard shortcuts
   useKeyboardShortcuts({
     togglePlay: replay.togglePlay,
@@ -139,6 +211,12 @@ export const ReplayPage = () => {
     toggleRadio: prefs.toggleRadio,
     cycleSkipInterval: prefs.cycleSkipInterval,
     toggleTimelineExpanded: prefs.toggleTimelineExpanded,
+    nextRound,
+    prevRound,
+    nextYear,
+    prevYear,
+    nextSession,
+    prevSession,
   });
 
   const skipIntervalLabel =

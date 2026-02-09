@@ -9,6 +9,12 @@ type KeyboardShortcutActions = {
   toggleRadio: () => void;
   cycleSkipInterval: () => void;
   toggleTimelineExpanded: () => void;
+  nextRound: () => void;
+  prevRound: () => void;
+  nextYear: () => void;
+  prevYear: () => void;
+  nextSession: () => void;
+  prevSession: () => void;
 };
 
 const IGNORED_TAG_NAMES = new Set(["INPUT", "TEXTAREA", "SELECT"]);
@@ -23,6 +29,39 @@ export const useKeyboardShortcuts = (actions: KeyboardShortcutActions) => {
       if (target && IGNORED_TAG_NAMES.has(target.tagName)) return;
 
       const a = actionsRef.current;
+      const isArrowUp = e.key === "ArrowUp";
+      const isArrowDown = e.key === "ArrowDown";
+
+      if (isArrowUp || isArrowDown) {
+        const isSessionCombo = e.shiftKey && (e.ctrlKey || e.metaKey);
+        const isYearCombo = e.shiftKey && !e.ctrlKey && !e.metaKey;
+        if (isSessionCombo) {
+          e.preventDefault();
+          if (isArrowUp) {
+            a.nextSession();
+          } else {
+            a.prevSession();
+          }
+          return;
+        }
+        if (isYearCombo) {
+          e.preventDefault();
+          if (isArrowUp) {
+            a.nextYear();
+          } else {
+            a.prevYear();
+          }
+          return;
+        }
+        if (!e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          e.preventDefault();
+          if (isArrowUp) {
+            a.prevRound();
+          } else {
+            a.nextRound();
+          }
+        }
+      }
 
       switch (e.key) {
         case " ":
