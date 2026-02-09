@@ -64,6 +64,7 @@ export const TimelineSlider = ({
   const [autoShownEvent, setAutoShownEvent] = useState<TimelineEvent | null>(null);
   const [autoHoverPos, setAutoHoverPos] = useState<{ x: number; y: number } | null>(null);
   const autoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoRadioPlaybackRef = useRef(false);
   const processedEventsRef = useRef(new Set<string>());
   const lastTimeMsRef = useRef(currentTimeMs);
 
@@ -111,10 +112,33 @@ export const TimelineSlider = ({
     [startTimeMs, duration, onSeek],
   );
 
+  const clearAutoPopup = useCallback(() => {
+    if (autoTimerRef.current) {
+      clearTimeout(autoTimerRef.current);
+      autoTimerRef.current = null;
+    }
+    setAutoShownEvent(null);
+    setAutoHoverPos(null);
+    autoRadioPlaybackRef.current = false;
+  }, []);
+
+  const closeAllPopups = useCallback(() => {
+    if (hoveredEventRef.current?.type === "radio" && isRadioPlayingRef.current) {
+      onStopRadioRef.current();
+    }
+    if (autoShownEventRef.current?.type === "radio" && isRadioPlayingRef.current) {
+      onStopRadioRef.current();
+    }
+    setHoveredEvent(null);
+    setHoverPos(null);
+    clearAutoPopup();
+  }, [clearAutoPopup]);
+
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       isDragging.current = true;
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      closeAllPopups();
 
       // In expanded mode, pause race on drag start
       if (expandedRef.current) {
@@ -129,7 +153,7 @@ export const TimelineSlider = ({
 
       seekFromPointer(e.clientX);
     },
-    [seekFromPointer],
+    [closeAllPopups, seekFromPointer],
   );
 
   const onPointerMove = useCallback(
@@ -167,15 +191,6 @@ export const TimelineSlider = ({
     const rect = buttonEl.getBoundingClientRect();
     setHoverPos({ x: rect.left + rect.width / 2, y: rect.top });
   };
-
-  const clearAutoPopup = useCallback(() => {
-    if (autoTimerRef.current) {
-      clearTimeout(autoTimerRef.current);
-      autoTimerRef.current = null;
-    }
-    setAutoShownEvent(null);
-    setAutoHoverPos(null);
-  }, []);
 
   const closePopup = useCallback(() => {
     if (hoveredEvent?.type === "radio" && isRadioPlaying) {
@@ -243,12 +258,17 @@ export const TimelineSlider = ({
 
             setAutoShownEvent(event);
             setAutoHoverPos({ x, y });
+            autoRadioPlaybackRef.current = false;
 
             if (event.type === "radio" && radioEnabledRef.current) {
               onPlayRadioRef.current(event.data as TimedSample<OpenF1TeamRadio>);
             }
 
             autoTimerRef.current = setTimeout(() => {
+              if (event.type === "radio" && isRadioPlayingRef.current) {
+                autoTimerRef.current = null;
+                return;
+              }
               setAutoShownEvent((current) => {
                 if (current === event) {
                   if (event.type === "radio") {
@@ -267,6 +287,25 @@ export const TimelineSlider = ({
       }
     }
   }, [currentTimeMs, computeMarkerPercent]);
+
+  useEffect(() => {
+    if (autoShownEvent?.type !== "radio") {
+      autoRadioPlaybackRef.current = false;
+      return;
+    }
+    if (isRadioPlaying) {
+      autoRadioPlaybackRef.current = true;
+      if (autoTimerRef.current) {
+        clearTimeout(autoTimerRef.current);
+        autoTimerRef.current = null;
+      }
+      return;
+    }
+    if (autoRadioPlaybackRef.current) {
+      autoRadioPlaybackRef.current = false;
+      clearAutoPopup();
+    }
+  }, [autoShownEvent, isRadioPlaying, clearAutoPopup]);
 
   // Handle race pause/resume -> radio pause/resume
   useEffect(() => {
