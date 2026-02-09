@@ -6,6 +6,7 @@ import {
   computeLabelOffset,
   getLabelWidth,
   LABEL_HEIGHT,
+  LABEL_PADDING,
   type LabelRect,
   resolveCollisions,
   smoothLabels,
@@ -13,6 +14,10 @@ import {
   VIEWBOX_PADDING,
   type ViewboxBounds,
 } from "../utils/geometry.util";
+
+const LABEL_LOGO_SIZE = 18;
+const LABEL_LOGO_GAP = 6;
+const MAX_POSITION_LABEL = "20";
 
 type TrackSegment = {
   d: string;
@@ -111,6 +116,7 @@ export const TrackView = ({
   trackPath,
   driverStates,
   driverNames,
+  driverTeams,
   selectedDrivers,
   className,
 }: TrackViewProps) => {
@@ -215,28 +221,50 @@ export const TrackView = ({
     } ${width + VIEWBOX_PADDING * 2} ${height + VIEWBOX_PADDING * 2}`;
   }, [bounds]);
 
+  const labelWidthMap = useMemo(() => {
+    const map = new Map<number, number>();
+    Object.entries(driverNames).forEach(([driverKey, name]) => {
+      const driverNumber = Number(driverKey);
+      const driverLabel = name || `#${driverNumber}`;
+      const width =
+        getLabelWidth(`${MAX_POSITION_LABEL} ${driverLabel}`) + LABEL_LOGO_SIZE + LABEL_LOGO_GAP;
+      map.set(driverNumber, width);
+    });
+    return map;
+  }, [driverNames]);
+
   const driverEntries = useMemo(() => {
     return Object.entries(driverStates)
       .filter(([, state]) => state.position !== null)
       .map(([driverKey, state]) => {
         const driverNumber = Number(driverKey);
         const position = toPoint2D(state.position as NonNullable<typeof state.position>);
-        const name = driverNames[driverNumber] ?? String(driverNumber);
-        const labelText = state.racePosition ? `P${state.racePosition} ${name}` : name;
         const offset = computeLabelOffset(position, bounds.center);
+        const team = driverTeams[driverNumber];
+        const driverLabel = driverNames[driverNumber] ?? `#${driverNumber}`;
+        const positionLabel =
+          state.racePosition === null || state.racePosition === undefined
+            ? "-"
+            : String(state.racePosition);
+        const labelText = `${positionLabel} ${driverLabel}`;
+        const labelWidth =
+          labelWidthMap.get(driverNumber) ??
+          getLabelWidth(`${MAX_POSITION_LABEL} ${driverLabel}`) + LABEL_LOGO_SIZE + LABEL_LOGO_GAP;
         return {
           driverKey,
           driverNumber,
           position,
-          labelText,
-          labelWidth: getLabelWidth(labelText),
+          labelWidth,
           initialLabelX: position.x + offset.x,
           initialLabelY: position.y + offset.y,
           color: state.color,
           isSelected: selectedDrivers.includes(driverNumber),
+          team,
+          labelText,
         };
-      });
-  }, [driverStates, driverNames, bounds.center, selectedDrivers]);
+      })
+      .sort((a, b) => a.driverNumber - b.driverNumber);
+  }, [driverStates, driverTeams, driverNames, bounds.center, selectedDrivers, labelWidthMap]);
 
   const prevLabelsRef = useRef<LabelRect[]>([]);
   const workerRef = useRef<Worker | null>(null);
@@ -268,7 +296,7 @@ export const TrackView = ({
       const message = event.data;
       if (message.type !== "resolved") return;
       if (message.requestId !== latestRequestRef.current) return;
-      const smoothed = smoothLabels(prevLabelsRef.current, message.payload, 0.2);
+      const smoothed = smoothLabels(prevLabelsRef.current, message.payload, 0.08);
       prevLabelsRef.current = smoothed;
       setResolvedLabels(smoothed);
     };
@@ -290,7 +318,7 @@ export const TrackView = ({
       prevMap.set(label.key, label);
     }
     const hasPrev = prevMap.size > 0;
-    const smoothFactor = 0.18;
+    const smoothFactor = 0.05;
 
     // Build rects starting from previous resolved positions (if available)
     // and gently pulling toward new ideal positions.
@@ -315,7 +343,7 @@ export const TrackView = ({
     const worker = workerRef.current;
     if (!worker) {
       const resolved = resolveCollisions(rects, undefined, viewboxBounds);
-      const smoothed = smoothLabels(prevLabelsRef.current, resolved, 0.2);
+      const smoothed = smoothLabels(prevLabelsRef.current, resolved, 0.08);
       prevLabelsRef.current = smoothed;
       setResolvedLabels(smoothed);
       return;
@@ -356,7 +384,14 @@ export const TrackView = ({
         const resolved = labelMap.get(entry.driverKey);
         const labelX = resolved?.x ?? entry.initialLabelX;
         const labelY = resolved?.y ?? entry.initialLabelY;
-        const colorBarWidth = 4;
+        const teamLogo = entry.team?.logoUrl;
+        const teamInitials = entry.team?.initials ?? "?";
+        const logoSize = LABEL_LOGO_SIZE;
+        const labelLeft = -entry.labelWidth / 2;
+        const logoX = labelLeft + LABEL_PADDING;
+        const logoCenterX = logoX + logoSize / 2;
+        const textX = logoX + logoSize + LABEL_LOGO_GAP;
+        const clipId = `logo-clip-${entry.driverKey}`;
 
         return (
           <g key={entry.driverKey}>
@@ -373,38 +408,50 @@ export const TrackView = ({
             {/* Label pill */}
             <g transform={`translate(${labelX}, ${labelY})`}>
               <rect
-                x={-entry.labelWidth / 2}
+                x={labelLeft}
                 y={-LABEL_HEIGHT / 2}
                 width={entry.labelWidth}
                 height={LABEL_HEIGHT}
-                rx="4"
+                rx="8"
                 fill="rgba(0,0,0,0.85)"
                 stroke="rgba(255,255,255,0.2)"
                 strokeWidth="0.8"
               />
-              {/* Color accent bar on left edge */}
-              <rect
-                x={-entry.labelWidth / 2}
-                y={-LABEL_HEIGHT / 2}
-                width={colorBarWidth}
-                height={LABEL_HEIGHT}
-                rx="4"
-                fill={entry.color}
-              />
-              {/* Cover the right-side rounding of the color bar */}
-              <rect
-                x={-entry.labelWidth / 2 + colorBarWidth - 2}
-                y={-LABEL_HEIGHT / 2}
-                width={4}
-                height={LABEL_HEIGHT}
-                fill="rgba(0,0,0,0.85)"
-              />
+              <defs>
+                <clipPath id={clipId} clipPathUnits="userSpaceOnUse">
+                  <circle cx={logoCenterX} cy={0} r={logoSize / 2} />
+                </clipPath>
+              </defs>
+              <circle cx={logoCenterX} cy={0} r={logoSize / 2} fill="rgba(255,255,255,0.08)" />
+              {teamLogo ? (
+                <image
+                  href={teamLogo}
+                  x={logoX}
+                  y={-logoSize / 2}
+                  width={logoSize}
+                  height={logoSize}
+                  preserveAspectRatio="xMidYMid slice"
+                  clipPath={`url(#${clipId})`}
+                />
+              ) : (
+                <text
+                  textAnchor="middle"
+                  x={logoCenterX}
+                  dy="4"
+                  fill="#FFFFFF"
+                  fontSize="9"
+                  fontWeight="700"
+                  fontFamily="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif"
+                >
+                  {teamInitials}
+                </text>
+              )}
               <text
-                textAnchor="middle"
-                x={colorBarWidth / 2}
-                dy="4.5"
+                textAnchor="start"
+                x={textX}
+                dy="4"
                 fill="#FFFFFF"
-                fontSize="13"
+                fontSize="11"
                 fontWeight="600"
                 fontFamily="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif"
               >

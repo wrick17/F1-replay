@@ -6,6 +6,7 @@ import type {
 } from "../types/openf1.types";
 import type { TelemetryRow, TelemetrySummary } from "../types/replay.types";
 import { formatTelemetryLabel } from "../utils/format.util";
+import { getTeamDisplayName, getTeamInitials, getTeamLogoUrl } from "../utils/teamBranding.util";
 import {
   findSampleAtTime,
   getCurrentPosition,
@@ -104,11 +105,15 @@ export const computeTelemetryRows = (
       const stints = telemetry?.stints ?? [];
       const stint = getCurrentStint(stints, lapNumber);
       const fallbackStint = stint ?? (stints.length > 0 ? stints[stints.length - 1] : null);
+      const teamName = getTeamDisplayName(driver.team_name);
       return {
         driverNumber: driver.driver_number,
         driverName: formatTelemetryLabel(driver),
         driverAcronym: driver.name_acronym,
         headshotUrl: driver.headshot_url ?? null,
+        teamName,
+        teamLogoUrl: getTeamLogoUrl(teamName),
+        teamInitials: getTeamInitials(teamName),
         lapDurationSeconds: lapSample?.lap_duration ?? null,
         isPitOutLap: lapSample?.is_pit_out_lap ?? null,
         position: positionSample?.position ?? null,

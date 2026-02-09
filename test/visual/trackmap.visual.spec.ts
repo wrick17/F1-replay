@@ -190,22 +190,25 @@ describe("trackmap visual layout", () => {
       it(
         `round ${round} (${viewport.name}) has safe labels`,
         async () => {
-        if (!browser) {
-          throw new Error("Browser not available");
-        }
-        const context = await browser.newContext({
-          viewport: { width: viewport.width, height: viewport.height },
-        });
-        const page = await context.newPage();
-        try {
-          const url = `${APP_URL}?year=${YEAR}&round=${round}&session=Race`;
-          page.setDefaultTimeout(120_000);
-          await page.goto(url, { waitUntil: "domcontentloaded" });
-          await page.waitForSelector("svg[aria-label='F1 track replay']");
-          await page.waitForFunction(
-            () => document.querySelectorAll("svg[aria-label='F1 track replay'] text").length > 10,
-          );
-          await page.waitForTimeout(500);
+          if (!browser) {
+            throw new Error("Browser not available");
+          }
+          const context = await browser.newContext({
+            viewport: { width: viewport.width, height: viewport.height },
+          });
+          const page = await context.newPage();
+          try {
+            const url = `${APP_URL}?year=${YEAR}&round=${round}&session=Race`;
+            page.setDefaultTimeout(120_000);
+            await page.goto(url, { waitUntil: "domcontentloaded" });
+            await page.waitForSelector("svg[aria-label='F1 track replay']");
+            await page.waitForFunction(
+              () =>
+                document.querySelectorAll(
+                  "svg[aria-label='F1 track replay'] rect[stroke='rgba(255,255,255,0.2)']",
+                ).length > 10,
+            );
+            await page.waitForTimeout(500);
 
           const trackPathBox = await getTrackPathRect(page);
           const telemetryBox = await getRect(page, "aside");
@@ -229,50 +232,50 @@ describe("trackmap visual layout", () => {
             maxTrackOverlapRatio,
           );
 
-          const labelRects = await getRects(
-            page,
-            "svg[aria-label='F1 track replay'] rect[stroke='rgba(255,255,255,0.2)']",
-          );
-          const dotRects = await getRects(
-            page,
-            "svg[aria-label='F1 track replay'] circle",
-          );
-          expect(labelRects.length).toBeGreaterThan(10);
-          expect(dotRects.length).toBeGreaterThan(10);
+            const labelRects = await getRects(
+              page,
+              "svg[aria-label='F1 track replay'] rect[stroke='rgba(255,255,255,0.2)']",
+            );
+            const dotRects = await getRects(
+              page,
+              "svg[aria-label='F1 track replay'] circle",
+            );
+            expect(labelRects.length).toBeGreaterThan(10);
+            expect(dotRects.length).toBeGreaterThan(10);
 
-          for (const label of labelRects) {
-            expect(overlapArea(label, telemetryBox)).toBeLessThan(2);
-            expect(overlapArea(label, headerBox)).toBeLessThan(2);
-            expect(overlapArea(label, footerBox)).toBeLessThan(2);
-          }
+            for (const label of labelRects) {
+              expect(overlapArea(label, telemetryBox)).toBeLessThan(2);
+              expect(overlapArea(label, headerBox)).toBeLessThan(2);
+              expect(overlapArea(label, footerBox)).toBeLessThan(2);
+            }
 
-          const maxLabelOverlapArea = 60;
-          for (let i = 0; i < labelRects.length; i += 1) {
-            for (let j = i + 1; j < labelRects.length; j += 1) {
-              const a = labelRects[i];
-              const b = labelRects[j];
-              if (intersects(a, b)) {
-                expect(overlapArea(a, b)).toBeLessThan(maxLabelOverlapArea);
+            const maxLabelOverlapArea = 60;
+            for (let i = 0; i < labelRects.length; i += 1) {
+              for (let j = i + 1; j < labelRects.length; j += 1) {
+                const a = labelRects[i];
+                const b = labelRects[j];
+                if (intersects(a, b)) {
+                  expect(overlapArea(a, b)).toBeLessThan(maxLabelOverlapArea);
+                }
               }
             }
-          }
 
-          const distanceScale = 0.5;
-          const maxDistance = Math.max(trackPathBox.width, trackPathBox.height) * distanceScale;
-          for (const label of labelRects) {
-            const closest = dotRects.reduce((best, dot) => {
-              const dx = label.centerX - dot.centerX;
-              const dy = label.centerY - dot.centerY;
-              const dist = Math.hypot(dx, dy);
-              return dist < best ? dist : best;
-            }, Number.POSITIVE_INFINITY);
-            expect(closest).toBeLessThan(maxDistance);
+            const distanceScale = 0.5;
+            const maxDistance = Math.max(trackPathBox.width, trackPathBox.height) * distanceScale;
+            for (const label of labelRects) {
+              const closest = dotRects.reduce((best, dot) => {
+                const dx = label.centerX - dot.centerX;
+                const dy = label.centerY - dot.centerY;
+                const dist = Math.hypot(dx, dy);
+                return dist < best ? dist : best;
+              }, Number.POSITIVE_INFINITY);
+              expect(closest).toBeLessThan(maxDistance);
+            }
+          } finally {
+            await context.close();
           }
-        } finally {
-          await context.close();
-        }
-      },
-      180_000,
+        },
+        180_000,
       );
     }
   }

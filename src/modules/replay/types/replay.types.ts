@@ -27,6 +27,9 @@ export type TelemetryRow = {
   driverName: string;
   driverAcronym: string;
   headshotUrl: string | null;
+  teamName: string;
+  teamLogoUrl: string | null;
+  teamInitials: string;
   lapDurationSeconds: number | null;
   isPitOutLap: boolean | null;
   position: number | null;
@@ -56,8 +59,15 @@ export type TrackViewProps = {
   trackPath: NormalizedPosition[];
   driverStates: Record<number, DriverRenderState>;
   driverNames: Record<number, string>;
+  driverTeams: Record<number, TeamBranding>;
   selectedDrivers: number[];
   className?: string;
+};
+
+export type TeamBranding = {
+  name: string;
+  logoUrl: string | null;
+  initials: string;
 };
 
 export type ControlsBarProps = {

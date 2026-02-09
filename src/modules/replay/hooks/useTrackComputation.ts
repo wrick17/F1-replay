@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useRef } from "react";
-import { buildDriverNames, computeDriverStates } from "../services/driverState.service";
+import {
+  buildDriverNames,
+  buildDriverTeams,
+  computeDriverStates,
+} from "../services/driverState.service";
 import { buildReferencePositions, buildTrackPath } from "../services/trackBuilder.service";
 import type { ReplaySessionData } from "../types/openf1.types";
-import type { DriverRenderState } from "../types/replay.types";
+import type { DriverRenderState, TeamBranding } from "../types/replay.types";
 import type { NormalizedPosition } from "../utils/telemetry.util";
 import { normalizePositions } from "../utils/telemetry.util";
 
@@ -109,6 +113,7 @@ type UseTrackComputationResult = {
   trackPath: NormalizedPosition[];
   driverStates: Record<number, DriverRenderState>;
   driverNames: Record<number, string>;
+  driverTeams: Record<number, TeamBranding>;
 };
 
 export const useTrackComputation = ({
@@ -206,6 +211,13 @@ export const useTrackComputation = ({
     [smoothedDriverStates, rotationAngle],
   );
 
+  const driverTeams = useMemo(() => {
+    if (!data) {
+      return {};
+    }
+    return buildDriverTeams(data.drivers);
+  }, [data]);
+
   const driverNames = useMemo(() => {
     if (!data) {
       return {};
@@ -217,5 +229,6 @@ export const useTrackComputation = ({
     trackPath,
     driverStates,
     driverNames,
+    driverTeams,
   };
 };

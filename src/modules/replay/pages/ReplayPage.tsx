@@ -62,7 +62,7 @@ export const ReplayPage = () => {
     replay.setSpeed(prefs.speed);
   }, [prefs.speed]);
 
-  const { trackPath, driverStates, driverNames } = useTrackComputation({
+  const { trackPath, driverStates, driverNames, driverTeams } = useTrackComputation({
     data,
     dataRevision,
     currentTimeMs: replay.currentTimeMs,
@@ -294,6 +294,7 @@ export const ReplayPage = () => {
           trackPath={trackPath}
           driverStates={driverStates}
           driverNames={driverNames}
+          driverTeams={driverTeams}
           selectedDrivers={selectedDrivers}
           className="h-full w-full"
         />

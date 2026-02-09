@@ -1,6 +1,7 @@
 import type { OpenF1Driver, ReplaySessionData } from "../types/openf1.types";
-import type { DriverRenderState } from "../types/replay.types";
+import type { DriverRenderState, TeamBranding } from "../types/replay.types";
 import { formatTrackLabel } from "../utils/format.util";
+import { getTeamDisplayName, getTeamInitials, getTeamLogoUrl } from "../utils/teamBranding.util";
 import { getCurrentPosition, interpolateLocation } from "../utils/telemetry.util";
 
 type Normalization = {
@@ -48,6 +49,18 @@ export const computeDriverStates = (
 export const buildDriverNames = (drivers: OpenF1Driver[]): Record<number, string> => {
   return drivers.reduce<Record<number, string>>((acc, driver) => {
     acc[driver.driver_number] = formatTrackLabel(driver);
+    return acc;
+  }, {});
+};
+
+export const buildDriverTeams = (drivers: OpenF1Driver[]): Record<number, TeamBranding> => {
+  return drivers.reduce<Record<number, TeamBranding>>((acc, driver) => {
+    const name = getTeamDisplayName(driver.team_name);
+    acc[driver.driver_number] = {
+      name,
+      logoUrl: getTeamLogoUrl(name),
+      initials: getTeamInitials(name),
+    };
     return acc;
   }, {});
 };

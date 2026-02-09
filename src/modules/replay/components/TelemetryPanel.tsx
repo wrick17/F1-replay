@@ -37,6 +37,8 @@ const TelemetryRowItem = memo(
   ({ row, overtakeRole }: TelemetryRowProps) => {
     const overtakeClass = overtakeRole ? overtakeStyles[overtakeRole] : "";
     const lapDurationLabel = formatLapDuration(row.lapDurationSeconds);
+    const compoundLabel = getCompoundLabel(row.compound);
+    const lapCompoundLabel = row.lap ? `L${row.lap} · ${compoundLabel}` : `L-- · ${compoundLabel}`;
     return (
       <motion.div
         layout="position"
@@ -48,10 +50,10 @@ const TelemetryRowItem = memo(
           opacity: { duration: 0.2 },
           scale: { duration: 0.2 },
         }}
-        className={`grid grid-cols-[0.45fr_2fr_0.55fr_0.55fr] items-center gap-1 rounded-lg bg-white/5 px-2 py-2 transition-shadow duration-500 ${overtakeClass}`}
+        className={`grid grid-cols-[0.4fr_2.6fr_0.7fr] items-center gap-1 rounded-lg bg-white/5 px-2 py-2 transition-shadow duration-500 ${overtakeClass}`}
       >
         <div className="text-center text-white/80">{row.position ?? "-"}</div>
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 items-center gap-1">
           <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10 text-[10px] font-semibold text-white/70">
             {row.headshotUrl ? (
               <img
@@ -65,19 +67,35 @@ const TelemetryRowItem = memo(
               <span>{row.driverAcronym || row.driverNumber}</span>
             )}
           </div>
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-white/5 text-[9px] font-semibold text-white/60">
+            {row.teamLogoUrl ? (
+              <img
+                src={row.teamLogoUrl}
+                alt={`${row.teamName} logo`}
+                className="h-full w-full rounded-full object-cover"
+                loading="lazy"
+                decoding="async"
+              />
+            ) : (
+              <span>{row.teamInitials || row.teamName.charAt(0)}</span>
+            )}
+          </div>
           <div className="min-w-0">
             <div className="truncate text-white">{row.driverName}</div>
-            <div className="text-[10px] text-white/40">
-              #{row.driverNumber}
-              {row.driverAcronym ? ` · ${row.driverAcronym}` : ""} · {lapDurationLabel}
+            <div className="flex min-w-0 items-center gap-1 overflow-hidden text-[10px] text-white/40">
+              <span className="shrink-0">#{row.driverNumber}</span>
+              {row.driverAcronym ? <span className="shrink-0">· {row.driverAcronym}</span> : null}
+              <span className="shrink-0">·</span>
+              <Tooltip content={row.teamName}>
+                <span className="min-w-0 flex-1 truncate">{row.teamName}</span>
+              </Tooltip>
             </div>
           </div>
         </div>
-        <div className="text-center text-white/80">{row.lap ?? "-"}</div>
         <div className="flex justify-center">
-          <Tooltip content={getCompoundLabel(row.compound)}>
-            <span className="rounded-full border border-white/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white/70">
-              {getCompoundBadge(row.compound)}
+          <Tooltip content={`${lapCompoundLabel} · ${lapDurationLabel}`}>
+            <span className="rounded-full border border-white/20 px-2 py-0.5 text-[10px] font-semibold uppercase text-white/70">
+              {row.lap ?? "--"} · {getCompoundBadge(row.compound)}
             </span>
           </Tooltip>
         </div>
@@ -90,6 +108,9 @@ const TelemetryRowItem = memo(
     prev.row.driverName === next.row.driverName &&
     prev.row.driverAcronym === next.row.driverAcronym &&
     prev.row.headshotUrl === next.row.headshotUrl &&
+    prev.row.teamName === next.row.teamName &&
+    prev.row.teamLogoUrl === next.row.teamLogoUrl &&
+    prev.row.teamInitials === next.row.teamInitials &&
     prev.row.lapDurationSeconds === next.row.lapDurationSeconds &&
     prev.row.position === next.row.position &&
     prev.row.lap === next.row.lap &&
@@ -142,11 +163,10 @@ export const TelemetryPanel = ({
       </div>
 
       <div className="flex-1 overflow-y-auto pr-1">
-        <div className="grid grid-cols-[0.45fr_2fr_0.55fr_0.55fr] gap-1 text-[10px] uppercase text-white/40">
+        <div className="grid grid-cols-[0.4fr_2.6fr_0.7fr] gap-1 text-[10px] uppercase text-white/40">
           <span className="text-center">Pos</span>
           <span>Driver</span>
-          <span className="text-center">Lap</span>
-          <span className="text-center">Tyre</span>
+          <span className="text-center">Lap/Tyre</span>
         </div>
         <div className="mt-2 flex flex-col gap-2 text-xs">
           <AnimatePresence initial={false} mode="popLayout">
@@ -154,18 +174,18 @@ export const TelemetryPanel = ({
               ? SKELETON_ROWS.map((key) => (
                   <div
                     key={key}
-                    className="grid grid-cols-[0.45fr_2fr_0.55fr_0.55fr] items-center gap-1 rounded-lg bg-white/5 px-2 py-2"
+                    className="grid grid-cols-[0.4fr_2.6fr_0.7fr] items-center gap-1 rounded-lg bg-white/5 px-2 py-2"
                   >
                     <div className="h-3 w-6 justify-self-center rounded bg-white/10 animate-pulse" />
-                    <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex min-w-0 items-center gap-1">
                       <div className="h-7 w-7 rounded-full bg-white/10 animate-pulse" />
+                      <div className="h-6 w-6 rounded-full bg-white/10 animate-pulse" />
                       <div className="min-w-0 flex-1 space-y-1">
                         <div className="h-3 w-24 rounded bg-white/10 animate-pulse" />
-                        <div className="h-2 w-16 rounded bg-white/10 animate-pulse" />
+                        <div className="h-2 w-20 rounded bg-white/10 animate-pulse" />
                       </div>
                     </div>
-                    <div className="h-3 w-6 justify-self-center rounded bg-white/10 animate-pulse" />
-                    <div className="h-4 w-10 justify-self-center rounded-full bg-white/10 animate-pulse" />
+                    <div className="h-4 w-16 justify-self-center rounded-full bg-white/10 animate-pulse" />
                   </div>
                 ))
               : rows.map((row) => (
