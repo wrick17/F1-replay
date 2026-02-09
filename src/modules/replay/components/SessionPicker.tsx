@@ -15,8 +15,9 @@ export const SessionPicker = ({
   round,
   sessionType,
   meetings,
-  sessions,
+  sessions: _sessions,
   yearOptions: availableYears,
+  isLoading = false,
   onYearChange,
   onRoundChange,
   onSessionTypeChange,
@@ -29,9 +30,6 @@ export const SessionPicker = ({
     round: index + 1,
     label: meeting.meeting_name,
   }));
-  const availableTypes = sessions.map((session) => session.session_type);
-  const hasSessionType = availableTypes.includes(sessionType);
-
   return (
     <div className="flex w-full flex-nowrap items-end gap-2 overflow-hidden text-xs md:flex-wrap md:items-center md:gap-3">
       <div className="flex w-20 flex-col gap-1 sm:w-24 md:w-auto">
@@ -41,6 +39,7 @@ export const SessionPicker = ({
           name="replay-year"
           value={year}
           onChange={(event) => onYearChange(Number(event.target.value))}
+          disabled={isLoading}
           className="w-full appearance-none rounded-md border border-white/20 bg-white/5 px-2 py-2 text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E10600]/70 md:px-3"
         >
           {yearOptions.map((option) => (
@@ -57,6 +56,7 @@ export const SessionPicker = ({
           name="replay-round"
           value={round}
           onChange={(event) => onRoundChange(Number(event.target.value))}
+          disabled={isLoading}
           className="w-full appearance-none truncate rounded-md border border-white/20 bg-white/5 px-2 py-2 text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E10600]/70 md:px-3"
         >
           {rounds.map((option) => (
@@ -73,6 +73,7 @@ export const SessionPicker = ({
           name="replay-session"
           value={sessionType}
           onChange={(event) => onSessionTypeChange(event.target.value as SessionType)}
+          disabled={isLoading}
           className="w-full appearance-none rounded-md border border-white/20 bg-white/5 px-2 py-2 text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E10600]/70 md:px-3"
         >
           {SESSION_TYPES.map((type) => (
@@ -82,9 +83,6 @@ export const SessionPicker = ({
           ))}
         </select>
       </div>
-      {!hasSessionType && (
-        <div className="text-[11px] text-amber-300">Session not available for this round.</div>
-      )}
     </div>
   );
 };

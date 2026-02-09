@@ -96,6 +96,7 @@ export type SessionPickerProps = {
   meetings: OpenF1Meeting[];
   sessions: OpenF1Session[];
   yearOptions?: number[];
+  isLoading?: boolean;
   onYearChange: (year: number) => void;
   onRoundChange: (round: number) => void;
   onSessionTypeChange: (sessionType: SessionType) => void;
@@ -105,6 +106,7 @@ export type TelemetryPanelProps = {
   summary: TelemetrySummary;
   rows: TelemetryRow[];
   activeOvertakes?: OpenF1Overtake[];
+  isLoading?: boolean;
 };
 
 export type MarkerLegendProps = {

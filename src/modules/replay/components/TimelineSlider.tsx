@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { OpenF1Driver, OpenF1TeamRadio, TimedSample } from "../types/openf1.types";
 import type { TimelineEvent } from "../types/replay.types";
@@ -29,6 +29,59 @@ type TimelineSliderProps = {
   onTogglePlay: () => void;
   onMarkerClick?: (timestampMs: number) => void;
 };
+
+type MarkerRowProps = {
+  events: TimelineEvent[];
+  startTimeMs: number;
+  duration: number;
+  onMarkerClick?: (timestampMs: number) => void;
+  onMarkerEnter: (event: TimelineEvent, buttonEl: HTMLButtonElement) => void;
+  onMarkerLeave: () => void;
+};
+
+const MarkerRow = memo(
+  ({
+    events,
+    startTimeMs,
+    duration,
+    onMarkerClick,
+    onMarkerEnter,
+    onMarkerLeave,
+  }: MarkerRowProps) => (
+    <div className="relative h-3">
+      {events.map((event, index) => {
+        const left = ((event.timestampMs - startTimeMs) / duration) * 100;
+        if (left < 0 || left > 100) return null;
+        return (
+          <button
+            type="button"
+            key={`${event.type}-${event.timestampMs}-${index}`}
+            className="absolute bottom-0 w-[3px] cursor-pointer border-none bg-transparent p-0 pb-0 pt-4"
+            style={{
+              left: `${left}%`,
+              transform: "translateX(-50%)",
+            }}
+            onClick={() => onMarkerClick?.(event.timestampMs)}
+            onMouseEnter={(e) => onMarkerEnter(event, e.currentTarget)}
+            onMouseLeave={onMarkerLeave}
+          >
+            <span
+              className="block h-3 w-[3px] rounded-sm"
+              style={{ backgroundColor: event.color, opacity: 0.8 }}
+            />
+          </button>
+        );
+      })}
+    </div>
+  ),
+  (prev, next) =>
+    prev.events === next.events &&
+    prev.startTimeMs === next.startTimeMs &&
+    prev.duration === next.duration &&
+    prev.onMarkerClick === next.onMarkerClick &&
+    prev.onMarkerEnter === next.onMarkerEnter &&
+    prev.onMarkerLeave === next.onMarkerLeave,
+);
 
 export const TimelineSlider = ({
   currentTimeMs,
@@ -186,12 +239,12 @@ export const TimelineSlider = ({
     [startTimeMs, duration],
   );
 
-  const handleMarkerEnter = (event: TimelineEvent, buttonEl: HTMLButtonElement) => {
+  const handleMarkerEnter = useCallback((event: TimelineEvent, buttonEl: HTMLButtonElement) => {
     if (hoverTimeout.current) clearTimeout(hoverTimeout.current);
     setHoveredEvent(event);
     const rect = buttonEl.getBoundingClientRect();
     setHoverPos({ x: rect.left + rect.width / 2, y: rect.top });
-  };
+  }, []);
 
   const closePopup = useCallback(() => {
     if (hoveredEvent?.type === "radio" && isRadioPlaying) {
@@ -201,9 +254,9 @@ export const TimelineSlider = ({
     setHoverPos(null);
   }, [hoveredEvent, isRadioPlaying, onStopRadio]);
 
-  const handleMarkerLeave = () => {
+  const handleMarkerLeave = useCallback(() => {
     hoverTimeout.current = setTimeout(closePopup, POPUP_CLOSE_DELAY_MS);
-  };
+  }, [closePopup]);
 
   const handlePopupEnter = () => {
     if (hoverTimeout.current) clearTimeout(hoverTimeout.current);
@@ -350,32 +403,18 @@ export const TimelineSlider = ({
   }, [expanded, progress]);
 
   // Marker row shared between both modes
-  const markerRow = (
-    <div className="relative h-3">
-      {events.map((event, index) => {
-        const left = computeMarkerPercent(event.timestampMs);
-        if (left < 0 || left > 100) return null;
-        return (
-          <button
-            type="button"
-            key={`${event.type}-${event.timestampMs}-${index}`}
-            className="absolute bottom-0 w-[3px] cursor-pointer border-none bg-transparent p-0 pb-0 pt-4"
-            style={{
-              left: `${left}%`,
-              transform: "translateX(-50%)",
-            }}
-            onClick={() => onMarkerClick?.(event.timestampMs)}
-            onMouseEnter={(e) => handleMarkerEnter(event, e.currentTarget)}
-            onMouseLeave={handleMarkerLeave}
-          >
-            <span
-              className="block h-3 w-[3px] rounded-sm"
-              style={{ backgroundColor: event.color, opacity: 0.8 }}
-            />
-          </button>
-        );
-      })}
-    </div>
+  const markerRow = useMemo(
+    () => (
+      <MarkerRow
+        events={events}
+        startTimeMs={startTimeMs}
+        duration={duration}
+        onMarkerClick={onMarkerClick}
+        onMarkerEnter={handleMarkerEnter}
+        onMarkerLeave={handleMarkerLeave}
+      />
+    ),
+    [events, startTimeMs, duration, onMarkerClick, handleMarkerEnter, handleMarkerLeave],
   );
 
   // Track bar shared between both modes

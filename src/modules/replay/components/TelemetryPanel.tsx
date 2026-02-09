@@ -1,18 +1,10 @@
 import { AnimatePresence, motion } from "framer-motion";
-import type { OpenF1Overtake } from "../types/openf1.types";
-import type { TelemetryPanelProps } from "../types/replay.types";
+import { memo, useMemo } from "react";
+import type { TelemetryPanelProps, TelemetryRow } from "../types/replay.types";
 import { getCompoundBadge, getCompoundLabel } from "../utils/format.util";
 import { Tooltip } from "./Tooltip";
 
 type OvertakeRole = "overtaking" | "overtaken" | null;
-
-const getOvertakeRole = (driverNumber: number, activeOvertakes: OpenF1Overtake[]): OvertakeRole => {
-  for (const ot of activeOvertakes) {
-    if (driverNumber === ot.overtaking_driver_number) return "overtaking";
-    if (driverNumber === ot.overtaken_driver_number) return "overtaken";
-  }
-  return null;
-};
 
 const formatLapDuration = (lapDurationSeconds: number | null | undefined) => {
   if (
@@ -34,21 +26,118 @@ const overtakeStyles: Record<string, string> = {
   overtaken: "ring-2 ring-inset ring-red-400/70 bg-red-500/10",
 };
 
-export const TelemetryPanel = ({ summary, rows, activeOvertakes = [] }: TelemetryPanelProps) => {
+const SKELETON_ROWS = Array.from({ length: 8 }, (_, index) => `skeleton-${index + 1}`);
+
+type TelemetryRowProps = {
+  row: TelemetryRow;
+  overtakeRole: OvertakeRole;
+};
+
+const TelemetryRowItem = memo(
+  ({ row, overtakeRole }: TelemetryRowProps) => {
+    const overtakeClass = overtakeRole ? overtakeStyles[overtakeRole] : "";
+    const lapDurationLabel = formatLapDuration(row.lapDurationSeconds);
+    return (
+      <motion.div
+        layout="position"
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        transition={{
+          layout: { type: "spring", stiffness: 400, damping: 30, mass: 0.8 },
+          opacity: { duration: 0.2 },
+          scale: { duration: 0.2 },
+        }}
+        className={`grid grid-cols-[0.45fr_2fr_0.55fr_0.55fr] items-center gap-1 rounded-lg bg-white/5 px-2 py-2 transition-shadow duration-500 ${overtakeClass}`}
+      >
+        <div className="text-center text-white/80">{row.position ?? "-"}</div>
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10 text-[10px] font-semibold text-white/70">
+            {row.headshotUrl ? (
+              <img
+                src={row.headshotUrl}
+                alt={`${row.driverName} headshot`}
+                className="h-full w-full object-cover"
+                loading="lazy"
+                decoding="async"
+              />
+            ) : (
+              <span>{row.driverAcronym || row.driverNumber}</span>
+            )}
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-white">{row.driverName}</div>
+            <div className="text-[10px] text-white/40">
+              #{row.driverNumber}
+              {row.driverAcronym ? ` · ${row.driverAcronym}` : ""} · {lapDurationLabel}
+            </div>
+          </div>
+        </div>
+        <div className="text-center text-white/80">{row.lap ?? "-"}</div>
+        <div className="flex justify-center">
+          <Tooltip content={getCompoundLabel(row.compound)}>
+            <span className="rounded-full border border-white/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white/70">
+              {getCompoundBadge(row.compound)}
+            </span>
+          </Tooltip>
+        </div>
+      </motion.div>
+    );
+  },
+  (prev, next) =>
+    prev.overtakeRole === next.overtakeRole &&
+    prev.row.driverNumber === next.row.driverNumber &&
+    prev.row.driverName === next.row.driverName &&
+    prev.row.driverAcronym === next.row.driverAcronym &&
+    prev.row.headshotUrl === next.row.headshotUrl &&
+    prev.row.lapDurationSeconds === next.row.lapDurationSeconds &&
+    prev.row.position === next.row.position &&
+    prev.row.lap === next.row.lap &&
+    prev.row.compound === next.row.compound &&
+    prev.row.isPitOutLap === next.row.isPitOutLap,
+);
+
+export const TelemetryPanel = ({
+  summary,
+  rows,
+  activeOvertakes = [],
+  isLoading = false,
+}: TelemetryPanelProps) => {
+  const showSkeleton = isLoading && rows.length === 0;
+  const overtakeRoleMap = useMemo(() => {
+    const map = new Map<number, OvertakeRole>();
+    for (const ot of activeOvertakes) {
+      map.set(ot.overtaking_driver_number, "overtaking");
+      map.set(ot.overtaken_driver_number, "overtaken");
+    }
+    return map;
+  }, [activeOvertakes]);
+
   return (
     <div className="flex h-full flex-col gap-3 rounded-xl border border-white/20 bg-white/5 p-4 backdrop-blur-xl">
       <div>
         <div className="text-sm font-semibold text-white">Leaderboard</div>
       </div>
-
       <div className="grid grid-cols-2 gap-2 text-[11px] text-white/70">
         <div>
           <div className="text-[10px] uppercase text-white/40">Coverage</div>
-          <div className="text-white/80">{summary.coverageLabel}</div>
+          <div className="text-white/80">
+            {showSkeleton ? (
+              <span className="block h-3 w-16 rounded bg-white/10 animate-pulse" />
+            ) : (
+              summary.coverageLabel
+            )}
+          </div>
         </div>
         <div>
           <div className="text-[10px] uppercase text-white/40">Drivers</div>
-          <div className="text-white/80">{summary.totalDrivers}</div>
+          <div className="text-white/80">
+            {showSkeleton ? (
+              <span className="block h-3 w-10 rounded bg-white/10 animate-pulse" />
+            ) : (
+              summary.totalDrivers
+            )}
+          </div>
         </div>
       </div>
 
@@ -61,58 +150,31 @@ export const TelemetryPanel = ({ summary, rows, activeOvertakes = [] }: Telemetr
         </div>
         <div className="mt-2 flex flex-col gap-2 text-xs">
           <AnimatePresence initial={false} mode="popLayout">
-            {rows.map((row) => {
-              const role = getOvertakeRole(row.driverNumber, activeOvertakes);
-              const overtakeClass = role ? overtakeStyles[role] : "";
-              const lapDurationLabel = formatLapDuration(row.lapDurationSeconds);
-              return (
-                <motion.div
-                  key={row.driverNumber}
-                  layout="position"
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{
-                    layout: { type: "spring", stiffness: 400, damping: 30, mass: 0.8 },
-                    opacity: { duration: 0.2 },
-                    scale: { duration: 0.2 },
-                  }}
-                  className={`grid grid-cols-[0.45fr_2fr_0.55fr_0.55fr] items-center gap-1 rounded-lg bg-white/5 px-2 py-2 transition-shadow duration-500 ${overtakeClass}`}
-                >
-                  <div className="text-center text-white/80">{row.position ?? "-"}</div>
-                  <div className="flex min-w-0 items-center gap-2">
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10 text-[10px] font-semibold text-white/70">
-                      {row.headshotUrl ? (
-                        <img
-                          src={row.headshotUrl}
-                          alt={`${row.driverName} headshot`}
-                          className="h-full w-full object-cover"
-                          loading="lazy"
-                          decoding="async"
-                        />
-                      ) : (
-                        <span>{row.driverAcronym || row.driverNumber}</span>
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="truncate text-white">{row.driverName}</div>
-                      <div className="text-[10px] text-white/40">
-                        #{row.driverNumber}
-                        {row.driverAcronym ? ` · ${row.driverAcronym}` : ""} · {lapDurationLabel}
+            {showSkeleton
+              ? SKELETON_ROWS.map((key) => (
+                  <div
+                    key={key}
+                    className="grid grid-cols-[0.45fr_2fr_0.55fr_0.55fr] items-center gap-1 rounded-lg bg-white/5 px-2 py-2"
+                  >
+                    <div className="h-3 w-6 justify-self-center rounded bg-white/10 animate-pulse" />
+                    <div className="flex min-w-0 items-center gap-2">
+                      <div className="h-7 w-7 rounded-full bg-white/10 animate-pulse" />
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="h-3 w-24 rounded bg-white/10 animate-pulse" />
+                        <div className="h-2 w-16 rounded bg-white/10 animate-pulse" />
                       </div>
                     </div>
+                    <div className="h-3 w-6 justify-self-center rounded bg-white/10 animate-pulse" />
+                    <div className="h-4 w-10 justify-self-center rounded-full bg-white/10 animate-pulse" />
                   </div>
-                  <div className="text-center text-white/80">{row.lap ?? "-"}</div>
-                  <div className="flex justify-center">
-                    <Tooltip content={getCompoundLabel(row.compound)}>
-                      <span className="rounded-full border border-white/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white/70">
-                        {getCompoundBadge(row.compound)}
-                      </span>
-                    </Tooltip>
-                  </div>
-                </motion.div>
-              );
-            })}
+                ))
+              : rows.map((row) => (
+                  <TelemetryRowItem
+                    key={row.driverNumber}
+                    row={row}
+                    overtakeRole={overtakeRoleMap.get(row.driverNumber) ?? null}
+                  />
+                ))}
           </AnimatePresence>
         </div>
       </div>

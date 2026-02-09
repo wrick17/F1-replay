@@ -222,7 +222,13 @@ export const ReplayPage = () => {
   const skipIntervalLabel =
     SKIP_INTERVAL_LABELS[prefs.skipIntervalMs] ?? `${prefs.skipIntervalMs / 1000}s`;
 
-  const drivers = data?.drivers ?? [];
+  const drivers = useMemo(() => data?.drivers ?? [], [data]);
+  const selectedDrivers = useMemo(() => [], []);
+  const hasStatus = loading || Boolean(error);
+  const statusText = loading ? "Loading telemetry data…" : (error ?? "Loading telemetry data…");
+  const statusClass = loading
+    ? "border-amber-500/30 bg-amber-500/20 text-amber-300"
+    : "border-red-500/30 bg-red-500/15 text-red-200";
 
   return (
     <div className="relative min-h-screen w-full overflow-y-auto text-white md:h-screen md:w-screen md:overflow-hidden">
@@ -237,19 +243,22 @@ export const ReplayPage = () => {
         }}
       />
       <header className="relative z-10 mx-4 mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/20 bg-white/5 px-4 py-3 backdrop-blur-xl md:absolute md:left-4 md:right-80 md:top-4 md:mx-0 md:mt-0">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <h1 className="flex items-center">
             <img src="/logo.png" alt="" className="h-6 w-auto" />
             <span className="sr-only">F1 Replay</span>
           </h1>
-          {loading && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/20 px-3 py-1 text-xs font-medium text-amber-300">
-              <Loader2 size={14} className="animate-spin" />
-              Loading telemetry data…
-            </span>
-          )}
+          <span
+            className={`inline-flex min-w-[220px] max-w-[220px] items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium whitespace-nowrap ${statusClass} ${
+              hasStatus ? "" : "invisible"
+            }`}
+            aria-hidden={!hasStatus}
+          >
+            {loading && <Loader2 size={14} className="animate-spin" />}
+            <span className="truncate">{statusText}</span>
+          </span>
         </div>
-        <WeatherBadge weather={currentWeather} />
+        <WeatherBadge weather={currentWeather} isLoading={loading} />
         <SessionPicker
           year={session.year}
           round={session.round}
@@ -257,6 +266,7 @@ export const ReplayPage = () => {
           meetings={meetings}
           sessions={sessions}
           yearOptions={availableYears}
+          isLoading={loading}
           onYearChange={(nextYear) => {
             session.setYear(nextYear);
             session.setRound(1);
@@ -271,11 +281,6 @@ export const ReplayPage = () => {
       </header>
 
       <div className="relative z-10 mx-4 mt-3 flex max-w-[420px] flex-col gap-2 md:absolute md:left-4 md:top-24 md:mx-0 md:mt-0">
-        {error && (
-          <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
-            {error}
-          </div>
-        )}
         {!hasSupportedSession && sessions.length > 0 && (
           <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
             No supported session types (Race, Sprint, Qualifying) for this round. Choose another
@@ -289,7 +294,7 @@ export const ReplayPage = () => {
           trackPath={trackPath}
           driverStates={driverStates}
           driverNames={driverNames}
-          selectedDrivers={[]}
+          selectedDrivers={selectedDrivers}
           className="h-full w-full"
         />
       </div>
@@ -339,6 +344,7 @@ export const ReplayPage = () => {
           summary={telemetrySummary}
           rows={telemetryRows}
           activeOvertakes={activeOvertakes}
+          isLoading={loading}
         />
       </aside>
     </div>

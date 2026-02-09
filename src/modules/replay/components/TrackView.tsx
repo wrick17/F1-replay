@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { TrackViewProps } from "../types/replay.types";
 import {
   buildPathD,
@@ -19,6 +19,51 @@ type TrackSegment = {
   color: string;
   key: string;
 };
+
+type TrackBaseProps = {
+  bounds: ViewboxBounds;
+  trackSegments: TrackSegment[];
+  pathD: string;
+};
+
+const TrackBase = memo(({ bounds, trackSegments, pathD }: TrackBaseProps) => (
+  <>
+    <rect
+      x={bounds.minX - VIEWBOX_PADDING}
+      y={bounds.minY - VIEWBOX_PADDING}
+      width={bounds.width + VIEWBOX_PADDING * 2}
+      height={bounds.height + VIEWBOX_PADDING * 2}
+      fill="transparent"
+    />
+    {trackSegments.length > 0 ? (
+      <g shapeRendering="geometricPrecision">
+        {trackSegments.map((segment) => (
+          <path
+            key={segment.key}
+            d={segment.d}
+            fill="none"
+            stroke={segment.color}
+            strokeWidth="4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ))}
+      </g>
+    ) : (
+      pathD && (
+        <path
+          d={pathD}
+          fill="none"
+          stroke="#E10600"
+          strokeWidth="4"
+          strokeLinecap="butt"
+          strokeLinejoin="miter"
+          shapeRendering="geometricPrecision"
+        />
+      )
+    )}
+  </>
+));
 
 const ELEVATION_LOW = { r: 34, g: 197, b: 94 };
 const ELEVATION_MID = { r: 234, g: 179, b: 8 };
@@ -306,40 +351,7 @@ export const TrackView = ({
       aria-label="F1 track replay"
       role="img"
     >
-      <rect
-        x={bounds.minX - VIEWBOX_PADDING}
-        y={bounds.minY - VIEWBOX_PADDING}
-        width={bounds.width + VIEWBOX_PADDING * 2}
-        height={bounds.height + VIEWBOX_PADDING * 2}
-        fill="transparent"
-      />
-      {trackSegments.length > 0 ? (
-        <g shapeRendering="geometricPrecision">
-          {trackSegments.map((segment) => (
-            <path
-              key={segment.key}
-              d={segment.d}
-              fill="none"
-              stroke={segment.color}
-              strokeWidth="4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          ))}
-        </g>
-      ) : (
-        pathD && (
-          <path
-            d={pathD}
-            fill="none"
-            stroke="#E10600"
-            strokeWidth="4"
-            strokeLinecap="butt"
-            strokeLinejoin="miter"
-            shapeRendering="geometricPrecision"
-          />
-        )
-      )}
+      <TrackBase bounds={bounds} trackSegments={trackSegments} pathD={pathD} />
       {driverEntries.map((entry) => {
         const resolved = labelMap.get(entry.driverKey);
         const labelX = resolved?.x ?? entry.initialLabelX;

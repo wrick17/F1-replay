@@ -1,9 +1,11 @@
 import { ArrowUp, CloudRain, Droplets, Gauge, Thermometer, Wind } from "lucide-react";
+import { memo } from "react";
 import type { OpenF1Weather } from "../types/openf1.types";
 import { Tooltip } from "./Tooltip";
 
 type WeatherBadgeProps = {
   weather: OpenF1Weather | null;
+  isLoading?: boolean;
 };
 
 const COMPASS_DIRECTIONS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] as const;
@@ -17,8 +19,18 @@ const msToKmh = (ms: number): string => {
   return (ms * 3.6).toFixed(1);
 };
 
-export const WeatherBadge = ({ weather }: WeatherBadgeProps) => {
-  if (!weather) return null;
+const WeatherBadgeBase = ({ weather, isLoading = false }: WeatherBadgeProps) => {
+  if (!weather) {
+    if (!isLoading) return null;
+    return (
+      <div className="flex items-center gap-2.5 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-white/70 backdrop-blur-md">
+        <div className="h-3 w-16 rounded bg-white/10 animate-pulse" />
+        <div className="h-3 w-8 rounded bg-white/10 animate-pulse" />
+        <div className="h-3 w-12 rounded bg-white/10 animate-pulse" />
+        <div className="h-3 w-14 rounded bg-white/10 animate-pulse" />
+      </div>
+    );
+  }
 
   const isRaining = weather.rainfall > 0;
   const compassDir = degreesToCompass(weather.wind_direction);
@@ -68,3 +80,5 @@ export const WeatherBadge = ({ weather }: WeatherBadgeProps) => {
     </div>
   );
 };
+
+export const WeatherBadge = memo(WeatherBadgeBase);
