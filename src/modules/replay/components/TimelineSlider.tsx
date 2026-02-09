@@ -7,6 +7,7 @@ import { RadioPopup } from "./RadioPopup";
 
 const EVENT_WINDOW_MS = 2000;
 const EVENT_DISPLAY_DURATION_MS = 5000;
+const POPUP_CLOSE_DELAY_MS = 600;
 const EXPAND_SCALE = 10;
 const HANDLE_VIEWPORT_RATIO = 0.3;
 
@@ -201,7 +202,7 @@ export const TimelineSlider = ({
   }, [hoveredEvent, isRadioPlaying, onStopRadio]);
 
   const handleMarkerLeave = () => {
-    hoverTimeout.current = setTimeout(closePopup, 200);
+    hoverTimeout.current = setTimeout(closePopup, POPUP_CLOSE_DELAY_MS);
   };
 
   const handlePopupEnter = () => {
