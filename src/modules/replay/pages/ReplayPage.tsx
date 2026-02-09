@@ -152,7 +152,10 @@ export const ReplayPage = () => {
       />
       <header className="relative z-10 mx-4 mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/20 bg-white/5 px-4 py-3 backdrop-blur-xl md:absolute md:left-4 md:right-80 md:top-4 md:mx-0 md:mt-0">
         <div className="flex items-center gap-2">
-          <h1 className="text-lg font-semibold">F1 Replay</h1>
+          <h1 className="flex items-center">
+            <img src="/logo.png" alt="" className="h-6 w-auto" />
+            <span className="sr-only">F1 Replay</span>
+          </h1>
           {loading && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/20 px-3 py-1 text-xs font-medium text-amber-300">
               <Loader2 size={14} className="animate-spin" />
