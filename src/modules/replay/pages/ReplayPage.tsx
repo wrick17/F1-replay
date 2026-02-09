@@ -195,7 +195,7 @@ export const ReplayPage = () => {
         )}
       </div>
 
-      <div className="relative mx-4 mt-4 min-h-[260px] md:absolute md:inset-0 md:mx-0 md:mt-0 md:pb-56 md:pl-4 md:pr-80 md:pt-24">
+      <div className="relative mx-4 mt-4 min-h-[260px] md:absolute md:inset-0 md:mx-0 md:mt-0 md:pb-44 md:pl-4 md:pr-80 md:pt-32">
         <TrackView
           trackPath={trackPath}
           driverStates={driverStates}
