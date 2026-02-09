@@ -2,6 +2,7 @@ import { createRouter, RouterProvider } from "@tanstack/react-router";
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { routeTree } from "./routes/routeTree";
+import "react-tippy/dist/tippy.css";
 import "./index.css";
 
 const router = createRouter({ routeTree });

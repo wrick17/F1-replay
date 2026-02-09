@@ -1,5 +1,6 @@
 import { ArrowUp, CloudRain, Droplets, Gauge, Thermometer, Wind } from "lucide-react";
 import type { OpenF1Weather } from "../types/openf1.types";
+import { Tooltip } from "./Tooltip";
 
 type WeatherBadgeProps = {
   weather: OpenF1Weather | null;
@@ -22,40 +23,48 @@ export const WeatherBadge = ({ weather }: WeatherBadgeProps) => {
   const isRaining = weather.rainfall > 0;
   const compassDir = degreesToCompass(weather.wind_direction);
   const windKmh = msToKmh(weather.wind_speed);
+  const windLabel = `Wind: ${windKmh} km/h ${compassDir} (${weather.wind_direction}°)`;
 
   return (
     <div className="flex flex-wrap items-center gap-2.5 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-white/70 backdrop-blur-md">
-      <span className="inline-flex items-center gap-1" title="Air temperature">
-        <Thermometer size={16} /> {weather.air_temperature}°C
-      </span>
+      <Tooltip content="Air temperature">
+        <span className="inline-flex items-center gap-1">
+          <Thermometer size={16} /> {weather.air_temperature}°C
+        </span>
+      </Tooltip>
       <span className="text-white/20">|</span>
-      <span className="inline-flex items-center gap-1" title="Track temperature">
-        <Gauge size={16} /> {weather.track_temperature}°C
-      </span>
+      <Tooltip content="Track temperature">
+        <span className="inline-flex items-center gap-1">
+          <Gauge size={16} /> {weather.track_temperature}°C
+        </span>
+      </Tooltip>
       {isRaining && (
         <>
           <span className="text-white/20">|</span>
-          <span className="inline-flex items-center gap-1 text-blue-300" title="Rainfall">
-            <CloudRain size={16} /> Rain
-          </span>
+          <Tooltip content="Rainfall">
+            <span className="inline-flex items-center gap-1 text-blue-300">
+              <CloudRain size={16} /> Rain
+            </span>
+          </Tooltip>
         </>
       )}
       <span className="text-white/20">|</span>
-      <span
-        className="inline-flex items-center gap-1"
-        title={`Wind: ${windKmh} km/h ${compassDir} (${weather.wind_direction}°)`}
-      >
-        <Wind size={16} /> {windKmh} km/h
-        <ArrowUp
-          size={14}
-          style={{ transform: `rotate(${(weather.wind_direction + 180) % 360}deg)` }}
-        />
-        {compassDir}
-      </span>
+      <Tooltip content={windLabel}>
+        <span className="inline-flex items-center gap-1">
+          <Wind size={16} /> {windKmh} km/h
+          <ArrowUp
+            size={14}
+            style={{ transform: `rotate(${(weather.wind_direction + 180) % 360}deg)` }}
+          />
+          {compassDir}
+        </span>
+      </Tooltip>
       <span className="text-white/20">|</span>
-      <span className="inline-flex items-center gap-1" title="Humidity">
-        <Droplets size={16} /> {weather.humidity}%
-      </span>
+      <Tooltip content="Humidity">
+        <span className="inline-flex items-center gap-1">
+          <Droplets size={16} /> {weather.humidity}%
+        </span>
+      </Tooltip>
     </div>
   );
 };

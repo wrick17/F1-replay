@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import type { OpenF1Overtake } from "../types/openf1.types";
 import type { TelemetryPanelProps } from "../types/replay.types";
 import { getCompoundBadge, getCompoundLabel } from "../utils/format.util";
+import { Tooltip } from "./Tooltip";
 
 type OvertakeRole = "overtaking" | "overtaken" | null;
 
@@ -103,12 +104,11 @@ export const TelemetryPanel = ({ summary, rows, activeOvertakes = [] }: Telemetr
                   </div>
                   <div className="text-center text-white/80">{row.lap ?? "-"}</div>
                   <div className="flex justify-center">
-                    <span
-                      className="rounded-full border border-white/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white/70"
-                      title={getCompoundLabel(row.compound)}
-                    >
-                      {getCompoundBadge(row.compound)}
-                    </span>
+                    <Tooltip content={getCompoundLabel(row.compound)}>
+                      <span className="rounded-full border border-white/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white/70">
+                        {getCompoundBadge(row.compound)}
+                      </span>
+                    </Tooltip>
                   </div>
                 </motion.div>
               );
