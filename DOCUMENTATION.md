@@ -27,7 +27,6 @@ F1 Replay is a replay viewer for Formula 1 telemetry data. Built with React and 
 - **3D Track View**: Visual representation of driver positions on the track
 
 ### 📊 Telemetry & Data
-- **Real-time Telemetry**: View speed, gear, RPM, throttle, and brake data for selected drivers
 - **Event Markers**: Visual indicators for DRS zones, pit stops, safety cars, and overtakes
 - **Weather Data**: Live weather conditions including air/track temperature, humidity, and rainfall
 - **Team Radio**: Listen to team radio communications with timestamp markers
