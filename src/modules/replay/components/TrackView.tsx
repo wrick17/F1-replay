@@ -14,6 +14,39 @@ import {
   type ViewboxBounds,
 } from "../utils/geometry.util";
 
+type TrackSegment = {
+  d: string;
+  color: string;
+  key: string;
+};
+
+const ELEVATION_LOW = { r: 34, g: 197, b: 94 };
+const ELEVATION_MID = { r: 234, g: 179, b: 8 };
+const ELEVATION_HIGH = { r: 225, g: 6, b: 0 };
+const MIN_SEGMENT_JUMP = 60;
+const JUMP_MULTIPLIER = 8;
+
+const toHex = (value: number) => value.toString(16).padStart(2, "0");
+const lerp = (start: number, end: number, t: number) => Math.round(start + (end - start) * t);
+const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
+const mix = (start: typeof ELEVATION_LOW, end: typeof ELEVATION_LOW, t: number) => ({
+  r: lerp(start.r, end.r, t),
+  g: lerp(start.g, end.g, t),
+  b: lerp(start.b, end.b, t),
+});
+const toHexColor = (rgb: typeof ELEVATION_LOW) => `#${toHex(rgb.r)}${toHex(rgb.g)}${toHex(rgb.b)}`;
+const elevationColor = (t: number) => {
+  const clamped = clamp01(t);
+  if (clamped <= 0.5) {
+    return toHexColor(mix(ELEVATION_LOW, ELEVATION_MID, clamped / 0.5));
+  }
+  return toHexColor(mix(ELEVATION_MID, ELEVATION_HIGH, (clamped - 0.5) / 0.5));
+};
+const quantizeElevation = (t: number, steps = 48) => {
+  const clamped = clamp01(t);
+  return Math.round(clamped * steps) / steps;
+};
+
 type LabelWorkerRequest = {
   type: "resolve";
   requestId: number;
@@ -36,9 +69,101 @@ export const TrackView = ({
   selectedDrivers,
   className,
 }: TrackViewProps) => {
-  const scaledTrack = useMemo(() => trackPath.map(toPoint2D), [trackPath]);
+  const scaledTrack = useMemo(
+    () => trackPath.map((point) => ({ ...toPoint2D(point), z: point.z })),
+    [trackPath],
+  );
   const bounds = useMemo(() => computeBounds(scaledTrack), [scaledTrack]);
   const pathD = useMemo(() => buildPathD(scaledTrack), [scaledTrack]);
+  const trackSegments = useMemo((): TrackSegment[] => {
+    const validPoints = scaledTrack.filter(
+      (point) => Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.z),
+    );
+    if (!validPoints.length) {
+      return [];
+    }
+    const minZ = Math.min(...validPoints.map((point) => point.z));
+    const maxZ = Math.max(...validPoints.map((point) => point.z));
+    const range = maxZ - minZ || 1;
+    const distances: number[] = [];
+    let lastValid: (typeof scaledTrack)[number] | null = null;
+    for (const point of scaledTrack) {
+      if (!Number.isFinite(point.x) || !Number.isFinite(point.y) || !Number.isFinite(point.z)) {
+        lastValid = null;
+        continue;
+      }
+      if (lastValid) {
+        distances.push(Math.hypot(point.x - lastValid.x, point.y - lastValid.y));
+      }
+      lastValid = point;
+    }
+    const sorted = [...distances].sort((a, b) => a - b);
+    const median =
+      sorted.length > 0 ? sorted[Math.floor(sorted.length / 2)] : MIN_SEGMENT_JUMP;
+    const jumpThreshold = Math.max(median * JUMP_MULTIPLIER, MIN_SEGMENT_JUMP);
+    const segments: TrackSegment[] = [];
+    let previous: (typeof scaledTrack)[number] | null = null;
+    let currentSegment: { d: string; color: string; start: { x: number; y: number } } | null =
+      null;
+
+    for (const point of scaledTrack) {
+      if (!Number.isFinite(point.x) || !Number.isFinite(point.y) || !Number.isFinite(point.z)) {
+        if (currentSegment) {
+          segments.push({
+            d: currentSegment.d,
+            color: currentSegment.color,
+            key: `${currentSegment.start.x}-${currentSegment.start.y}-${currentSegment.color}`,
+          });
+          currentSegment = null;
+        }
+        previous = null;
+        continue;
+      }
+      if (previous) {
+        const distance = Math.hypot(point.x - previous.x, point.y - previous.y);
+        if (distance > jumpThreshold) {
+          if (currentSegment) {
+            segments.push({
+              d: currentSegment.d,
+              color: currentSegment.color,
+              key: `${currentSegment.start.x}-${currentSegment.start.y}-${currentSegment.color}`,
+            });
+            currentSegment = null;
+          }
+          previous = point;
+          continue;
+        }
+        const z = (previous.z + point.z) / 2;
+        const t = quantizeElevation((z - minZ) / range);
+        const color = elevationColor(t);
+        if (!currentSegment || currentSegment.color !== color) {
+          if (currentSegment) {
+            segments.push({
+              d: currentSegment.d,
+              color: currentSegment.color,
+              key: `${currentSegment.start.x}-${currentSegment.start.y}-${currentSegment.color}`,
+            });
+          }
+          currentSegment = {
+            d: `M ${previous.x} ${previous.y} L ${point.x} ${point.y}`,
+            color,
+            start: { x: previous.x, y: previous.y },
+          };
+        } else {
+          currentSegment.d += ` L ${point.x} ${point.y}`;
+        }
+      }
+      previous = point;
+    }
+    if (currentSegment) {
+      segments.push({
+        d: currentSegment.d,
+        color: currentSegment.color,
+        key: `${currentSegment.start.x}-${currentSegment.start.y}-${currentSegment.color}`,
+      });
+    }
+    return segments;
+  }, [scaledTrack]);
   const viewBox = useMemo(() => {
     const width = Math.max(bounds.width, 1);
     const height = Math.max(bounds.height, 1);
@@ -190,16 +315,32 @@ export const TrackView = ({
         height={bounds.height + VIEWBOX_PADDING * 2}
         fill="transparent"
       />
-      {pathD && (
-        <path
-          d={pathD}
-          fill="none"
-          stroke="#E10600"
-          strokeWidth="4"
-          strokeLinecap="butt"
-          strokeLinejoin="miter"
-          shapeRendering="geometricPrecision"
-        />
+      {trackSegments.length > 0 ? (
+        <g shapeRendering="geometricPrecision">
+          {trackSegments.map((segment) => (
+            <path
+              key={segment.key}
+              d={segment.d}
+              fill="none"
+              stroke={segment.color}
+              strokeWidth="4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          ))}
+        </g>
+      ) : (
+        pathD && (
+          <path
+            d={pathD}
+            fill="none"
+            stroke="#E10600"
+            strokeWidth="4"
+            strokeLinecap="butt"
+            strokeLinejoin="miter"
+            shapeRendering="geometricPrecision"
+          />
+        )
       )}
       {driverEntries.map((entry) => {
         const resolved = labelMap.get(entry.driverKey);

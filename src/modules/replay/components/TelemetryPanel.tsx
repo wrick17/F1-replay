@@ -13,6 +13,21 @@ const getOvertakeRole = (driverNumber: number, activeOvertakes: OpenF1Overtake[]
   return null;
 };
 
+const formatLapDuration = (lapDurationSeconds: number | null | undefined) => {
+  if (
+    lapDurationSeconds === null ||
+    lapDurationSeconds === undefined ||
+    !Number.isFinite(lapDurationSeconds)
+  ) {
+    return "--";
+  }
+  const totalMs = Math.round(lapDurationSeconds * 1000);
+  const minutes = Math.floor(totalMs / 60000);
+  const seconds = Math.floor((totalMs % 60000) / 1000);
+  const ms = totalMs % 1000;
+  return `${minutes}:${String(seconds).padStart(2, "0")}.${String(ms).padStart(3, "0")}`;
+};
+
 const overtakeStyles: Record<string, string> = {
   overtaking: "ring-2 ring-inset ring-green-400/70 bg-green-500/10",
   overtaken: "ring-2 ring-inset ring-red-400/70 bg-red-500/10",
@@ -48,6 +63,7 @@ export const TelemetryPanel = ({ summary, rows, activeOvertakes = [] }: Telemetr
             {rows.map((row) => {
               const role = getOvertakeRole(row.driverNumber, activeOvertakes);
               const overtakeClass = role ? overtakeStyles[role] : "";
+              const lapDurationLabel = formatLapDuration(row.lapDurationSeconds);
               return (
                 <motion.div
                   key={row.driverNumber}
@@ -81,7 +97,7 @@ export const TelemetryPanel = ({ summary, rows, activeOvertakes = [] }: Telemetr
                       <div className="truncate text-white">{row.driverName}</div>
                       <div className="text-[10px] text-white/40">
                         #{row.driverNumber}
-                        {row.driverAcronym ? ` · ${row.driverAcronym}` : ""}
+                        {row.driverAcronym ? ` · ${row.driverAcronym}` : ""} · {lapDurationLabel}
                       </div>
                     </div>
                   </div>

@@ -27,6 +27,8 @@ export type TelemetryRow = {
   driverName: string;
   driverAcronym: string;
   headshotUrl: string | null;
+  lapDurationSeconds: number | null;
+  isPitOutLap: boolean | null;
   position: number | null;
   lap: number | null;
   compound: string | null;

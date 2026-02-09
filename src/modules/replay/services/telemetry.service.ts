@@ -7,7 +7,7 @@ import type {
 import type { TelemetryRow, TelemetrySummary } from "../types/replay.types";
 import { formatTelemetryLabel } from "../utils/format.util";
 import {
-  getCurrentLap,
+  findSampleAtTime,
   getCurrentPosition,
   getCurrentStint,
   groupByDriverNumber,
@@ -97,8 +97,10 @@ export const computeTelemetryRows = (
       const telemetry = data.telemetryByDriver[driver.driver_number];
       const positions = telemetry?.positions ?? [];
       const laps = telemetry?.laps ?? [];
-      const positionSample = getCurrentPosition(positions, currentTimeMs) ?? positions[positions.length - 1] ?? null;
-      const lapNumber = getCurrentLap(laps, currentTimeMs) ?? laps[laps.length - 1]?.lap_number ?? null;
+      const positionSample =
+        getCurrentPosition(positions, currentTimeMs) ?? positions[positions.length - 1] ?? null;
+      const lapSample = findSampleAtTime(laps, currentTimeMs) ?? laps[laps.length - 1] ?? null;
+      const lapNumber = lapSample?.lap_number ?? null;
       const stints = telemetry?.stints ?? [];
       const stint = getCurrentStint(stints, lapNumber);
       const fallbackStint = stint ?? (stints.length > 0 ? stints[stints.length - 1] : null);
@@ -107,6 +109,8 @@ export const computeTelemetryRows = (
         driverName: formatTelemetryLabel(driver),
         driverAcronym: driver.name_acronym,
         headshotUrl: driver.headshot_url ?? null,
+        lapDurationSeconds: lapSample?.lap_duration ?? null,
+        isPitOutLap: lapSample?.is_pit_out_lap ?? null,
         position: positionSample?.position ?? null,
         lap: lapNumber,
         compound: fallbackStint?.compound ?? null,
