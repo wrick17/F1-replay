@@ -39,6 +39,7 @@ const TelemetryRowItem = memo(
     const lapDurationLabel = formatLapDuration(row.lapDurationSeconds);
     const compoundLabel = getCompoundLabel(row.compound);
     const lapCompoundLabel = row.lap ? `L${row.lap} · ${compoundLabel}` : `L-- · ${compoundLabel}`;
+    const isHaasTeam = row.teamName.toLowerCase().includes("haas");
     return (
       <motion.div
         layout="position"
@@ -50,10 +51,9 @@ const TelemetryRowItem = memo(
           opacity: { duration: 0.2 },
           scale: { duration: 0.2 },
         }}
-        className={`grid grid-cols-[0.4fr_2.6fr_0.7fr] items-center gap-1 rounded-lg bg-white/5 px-2 py-2 transition-shadow duration-500 ${overtakeClass}`}
+        className={`grid grid-cols-[auto_1fr] items-center gap-2 rounded-lg bg-white/5 px-2 py-2 transition-shadow duration-500 ${overtakeClass}`}
       >
-        <div className="text-center text-white/80">{row.position ?? "-"}</div>
-        <div className="flex min-w-0 items-center gap-1">
+        <div className="grid grid-rows-[28px_24px] items-center justify-items-center gap-1">
           <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10 text-[10px] font-semibold text-white/70">
             {row.headshotUrl ? (
               <img
@@ -72,7 +72,7 @@ const TelemetryRowItem = memo(
               <img
                 src={row.teamLogoUrl}
                 alt={`${row.teamName} logo`}
-                className="h-full w-full rounded-full object-cover"
+                className={`h-full w-full rounded-full object-cover ${isHaasTeam ? "scale-[1.6]" : ""}`}
                 loading="lazy"
                 decoding="async"
               />
@@ -80,24 +80,30 @@ const TelemetryRowItem = memo(
               <span>{row.teamInitials || row.teamName.charAt(0)}</span>
             )}
           </div>
-          <div className="min-w-0">
-            <div className="truncate text-white">{row.driverName}</div>
-            <div className="flex min-w-0 items-center gap-1 overflow-hidden text-[10px] text-white/40">
-              <span className="shrink-0">#{row.driverNumber}</span>
-              {row.driverAcronym ? <span className="shrink-0">· {row.driverAcronym}</span> : null}
-              <span className="shrink-0">·</span>
-              <Tooltip content={row.teamName}>
-                <span className="min-w-0 flex-1 truncate">{row.teamName}</span>
+        </div>
+        <div className="grid min-w-0 grid-rows-[28px_24px] gap-1">
+          <div className="flex min-w-0 items-center justify-between gap-2">
+            <span className="min-w-0 truncate text-white">{row.driverName}</span>
+            <div className="flex items-center gap-2 text-[10px] text-white/70">
+              <span className="rounded-full border border-white/20 px-2 py-0.5 font-semibold uppercase text-white/70">
+                P{row.position ?? "-"}
+              </span>
+              <Tooltip content={`${lapCompoundLabel} · ${lapDurationLabel}`}>
+                <span className="rounded-full border border-white/20 px-2 py-0.5 font-semibold uppercase text-white/70">
+                  {row.lap ?? "--"} · {getCompoundBadge(row.compound)}
+                </span>
               </Tooltip>
             </div>
           </div>
-        </div>
-        <div className="flex justify-center">
-          <Tooltip content={`${lapCompoundLabel} · ${lapDurationLabel}`}>
-            <span className="rounded-full border border-white/20 px-2 py-0.5 text-[10px] font-semibold uppercase text-white/70">
-              {row.lap ?? "--"} · {getCompoundBadge(row.compound)}
+          <div className="flex min-w-0 items-center justify-between gap-2 text-[10px] text-white/40">
+            <Tooltip content={row.teamName}>
+              <span className="min-w-0 truncate">{row.teamName}</span>
+            </Tooltip>
+            <span className="shrink-0">
+              #{row.driverNumber}
+              {row.driverAcronym ? ` · ${row.driverAcronym}` : ""}
             </span>
-          </Tooltip>
+          </div>
         </div>
       </motion.div>
     );
@@ -163,10 +169,12 @@ export const TelemetryPanel = ({
       </div>
 
       <div className="flex-1 overflow-y-auto pr-1">
-        <div className="grid grid-cols-[0.4fr_2.6fr_0.7fr] gap-1 text-[10px] uppercase text-white/40">
-          <span className="text-center">Pos</span>
-          <span>Driver</span>
-          <span className="text-center">Lap/Tyre</span>
+        <div className="grid grid-cols-[auto_1fr] items-center gap-2 text-[10px] uppercase text-white/40">
+          <span className="text-center">Driver</span>
+          <div className="flex items-center justify-between">
+            <span>Driver</span>
+            <span>Pos/Lap</span>
+          </div>
         </div>
         <div className="mt-2 flex flex-col gap-2 text-xs">
           <AnimatePresence initial={false} mode="popLayout">
@@ -174,18 +182,22 @@ export const TelemetryPanel = ({
               ? SKELETON_ROWS.map((key) => (
                   <div
                     key={key}
-                    className="grid grid-cols-[0.4fr_2.6fr_0.7fr] items-center gap-1 rounded-lg bg-white/5 px-2 py-2"
+                    className="grid grid-cols-[auto_1fr] items-center gap-2 rounded-lg bg-white/5 px-2 py-2"
                   >
-                    <div className="h-3 w-6 justify-self-center rounded bg-white/10 animate-pulse" />
-                    <div className="flex min-w-0 items-center gap-1">
+                    <div className="grid grid-rows-[28px_24px] items-center justify-items-center gap-1">
                       <div className="h-7 w-7 rounded-full bg-white/10 animate-pulse" />
                       <div className="h-6 w-6 rounded-full bg-white/10 animate-pulse" />
-                      <div className="min-w-0 flex-1 space-y-1">
+                    </div>
+                    <div className="grid min-w-0 grid-rows-[28px_24px] gap-1">
+                      <div className="flex items-center justify-between gap-2">
                         <div className="h-3 w-24 rounded bg-white/10 animate-pulse" />
+                        <div className="h-4 w-20 rounded-full bg-white/10 animate-pulse" />
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
                         <div className="h-2 w-20 rounded bg-white/10 animate-pulse" />
+                        <div className="h-2 w-12 rounded bg-white/10 animate-pulse" />
                       </div>
                     </div>
-                    <div className="h-4 w-16 justify-self-center rounded-full bg-white/10 animate-pulse" />
                   </div>
                 ))
               : rows.map((row) => (

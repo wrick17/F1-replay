@@ -14,7 +14,7 @@ const TEAM_LOGO_MAP: Record<string, string> = {
   Williams:
     "https://media.formula1.com/d_team_logo_fallback_image.png/content/dam/fom-website/teams/2025/williams-logo.png.transform/3col/image.png",
   "Haas F1 Team":
-    "https://media.formula1.com/d_team_logo_fallback_image.png/content/dam/fom-website/teams/2024/haas-f1-team-logo.png.transform/3col/image.png",
+    "https://media.formula1.com/d_team_logo_fallback_image.png/content/dam/fom-website/teams/2024/haas-logo.png.transform/3col/image.png",
   "Kick Sauber":
     "https://media.formula1.com/d_team_logo_fallback_image.png/content/dam/fom-website/teams/2025/kick-sauber-logo.png.transform/3col/image.png",
   "Visa Cash App Racing Bulls":

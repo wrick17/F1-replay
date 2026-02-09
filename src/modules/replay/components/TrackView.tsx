@@ -387,9 +387,14 @@ export const TrackView = ({
         const teamLogo = entry.team?.logoUrl;
         const teamInitials = entry.team?.initials ?? "?";
         const logoSize = LABEL_LOGO_SIZE;
+        const isHaasTeam = entry.team?.name.toLowerCase().includes("haas") ?? false;
+        const logoScale = isHaasTeam ? 1.6 : 1;
+        const logoRenderSize = logoSize * logoScale;
+        const logoOffset = (logoRenderSize - logoSize) / 2;
         const labelLeft = -entry.labelWidth / 2;
         const logoX = labelLeft + LABEL_PADDING;
         const logoCenterX = logoX + logoSize / 2;
+        const logoY = -logoRenderSize / 2;
         const textX = logoX + logoSize + LABEL_LOGO_GAP;
         const clipId = `logo-clip-${entry.driverKey}`;
 
@@ -426,10 +431,10 @@ export const TrackView = ({
               {teamLogo ? (
                 <image
                   href={teamLogo}
-                  x={logoX}
-                  y={-logoSize / 2}
-                  width={logoSize}
-                  height={logoSize}
+                  x={logoX - logoOffset}
+                  y={logoY}
+                  width={logoRenderSize}
+                  height={logoRenderSize}
                   preserveAspectRatio="xMidYMid slice"
                   clipPath={`url(#${clipId})`}
                 />
