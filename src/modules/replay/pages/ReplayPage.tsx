@@ -15,6 +15,7 @@ import { useTeamRadio } from "../hooks/useTeamRadio";
 import { useTrackComputation } from "../hooks/useTrackComputation";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { buildTimelineEvents, getActiveOvertakes } from "../services/events.service";
+import { preloadRadioAudios } from "../services/radioAudio.service";
 import { computeTelemetryRows, computeTelemetrySummary } from "../services/telemetry.service";
 import { getWeatherAtTime } from "../services/weather.service";
 
@@ -93,6 +94,13 @@ export const ReplayPage = () => {
   }, [data, replay.currentTimeMs]);
 
   const { isAudioPlaying, playRadio, stopRadio, pauseRadio, resumeRadio } = useTeamRadio();
+
+  useEffect(() => {
+    if (!data?.teamRadios?.length) {
+      return;
+    }
+    void preloadRadioAudios(data.teamRadios);
+  }, [data?.teamRadios]);
 
   const handleMarkerClick = useCallback(
     (timestampMs: number) => {

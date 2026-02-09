@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { getRadioAudioElement, resumeRadioAudioContext } from "../services/radioAudio.service";
 import type { OpenF1TeamRadio, TimedSample } from "../types/openf1.types";
 
 type UseTeamRadioResult = {
@@ -20,9 +21,11 @@ export const useTeamRadio = (): UseTeamRadioResult => {
   const stopRadio = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.pause();
-      audioRef.current.src = "";
-      audioRef.current = null;
+      audioRef.current.currentTime = 0;
+      audioRef.current.onended = null;
+      audioRef.current.onerror = null;
     }
+    audioRef.current = null;
     setCurrentRadio(null);
     setIsAudioPlaying(false);
     setPlaybackError(false);
@@ -31,7 +34,11 @@ export const useTeamRadio = (): UseTeamRadioResult => {
   const playRadio = useCallback(
     (radio: TimedSample<OpenF1TeamRadio>) => {
       stopRadio();
-      const audio = new Audio(radio.recording_url);
+      const audio = getRadioAudioElement(radio.recording_url);
+      if (!audio) {
+        return;
+      }
+      audio.currentTime = 0;
       audioRef.current = audio;
       setCurrentRadio(radio);
       setPlaybackError(false);
@@ -49,7 +56,10 @@ export const useTeamRadio = (): UseTeamRadioResult => {
 
       audio
         .play()
-        .then(() => setIsAudioPlaying(true))
+        .then(async () => {
+          await resumeRadioAudioContext();
+          setIsAudioPlaying(true);
+        })
         .catch(() => {
           setPlaybackError(true);
           setIsAudioPlaying(false);
@@ -69,7 +79,10 @@ export const useTeamRadio = (): UseTeamRadioResult => {
     if (audioRef.current && !isAudioPlaying && currentRadio) {
       audioRef.current
         .play()
-        .then(() => setIsAudioPlaying(true))
+        .then(async () => {
+          await resumeRadioAudioContext();
+          setIsAudioPlaying(true);
+        })
         .catch(() => {
           setPlaybackError(true);
           setIsAudioPlaying(false);
