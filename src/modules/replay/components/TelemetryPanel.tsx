@@ -63,11 +63,26 @@ export const TelemetryPanel = ({ summary, rows, activeOvertakes = [] }: Telemetr
                   className={`grid grid-cols-[0.45fr_2fr_0.55fr_0.55fr] items-center gap-1 rounded-lg bg-white/5 px-2 py-2 transition-shadow duration-500 ${overtakeClass}`}
                 >
                   <div className="text-center text-white/80">{row.position ?? "-"}</div>
-                  <div className="min-w-0">
-                    <div className="truncate text-white">{row.driverName}</div>
-                    <div className="text-[10px] text-white/40">
-                      #{row.driverNumber}
-                      {row.driverAcronym ? ` · ${row.driverAcronym}` : ""}
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10 text-[10px] font-semibold text-white/70">
+                      {row.headshotUrl ? (
+                        <img
+                          src={row.headshotUrl}
+                          alt={`${row.driverName} headshot`}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      ) : (
+                        <span>{row.driverAcronym || row.driverNumber}</span>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="truncate text-white">{row.driverName}</div>
+                      <div className="text-[10px] text-white/40">
+                        #{row.driverNumber}
+                        {row.driverAcronym ? ` · ${row.driverAcronym}` : ""}
+                      </div>
                     </div>
                   </div>
                   <div className="text-center text-white/80">{row.lap ?? "-"}</div>

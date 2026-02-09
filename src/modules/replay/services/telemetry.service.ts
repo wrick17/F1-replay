@@ -106,6 +106,7 @@ export const computeTelemetryRows = (
         driverNumber: driver.driver_number,
         driverName: formatTelemetryLabel(driver),
         driverAcronym: driver.name_acronym,
+        headshotUrl: driver.headshot_url ?? null,
         position: positionSample?.position ?? null,
         lap: lapNumber,
         compound: fallbackStint?.compound ?? null,
