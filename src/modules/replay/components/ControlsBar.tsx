@@ -44,7 +44,9 @@ export const ControlsBar = ({
   return (
     <div className="flex w-full flex-col gap-2 rounded-xl border border-white/20 bg-white/5 p-4 text-white backdrop-blur-xl">
       {/* Timeline row: time | slider | time | expand */}
-      <div className={`mt-4 flex min-w-0 gap-3 text-xs text-white/60 ${expanded ? "items-end" : "items-center"}`}>
+      <div
+        className={`mt-4 flex min-w-0 gap-3 text-xs text-white/60 ${expanded ? "items-end" : "items-center"}`}
+      >
         <span className="shrink-0 font-mono text-xs tabular-nums text-white/50">
           {formatTime(currentTimeMs - startTimeMs)}
         </span>

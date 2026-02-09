@@ -50,10 +50,7 @@ export const useUserPreferences = () => {
     });
   }, []);
 
-  const setSpeed = useCallback(
-    (speed: number) => update({ speed }),
-    [update],
-  );
+  const setSpeed = useCallback((speed: number) => update({ speed }), [update]);
 
   const cycleSpeed = useCallback(() => {
     const currentIndex = SPEED_OPTIONS.indexOf(prefsRef.current.speed);

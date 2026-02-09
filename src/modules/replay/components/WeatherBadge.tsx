@@ -8,7 +8,7 @@ type WeatherBadgeProps = {
 const COMPASS_DIRECTIONS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] as const;
 
 const degreesToCompass = (deg: number): string => {
-  const index = Math.round(((deg % 360) + 360) % 360 / 45) % 8;
+  const index = Math.round((((deg % 360) + 360) % 360) / 45) % 8;
   return COMPASS_DIRECTIONS[index];
 };
 

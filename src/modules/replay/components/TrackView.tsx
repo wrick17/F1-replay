@@ -98,13 +98,11 @@ export const TrackView = ({
       lastValid = point;
     }
     const sorted = [...distances].sort((a, b) => a - b);
-    const median =
-      sorted.length > 0 ? sorted[Math.floor(sorted.length / 2)] : MIN_SEGMENT_JUMP;
+    const median = sorted.length > 0 ? sorted[Math.floor(sorted.length / 2)] : MIN_SEGMENT_JUMP;
     const jumpThreshold = Math.max(median * JUMP_MULTIPLIER, MIN_SEGMENT_JUMP);
     const segments: TrackSegment[] = [];
     let previous: (typeof scaledTrack)[number] | null = null;
-    let currentSegment: { d: string; color: string; start: { x: number; y: number } } | null =
-      null;
+    let currentSegment: { d: string; color: string; start: { x: number; y: number } } | null = null;
 
     for (const point of scaledTrack) {
       if (!Number.isFinite(point.x) || !Number.isFinite(point.y) || !Number.isFinite(point.z)) {

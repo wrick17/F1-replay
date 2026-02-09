@@ -65,7 +65,7 @@ export const chunkAppend = <T extends { driver_number: number }>(
 
 export const computeTelemetrySummary = (
   data: ReplaySessionData | null,
-  availableEndMs: number,
+  _availableEndMs: number,
   effectiveEndMs: number,
   sessionStartMs: number,
 ): TelemetrySummary => {

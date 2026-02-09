@@ -369,10 +369,7 @@ export const TimelineSlider = ({
           <style>{`
             .timeline-scroll-hide::-webkit-scrollbar { display: none; }
           `}</style>
-          <div
-            className="timeline-scroll-hide"
-            style={{ width: `${EXPAND_SCALE * 100}%` }}
-          >
+          <div className="timeline-scroll-hide" style={{ width: `${EXPAND_SCALE * 100}%` }}>
             <div className="mb-1">{markerRow}</div>
             {trackBar}
           </div>
@@ -381,9 +378,7 @@ export const TimelineSlider = ({
         /* Non-expanded: markers absolutely positioned above track so they
            don't affect component height — keeps timers aligned with the track bar */
         <div className="relative">
-          <div className="absolute inset-x-0 bottom-full mb-1">
-            {markerRow}
-          </div>
+          <div className="absolute inset-x-0 bottom-full mb-1">{markerRow}</div>
           {trackBar}
         </div>
       )}
