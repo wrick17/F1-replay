@@ -233,6 +233,9 @@ export const ReplayPage = () => {
 
   const skipIntervalLabel =
     SKIP_INTERVAL_LABELS[prefs.skipIntervalMs] ?? `${prefs.skipIntervalMs / 1000}s`;
+  const desktopControlsClearanceClass = prefs.timelineExpanded
+    ? "md:bottom-[9.25rem]"
+    : "md:bottom-[8.5rem]";
 
   const drivers = useMemo(() => data?.drivers ?? [], [data]);
   const selectedDrivers = useMemo(() => [], []);
@@ -344,7 +347,7 @@ export const ReplayPage = () => {
       </footer>
 
       <aside
-        className={`relative z-10 mx-4 mt-4 ${telemetryCollapsed ? "mb-0 h-auto min-h-0" : "mb-6 h-[60vh] min-h-[320px]"} md:absolute md:right-4 md:top-4 md:mx-0 md:mt-0 md:mb-0 md:h-auto md:min-h-0 md:w-72`}
+        className={`relative z-10 mx-4 mt-4 ${telemetryCollapsed ? "mb-0 h-auto min-h-0" : "mb-6 h-[60vh] min-h-[320px]"} md:absolute md:right-4 md:top-4 md:bottom-4 md:mx-0 md:mt-0 md:mb-0 md:h-auto md:min-h-0 md:w-72 md:overflow-y-auto`}
         data-testid="telemetry-panel"
       >
         <button
@@ -366,7 +369,7 @@ export const ReplayPage = () => {
       </aside>
 
       <aside
-        className={`relative z-10 mx-4 mt-4 ${eventsCollapsed ? "mb-0 h-auto min-h-0" : "mb-6 h-[45vh] min-h-[260px]"} md:absolute md:left-4 md:top-40 md:mx-0 md:mt-0 md:mb-0 md:h-auto md:min-h-0 md:w-64 ${prefs.timelineExpanded ? "md:bottom-[12.75rem]" : "md:bottom-[7.75rem]"}`}
+        className={`relative z-10 mx-4 mt-4 ${eventsCollapsed ? "mb-0 h-auto min-h-0" : "mb-6 h-[45vh] min-h-[260px]"} md:absolute md:left-4 md:top-40 ${desktopControlsClearanceClass} md:mx-0 md:mt-0 md:mb-0 md:h-auto md:min-h-0 md:w-64 md:overflow-y-auto`}
         data-testid="events-panel-wrapper"
       >
         <button

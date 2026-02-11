@@ -1,19 +1,16 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useMemo, useRef } from "react";
 import type { TrackViewProps } from "../types/replay.types";
 import {
   buildPathD,
   computeBounds,
-  computeLabelOffset,
   getLabelWidth,
   LABEL_HEIGHT,
   LABEL_PADDING,
-  type LabelRect,
-  resolveCollisions,
-  smoothLabels,
   toPoint2D,
   VIEWBOX_PADDING,
   type ViewboxBounds,
 } from "../utils/geometry.util";
+import { placeTrackLabels } from "../utils/trackLabelPlacement.util";
 
 const LABEL_LOGO_SIZE = 18;
 const LABEL_LOGO_GAP = 6;
@@ -95,21 +92,6 @@ const elevationColor = (t: number) => {
 const quantizeElevation = (t: number, steps = 48) => {
   const clamped = clamp01(t);
   return Math.round(clamped * steps) / steps;
-};
-
-type LabelWorkerRequest = {
-  type: "resolve";
-  requestId: number;
-  payload: {
-    labels: LabelRect[];
-    viewbox?: ViewboxBounds | null;
-  };
-};
-
-type LabelWorkerResponse = {
-  type: "resolved";
-  requestId: number;
-  payload: LabelRect[];
 };
 
 export const TrackView = ({
@@ -239,7 +221,6 @@ export const TrackView = ({
       .map(([driverKey, state]) => {
         const driverNumber = Number(driverKey);
         const position = toPoint2D(state.position as NonNullable<typeof state.position>);
-        const offset = computeLabelOffset(position, bounds.center);
         const team = driverTeams[driverNumber];
         const driverLabel = driverNames[driverNumber] ?? `#${driverNumber}`;
         const positionLabel =
@@ -255,8 +236,6 @@ export const TrackView = ({
           driverNumber,
           position,
           labelWidth,
-          initialLabelX: position.x + offset.x,
-          initialLabelY: position.y + offset.y,
           color: state.color,
           isSelected: selectedDrivers.includes(driverNumber),
           team,
@@ -264,13 +243,9 @@ export const TrackView = ({
         };
       })
       .sort((a, b) => a.driverNumber - b.driverNumber);
-  }, [driverStates, driverTeams, driverNames, bounds.center, selectedDrivers, labelWidthMap]);
+  }, [driverStates, driverTeams, driverNames, selectedDrivers, labelWidthMap]);
 
-  const prevLabelsRef = useRef<LabelRect[]>([]);
-  const workerRef = useRef<Worker | null>(null);
-  const requestIdRef = useRef(0);
-  const latestRequestRef = useRef(0);
-  const [resolvedLabels, setResolvedLabels] = useState<LabelRect[]>([]);
+  const previousAnglesRef = useRef<Map<string, number>>(new Map());
 
   // Inset the clamping bounds so labels stay away from edges that overlap UI panels
   const LABEL_SAFE_INSET = 64;
@@ -284,92 +259,29 @@ export const TrackView = ({
     [bounds],
   );
 
-  useEffect(() => {
-    if (typeof Worker === "undefined") {
-      return;
-    }
-    const worker = new Worker(new URL("../workers/labelPlacement.worker.ts", import.meta.url), {
-      type: "module",
-    });
-    workerRef.current = worker;
-    worker.onmessage = (event: MessageEvent<LabelWorkerResponse>) => {
-      const message = event.data;
-      if (message.type !== "resolved") return;
-      if (message.requestId !== latestRequestRef.current) return;
-      const smoothed = smoothLabels(prevLabelsRef.current, message.payload, 0.08);
-      prevLabelsRef.current = smoothed;
-      setResolvedLabels(smoothed);
-    };
-    return () => {
-      worker.terminate();
-      workerRef.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
+  const labelPlacementMap = useMemo(() => {
     if (driverEntries.length === 0) {
-      prevLabelsRef.current = [];
-      setResolvedLabels([]);
-      return;
+      previousAnglesRef.current = new Map();
+      return new Map();
     }
 
-    const prevMap = new Map<string, LabelRect>();
-    for (const label of prevLabelsRef.current) {
-      prevMap.set(label.key, label);
-    }
-    const hasPrev = prevMap.size > 0;
-    const smoothFactor = 0.05;
-
-    // Build rects starting from previous resolved positions (if available)
-    // and gently pulling toward new ideal positions.
-    // Since previous positions are already non-overlapping, collision
-    // resolution only needs small adjustments -> stable, no jumping.
-    const rects: LabelRect[] = driverEntries.map((entry) => {
-      const targetX = entry.initialLabelX;
-      const targetY = entry.initialLabelY;
-      const prev = hasPrev ? prevMap.get(entry.driverKey) : undefined;
-
-      return {
+    const { placements, angles } = placeTrackLabels(
+      driverEntries.map((entry) => ({
         key: entry.driverKey,
-        x: prev ? prev.x + (targetX - prev.x) * smoothFactor : targetX,
-        y: prev ? prev.y + (targetY - prev.y) * smoothFactor : targetY,
-        width: entry.labelWidth,
-        height: LABEL_HEIGHT,
-        anchorX: entry.position.x,
-        anchorY: entry.position.y,
-      };
-    });
+        markerX: entry.position.x,
+        markerY: entry.position.y,
+        labelWidth: entry.labelWidth,
+        labelHeight: LABEL_HEIGHT,
+        driverNumber: entry.driverNumber,
+      })),
+      bounds.center,
+      viewboxBounds,
+      previousAnglesRef.current,
+    );
 
-    const worker = workerRef.current;
-    if (!worker) {
-      const resolved = resolveCollisions(rects, undefined, viewboxBounds);
-      const smoothed = smoothLabels(prevLabelsRef.current, resolved, 0.08);
-      prevLabelsRef.current = smoothed;
-      setResolvedLabels(smoothed);
-      return;
-    }
-
-    const requestId = requestIdRef.current + 1;
-    requestIdRef.current = requestId;
-    latestRequestRef.current = requestId;
-    const message: LabelWorkerRequest = {
-      type: "resolve",
-      requestId,
-      payload: {
-        labels: rects,
-        viewbox: viewboxBounds,
-      },
-    };
-    worker.postMessage(message);
-  }, [driverEntries, viewboxBounds]);
-
-  const labelMap = useMemo(() => {
-    const map = new Map<string, LabelRect>();
-    for (const label of resolvedLabels) {
-      map.set(label.key, label);
-    }
-    return map;
-  }, [resolvedLabels]);
+    previousAnglesRef.current = angles;
+    return new Map(placements.map((placement) => [placement.key, placement]));
+  }, [driverEntries, bounds.center, viewboxBounds]);
 
   return (
     <svg
@@ -381,9 +293,9 @@ export const TrackView = ({
     >
       <TrackBase bounds={bounds} trackSegments={trackSegments} pathD={pathD} />
       {driverEntries.map((entry) => {
-        const resolved = labelMap.get(entry.driverKey);
-        const labelX = resolved?.x ?? entry.initialLabelX;
-        const labelY = resolved?.y ?? entry.initialLabelY;
+        const placement = labelPlacementMap.get(entry.driverKey);
+        const labelX = placement?.labelX ?? entry.position.x;
+        const labelY = placement?.labelY ?? entry.position.y;
         const teamLogo = entry.team?.logoUrl;
         const teamInitials = entry.team?.initials ?? "?";
         const logoSize = LABEL_LOGO_SIZE;
@@ -404,8 +316,8 @@ export const TrackView = ({
             <line
               x1={entry.position.x}
               y1={entry.position.y}
-              x2={labelX}
-              y2={labelY}
+              x2={placement?.leaderEndX ?? labelX}
+              y2={placement?.leaderEndY ?? labelY}
               stroke={entry.color}
               strokeWidth="1"
               strokeOpacity={0.5}

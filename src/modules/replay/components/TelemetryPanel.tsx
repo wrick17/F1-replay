@@ -141,7 +141,7 @@ export const TelemetryPanel = ({
   }, [activeOvertakes]);
 
   return (
-    <div className="flex h-full flex-col gap-3 rounded-xl border border-white/20 bg-white/5 p-4 backdrop-blur-xl">
+    <div className="flex h-full min-h-0 flex-col gap-3 rounded-xl border border-white/20 bg-white/5 p-4 backdrop-blur-xl">
       <div>
         <div className="text-sm font-semibold text-white">Leaderboard</div>
       </div>
@@ -168,7 +168,7 @@ export const TelemetryPanel = ({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto pr-1">
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
         <div className="grid grid-cols-[auto_1fr] items-center gap-2 text-[10px] uppercase text-white/40">
           <span className="text-center">Driver</span>
           <div className="flex items-center justify-between">

@@ -38,6 +38,8 @@ F1 Replay is a replay viewer for Formula 1 telemetry data. Built with React and 
 - **Responsive Design**: Works across different screen sizes
 - **Mobile Weather Badge**: Weather widget uses a compact single-row layout on mobile without horizontal scrolling
 - **Mobile Collapsible Panels**: Leaderboard and Events panels can be expanded/collapsed on mobile (default expanded)
+- **Desktop Panel Safe Zones**: Left/right side panels are constrained with bottom clearance above the controls bar to prevent overlap or out-of-bounds rendering
+- **Responsive Side Panels**: On smaller desktop heights, telemetry/events lists remain usable via internal scrolling without clipping outside the viewport
 - **Persistent Preferences**: Remember user settings across sessions
 
 ## Tech Stack
@@ -267,6 +269,17 @@ Shows driver standings with:
 - Driver positions in real-time
 - Direction of travel
 - Team colors
+- Deterministic driver labels with fixed-length leader lines
+- Label placement that allows overlaps while keeping labels inside safe track bounds
+
+##### Track Label Placement Logic
+- Labels keep their existing pill content/structure (`position + driver name + team logo/initials`)
+- Every driver has a fixed-length `5px` leader line segment from marker to label edge
+- Labels are constrained to the right side of each driver marker
+- Placement is deterministic (no worker-based collision solver), so labels do not jump between play/pause states
+- Labels follow marker movement each frame with stable per-driver angle hysteresis
+- Label overlap with other labels/markers is allowed by design
+- Labels are constrained to a padded internal viewbox so they are not hidden by surrounding panels
 
 #### `TelemetryPanel`
 Displays detailed telemetry for selected driver:
@@ -461,6 +474,7 @@ bun test test/unittests/specific-test.ts
 - Component testing for UI components
 - Integration tests for API client
 - Manual smoke testing for end-to-end flows
+- Visual tests validate track/label safety against app panels and fixed-length leader-line consistency
 
 ### Manual Smoke Test
 

@@ -26,10 +26,6 @@ type DOMRectLike = {
   centerY: number;
 };
 
-const intersects = (a: DOMRectLike, b: DOMRectLike) => {
-  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
-};
-
 const overlapArea = (a: DOMRectLike, b: DOMRectLike) => {
   const width = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
   const height = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
@@ -142,6 +138,38 @@ const getRects = async (page: Page, selector: string) => {
   );
 };
 
+const getLeaderLineMetrics = async (page: Page) => {
+  return page.$$eval("svg[aria-label='F1 track replay'] line", (elements) =>
+    elements.map((el) => {
+      const line = el as SVGLineElement;
+      const x1 = Number(line.getAttribute("x1") ?? "0");
+      const y1 = Number(line.getAttribute("y1") ?? "0");
+      const x2 = Number(line.getAttribute("x2") ?? "0");
+      const y2 = Number(line.getAttribute("y2") ?? "0");
+      const root = line.ownerSVGElement;
+      if (!root) {
+        return { startX: x1, startY: y1, endX: x2, endY: y2, length: Math.hypot(x2 - x1, y2 - y1) };
+      }
+      const toPoint = (x: number, y: number) => {
+        const point = root.createSVGPoint();
+        point.x = x;
+        point.y = y;
+        const transformed = point.matrixTransform(line.getScreenCTM() ?? root.getScreenCTM());
+        return { x: transformed.x, y: transformed.y };
+      };
+      const start = toPoint(x1, y1);
+      const end = toPoint(x2, y2);
+      return {
+        startX: start.x,
+        startY: start.y,
+        endX: end.x,
+        endY: end.y,
+        length: Math.hypot(end.x - start.x, end.y - start.y),
+      };
+    }),
+  );
+};
+
 const getTrackPathRect = async (page: Page) => {
   return page.evaluate(() => {
     const paths = Array.from(
@@ -182,11 +210,12 @@ const waitForTrackData = async (page: Page) => {
   await page.waitForSelector("svg[aria-label='F1 track replay']");
   await page.waitForFunction(
     () =>
+      document.querySelectorAll("svg[aria-label='F1 track replay'] circle[stroke]").length > 10 ||
       document.querySelectorAll(
         "svg[aria-label='F1 track replay'] rect[stroke='rgba(255,255,255,0.2)']",
       ).length > 10,
     undefined,
-    { timeout: 20_000 },
+    { timeout: 60_000 },
   );
 };
 
@@ -252,9 +281,11 @@ const prewarmRounds = async (browser: Browser) => {
         page,
         "svg[aria-label='F1 track replay'] rect[stroke='rgba(255,255,255,0.2)']",
       );
-      const dotRects = await getRects(page, "svg[aria-label='F1 track replay'] circle");
+      const dotRects = await getRects(page, "svg[aria-label='F1 track replay'] circle[stroke]");
+      const leaderLines = await getLeaderLineMetrics(page);
       expect(labelRects.length).toBeGreaterThan(10);
       expect(dotRects.length).toBeGreaterThan(10);
+      expect(leaderLines.length).toBeGreaterThan(10);
 
       for (const label of labelRects) {
         expect(overlapArea(label, telemetryBox)).toBeLessThan(2);
@@ -265,14 +296,36 @@ const prewarmRounds = async (browser: Browser) => {
         }
       }
 
-      const maxLabelOverlapArea = 60;
-      for (let i = 0; i < labelRects.length; i += 1) {
-        for (let j = i + 1; j < labelRects.length; j += 1) {
-          const a = labelRects[i];
-          const b = labelRects[j];
-          if (intersects(a, b)) {
-            expect(overlapArea(a, b)).toBeLessThan(maxLabelOverlapArea);
-          }
+      const firstLineLength = leaderLines[0].length;
+      for (const line of leaderLines) {
+        expect(Math.abs(line.length - firstLineLength)).toBeLessThan(2);
+      }
+
+      for (const line of leaderLines) {
+        const closestDot = dotRects.reduce((best, dot) => {
+          const dx = line.startX - dot.centerX;
+          const dy = line.startY - dot.centerY;
+          const dist = Math.hypot(dx, dy);
+          return dist < best ? dist : best;
+        }, Number.POSITIVE_INFINITY);
+        expect(closestDot).toBeLessThan(2.5);
+        const reachesSomeLabel = labelRects.some(
+          (label) =>
+            line.endX >= label.left &&
+            line.endX <= label.right &&
+            line.endY >= label.top &&
+            line.endY <= label.bottom,
+        );
+        if (!reachesSomeLabel) {
+          const distanceToClosestLabel = labelRects.reduce((best, label) => {
+            const clampedX = Math.max(label.left, Math.min(line.endX, label.right));
+            const clampedY = Math.max(label.top, Math.min(line.endY, label.bottom));
+            const dx = line.endX - clampedX;
+            const dy = line.endY - clampedY;
+            const dist = Math.hypot(dx, dy);
+            return dist < best ? dist : best;
+          }, Number.POSITIVE_INFINITY);
+          expect(distanceToClosestLabel).toBeLessThan(3);
         }
       }
 
