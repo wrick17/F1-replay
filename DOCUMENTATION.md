@@ -28,6 +28,7 @@ F1 Replay is a replay viewer for Formula 1 telemetry data. Built with React and 
 
 ### 📊 Telemetry & Data
 - **Event Markers**: Visual indicators for DRS zones, pit stops, safety cars, and overtakes
+- **Events Panel**: Left-side chronological event list with timestamp, click-to-seek, active-event red line, playback auto-scroll, inline radio player controls, plus Legend/Shortcuts sections below the list
 - **Weather Data**: Live weather conditions including air/track temperature, humidity, and rainfall
 - **Team Radio**: Listen to team radio communications with timestamp markers
 
@@ -36,6 +37,7 @@ F1 Replay is a replay viewer for Formula 1 telemetry data. Built with React and 
 - **Keyboard Shortcuts**: Quick controls for playback and navigation
 - **Responsive Design**: Works across different screen sizes
 - **Mobile Weather Badge**: Weather widget uses a compact single-row layout on mobile without horizontal scrolling
+- **Mobile Collapsible Panels**: Leaderboard and Events panels can be expanded/collapsed on mobile (default expanded)
 - **Persistent Preferences**: Remember user settings across sessions
 
 ## Tech Stack
@@ -78,6 +80,7 @@ f1-replay/
 │           ├── components/    # UI components
 │           │   ├── ControlsBar.tsx
 │           │   ├── EventMarkerPopup.tsx
+│           │   ├── EventsPanel.tsx
 │           │   ├── Leaderboard.tsx
 │           │   ├── MarkerLegend.tsx
 │           │   ├── RadioPopup.tsx
@@ -166,6 +169,9 @@ bun run format
 
 # Run tests
 bun run test
+
+# Run visual layout tests
+bun run test:visual
 ```
 
 ### Worker Configuration
@@ -437,8 +443,11 @@ The project includes unit tests located in the `test/unittests/` directory.
 ### Running Tests
 
 ```bash
-# Run all tests
+# Run unit tests (default)
 bun run test
+
+# Run visual layout tests
+bun run test:visual
 
 # Run tests in watch mode
 bun test --watch

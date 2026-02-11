@@ -11,6 +11,9 @@ const VIEWPORTS = [
   { name: "tablet", width: 1024, height: 768 },
   { name: "mobile", width: 390, height: 844 },
 ] as const;
+const MAX_PARALLEL_CASES = 2;
+const VISUAL_CASE_RETRIES = 2;
+const runVisualSuite = process.env.RUN_VISUAL_TESTS === "1";
 
 type DOMRectLike = {
   left: number;
@@ -175,15 +178,154 @@ const getWeatherMetrics = async (page: Page) => {
   });
 };
 
-describe("trackmap visual layout", () => {
+const waitForTrackData = async (page: Page) => {
+  await page.waitForSelector("svg[aria-label='F1 track replay']");
+  await page.waitForFunction(
+    () =>
+      document.querySelectorAll(
+        "svg[aria-label='F1 track replay'] rect[stroke='rgba(255,255,255,0.2)']",
+      ).length > 10,
+    undefined,
+    { timeout: 20_000 },
+  );
+};
+
+const prewarmRounds = async (browser: Browser) => {
+  for (const round of ROUNDS) {
+    const context = await browser.newContext({
+      viewport: { width: VIEWPORTS[0].width, height: VIEWPORTS[0].height },
+    });
+    const page = await context.newPage();
+    try {
+      page.setDefaultTimeout(90_000);
+      const url = `${APP_URL}?year=${YEAR}&round=${round}&session=Race`;
+      await page.goto(url, { waitUntil: "domcontentloaded" });
+      await waitForTrackData(page);
+    } finally {
+      await context.close();
+    }
+  }
+};
+
+(runVisualSuite ? describe : describe.skip)("trackmap visual layout", () => {
   let server: ChildProcessWithoutNullStreams | null = null;
   let browser: Browser | null = null;
+
+  const runVisualCase = async (viewport: (typeof VIEWPORTS)[number], round: number) => {
+    if (!browser) {
+      throw new Error("Browser not available");
+    }
+    const context = await browser.newContext({
+      viewport: { width: viewport.width, height: viewport.height },
+    });
+    const page = await context.newPage();
+    try {
+      const url = `${APP_URL}?year=${YEAR}&round=${round}&session=Race`;
+      page.setDefaultTimeout(40_000);
+      await page.goto(url, { waitUntil: "domcontentloaded" });
+      await waitForTrackData(page);
+      await page.waitForTimeout(500);
+
+      const trackPathBox = await getTrackPathRect(page);
+      const telemetryBox = await getRect(page, "[data-testid='telemetry-panel']");
+      const eventsPanel = page.locator("[data-testid='events-panel']");
+      const hasEventsPanel = (await eventsPanel.count()) > 0;
+      const eventsBox = hasEventsPanel ? await getRect(page, "[data-testid='events-panel']") : null;
+      const headerBox = await getRect(page, "header");
+      const footerBox = await getRect(page, "footer");
+
+      if (!trackPathBox) {
+        throw new Error("Track path not found");
+      }
+      expect(trackPathBox.width).toBeGreaterThan(100);
+      expect(trackPathBox.height).toBeGreaterThan(100);
+      const trackArea = trackPathBox.width * trackPathBox.height;
+      const maxTrackOverlapRatio = 0.02;
+      expect(overlapArea(trackPathBox, telemetryBox) / trackArea).toBeLessThan(maxTrackOverlapRatio);
+      expect(overlapArea(trackPathBox, headerBox) / trackArea).toBeLessThan(maxTrackOverlapRatio);
+      expect(overlapArea(trackPathBox, footerBox) / trackArea).toBeLessThan(maxTrackOverlapRatio);
+      if (eventsBox) {
+        expect(overlapArea(trackPathBox, eventsBox) / trackArea).toBeLessThan(maxTrackOverlapRatio);
+      }
+
+      const labelRects = await getRects(
+        page,
+        "svg[aria-label='F1 track replay'] rect[stroke='rgba(255,255,255,0.2)']",
+      );
+      const dotRects = await getRects(page, "svg[aria-label='F1 track replay'] circle");
+      expect(labelRects.length).toBeGreaterThan(10);
+      expect(dotRects.length).toBeGreaterThan(10);
+
+      for (const label of labelRects) {
+        expect(overlapArea(label, telemetryBox)).toBeLessThan(2);
+        expect(overlapArea(label, headerBox)).toBeLessThan(2);
+        expect(overlapArea(label, footerBox)).toBeLessThan(2);
+        if (eventsBox) {
+          expect(overlapArea(label, eventsBox)).toBeLessThan(2);
+        }
+      }
+
+      const maxLabelOverlapArea = 60;
+      for (let i = 0; i < labelRects.length; i += 1) {
+        for (let j = i + 1; j < labelRects.length; j += 1) {
+          const a = labelRects[i];
+          const b = labelRects[j];
+          if (intersects(a, b)) {
+            expect(overlapArea(a, b)).toBeLessThan(maxLabelOverlapArea);
+          }
+        }
+      }
+
+      const distanceScale = 0.5;
+      const maxDistance = Math.max(trackPathBox.width, trackPathBox.height) * distanceScale;
+      for (const label of labelRects) {
+        const closest = dotRects.reduce((best, dot) => {
+          const dx = label.centerX - dot.centerX;
+          const dy = label.centerY - dot.centerY;
+          const dist = Math.hypot(dx, dy);
+          return dist < best ? dist : best;
+        }, Number.POSITIVE_INFINITY);
+        expect(closest).toBeLessThan(maxDistance);
+      }
+
+      if (viewport.name === "mobile") {
+        const weather = await getWeatherMetrics(page);
+        expect(weather).not.toBeNull();
+        expect(weather?.flexWrap).toBe("nowrap");
+        expect(weather?.scrollWidth).toBeLessThanOrEqual((weather?.clientWidth ?? 0) + 1);
+      }
+    } finally {
+      await context.close();
+    }
+  };
+
+  const shouldRetry = (error: unknown) => {
+    if (!(error instanceof Error)) return false;
+    return error.name === "TimeoutError" || error.message.includes("Timeout");
+  };
+
+  const runCaseWithRetry = async (
+    viewport: (typeof VIEWPORTS)[number],
+    round: number,
+    retries = VISUAL_CASE_RETRIES,
+  ) => {
+    try {
+      await runVisualCase(viewport, round);
+    } catch (error) {
+      if (retries > 0 && shouldRetry(error)) {
+        await runCaseWithRetry(viewport, round, retries - 1);
+        return;
+      }
+      throw error;
+    }
+  };
 
   beforeAll(
     async () => {
       const result = await launchServerIfNeeded();
       server = result.process;
       browser = await launchBrowser();
+      await prewarmRounds(browser);
     },
     180_000,
   );
@@ -197,105 +339,30 @@ describe("trackmap visual layout", () => {
     }
   });
 
-  for (const viewport of VIEWPORTS) {
-    for (const round of ROUNDS) {
-      it(
-        `round ${round} (${viewport.name}) has safe labels`,
-        async () => {
-          if (!browser) {
-            throw new Error("Browser not available");
-          }
-          const context = await browser.newContext({
-            viewport: { width: viewport.width, height: viewport.height },
-          });
-          const page = await context.newPage();
-          try {
-            const url = `${APP_URL}?year=${YEAR}&round=${round}&session=Race`;
-            page.setDefaultTimeout(120_000);
-            await page.goto(url, { waitUntil: "domcontentloaded" });
-            await page.waitForSelector("svg[aria-label='F1 track replay']");
-            await page.waitForFunction(
-              () =>
-                document.querySelectorAll(
-                  "svg[aria-label='F1 track replay'] rect[stroke='rgba(255,255,255,0.2)']",
-                ).length > 10,
-            );
-            await page.waitForTimeout(500);
-
-          const trackPathBox = await getTrackPathRect(page);
-          const telemetryBox = await getRect(page, "aside");
-          const headerBox = await getRect(page, "header");
-          const footerBox = await getRect(page, "footer");
-
-          if (!trackPathBox) {
-            throw new Error("Track path not found");
-          }
-          expect(trackPathBox.width).toBeGreaterThan(100);
-          expect(trackPathBox.height).toBeGreaterThan(100);
-          const trackArea = trackPathBox.width * trackPathBox.height;
-          const maxTrackOverlapRatio = 0.02;
-          expect(overlapArea(trackPathBox, telemetryBox) / trackArea).toBeLessThan(
-            maxTrackOverlapRatio,
-          );
-          expect(overlapArea(trackPathBox, headerBox) / trackArea).toBeLessThan(
-            maxTrackOverlapRatio,
-          );
-          expect(overlapArea(trackPathBox, footerBox) / trackArea).toBeLessThan(
-            maxTrackOverlapRatio,
-          );
-
-            const labelRects = await getRects(
-              page,
-              "svg[aria-label='F1 track replay'] rect[stroke='rgba(255,255,255,0.2)']",
-            );
-            const dotRects = await getRects(
-              page,
-              "svg[aria-label='F1 track replay'] circle",
-            );
-            expect(labelRects.length).toBeGreaterThan(10);
-            expect(dotRects.length).toBeGreaterThan(10);
-
-            for (const label of labelRects) {
-              expect(overlapArea(label, telemetryBox)).toBeLessThan(2);
-              expect(overlapArea(label, headerBox)).toBeLessThan(2);
-              expect(overlapArea(label, footerBox)).toBeLessThan(2);
-            }
-
-            const maxLabelOverlapArea = 60;
-            for (let i = 0; i < labelRects.length; i += 1) {
-              for (let j = i + 1; j < labelRects.length; j += 1) {
-                const a = labelRects[i];
-                const b = labelRects[j];
-                if (intersects(a, b)) {
-                  expect(overlapArea(a, b)).toBeLessThan(maxLabelOverlapArea);
-                }
-              }
-            }
-
-            const distanceScale = 0.5;
-            const maxDistance = Math.max(trackPathBox.width, trackPathBox.height) * distanceScale;
-            for (const label of labelRects) {
-              const closest = dotRects.reduce((best, dot) => {
-                const dx = label.centerX - dot.centerX;
-                const dy = label.centerY - dot.centerY;
-                const dist = Math.hypot(dx, dy);
-                return dist < best ? dist : best;
-              }, Number.POSITIVE_INFINITY);
-              expect(closest).toBeLessThan(maxDistance);
-            }
-
-            if (viewport.name === "mobile") {
-              const weather = await getWeatherMetrics(page);
-              expect(weather).not.toBeNull();
-              expect(weather?.flexWrap).toBe("nowrap");
-              expect(weather?.scrollWidth).toBeLessThanOrEqual((weather?.clientWidth ?? 0) + 1);
-            }
-          } finally {
-            await context.close();
-          }
-        },
-        180_000,
+  it(
+    "all rounds and viewports have safe labels (parallel batches)",
+    async () => {
+      const cases = ROUNDS.flatMap((round) =>
+        VIEWPORTS.map((viewport) => ({
+          viewport,
+          round,
+          label: `round ${round} (${viewport.name})`,
+        })),
       );
-    }
-  }
+
+      for (let index = 0; index < cases.length; index += MAX_PARALLEL_CASES) {
+        const batch = cases.slice(index, index + MAX_PARALLEL_CASES);
+        await Promise.all(
+          batch.map(async (testCase) => {
+            try {
+              await runCaseWithRetry(testCase.viewport, testCase.round);
+            } catch (error) {
+              throw new Error(`${testCase.label} failed: ${String(error)}`);
+            }
+          }),
+        );
+      }
+    },
+    180_000,
+  );
 });

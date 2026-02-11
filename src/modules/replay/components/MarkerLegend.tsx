@@ -39,7 +39,7 @@ export const MarkerLegend = ({
   onToggleShortcutsCollapsed,
 }: MarkerLegendProps) => {
   return (
-    <div className="flex w-fit flex-row gap-0 rounded-xl border border-white/20 bg-white/5 text-xs text-white/70 backdrop-blur-xl md:flex-col">
+    <div className="flex w-full flex-col gap-0 rounded-xl border border-white/20 bg-white/5 text-xs text-white/70 backdrop-blur-xl">
       {/* Legend section */}
       {hasEvents && (
         <div>
@@ -65,7 +65,7 @@ export const MarkerLegend = ({
       )}
 
       {/* Shortcuts section */}
-      <div className={hasEvents ? "border-l border-white/10 md:border-l-0 md:border-t" : ""}>
+      <div className={hasEvents ? "border-t border-white/10" : ""}>
         <button
           type="button"
           onClick={onToggleShortcutsCollapsed}

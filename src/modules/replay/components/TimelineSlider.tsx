@@ -485,7 +485,7 @@ export const TimelineSlider = ({
                 isPlaying={isRadioPlaying}
                 onPlay={onPlayRadio}
                 onStop={onStopRadio}
-                showAudioControls={radioEnabled}
+                showAudioControls={false}
               />
             ) : (
               <EventMarkerPopup event={displayedEvent} startTimeMs={startTimeMs} />

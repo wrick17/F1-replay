@@ -126,3 +126,21 @@ export type MarkerLegendProps = {
   shortcutsCollapsed: boolean;
   onToggleShortcutsCollapsed: () => void;
 };
+
+export type EventsPanelProps = {
+  events: TimelineEvent[];
+  startTimeMs: number;
+  currentTimeMs: number;
+  isPlaying: boolean;
+  radioEnabled: boolean;
+  isRadioPlaying: boolean;
+  currentRadio: TimedSample<OpenF1TeamRadio> | null;
+  onPlayRadio: (radio: TimedSample<OpenF1TeamRadio>) => void;
+  onStopRadio: () => void;
+  hasEvents: boolean;
+  legendCollapsed: boolean;
+  shortcutsCollapsed: boolean;
+  onToggleLegendCollapsed: () => void;
+  onToggleShortcutsCollapsed: () => void;
+  onSelectEvent: (timestampMs: number) => void;
+};

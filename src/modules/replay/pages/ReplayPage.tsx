@@ -1,7 +1,7 @@
-import { Loader2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ControlsBar } from "../components/ControlsBar";
-import { MarkerLegend } from "../components/MarkerLegend";
+import { EventsPanel } from "../components/EventsPanel";
 import { SessionPicker } from "../components/SessionPicker";
 import { TelemetryPanel } from "../components/TelemetryPanel";
 import { TrackView } from "../components/TrackView";
@@ -93,7 +93,8 @@ export const ReplayPage = () => {
     return getActiveOvertakes(data.overtakes, replay.currentTimeMs);
   }, [data, replay.currentTimeMs]);
 
-  const { isAudioPlaying, playRadio, stopRadio, pauseRadio, resumeRadio } = useTeamRadio();
+  const { currentRadio, isAudioPlaying, playRadio, stopRadio, pauseRadio, resumeRadio } =
+    useTeamRadio();
 
   useEffect(() => {
     if (!data?.teamRadios?.length) {
@@ -122,12 +123,23 @@ export const ReplayPage = () => {
     [replay, prefs.skipIntervalMs],
   );
 
+  const handleEventSelect = useCallback(
+    (timestampMs: number) => {
+      replay.seekTo(timestampMs);
+    },
+    [replay],
+  );
+
   // Collapsible UI state (lightweight, not persisted)
   const [legendCollapsed, setLegendCollapsed] = useState(true);
   const [shortcutsCollapsed, setShortcutsCollapsed] = useState(true);
+  const [telemetryCollapsed, setTelemetryCollapsed] = useState(false);
+  const [eventsCollapsed, setEventsCollapsed] = useState(false);
 
   const toggleLegendCollapsed = useCallback(() => setLegendCollapsed((prev) => !prev), []);
   const toggleShortcutsCollapsed = useCallback(() => setShortcutsCollapsed((prev) => !prev), []);
+  const toggleTelemetryCollapsed = useCallback(() => setTelemetryCollapsed((prev) => !prev), []);
+  const toggleEventsCollapsed = useCallback(() => setEventsCollapsed((prev) => !prev), []);
 
   const availableSessionTypes = useMemo(() => {
     const sessionSet = new Set(sessions.map((entry) => entry.session_type));
@@ -289,7 +301,7 @@ export const ReplayPage = () => {
         )}
       </div>
 
-      <div className="relative mx-4 mt-4 min-h-[260px] md:absolute md:inset-0 md:mx-0 md:mt-0 md:pb-44 md:pl-4 md:pr-80 md:pt-32">
+      <div className="relative mx-4 mt-4 min-h-[260px] md:absolute md:inset-0 md:mx-0 md:mt-0 md:pb-44 md:pl-[17.5rem] md:pr-80 md:pt-32">
         <TrackView
           trackPath={trackPath}
           driverStates={driverStates}
@@ -301,15 +313,6 @@ export const ReplayPage = () => {
       </div>
 
       <footer className="relative z-10 mx-4 mt-4 md:absolute md:bottom-4 md:left-4 md:right-80 md:mx-0 md:mt-0">
-        <div className="mb-2">
-          <MarkerLegend
-            hasEvents={timelineEvents.length > 0}
-            legendCollapsed={legendCollapsed}
-            onToggleLegendCollapsed={toggleLegendCollapsed}
-            shortcutsCollapsed={shortcutsCollapsed}
-            onToggleShortcutsCollapsed={toggleShortcutsCollapsed}
-          />
-        </div>
         <ControlsBar
           isPlaying={replay.isPlaying}
           isBuffering={replay.isBuffering}
@@ -340,13 +343,59 @@ export const ReplayPage = () => {
         />
       </footer>
 
-      <aside className="relative z-10 mx-4 mt-4 mb-6 h-[60vh] min-h-[320px] md:absolute md:bottom-4 md:right-4 md:top-4 md:mx-0 md:mt-0 md:mb-0 md:h-auto md:min-h-0 md:w-72">
-        <TelemetryPanel
-          summary={telemetrySummary}
-          rows={telemetryRows}
-          activeOvertakes={activeOvertakes}
-          isLoading={loading}
-        />
+      <aside
+        className={`relative z-10 mx-4 mt-4 ${telemetryCollapsed ? "mb-0 h-auto min-h-0" : "mb-6 h-[60vh] min-h-[320px]"} md:absolute md:right-4 md:top-4 md:mx-0 md:mt-0 md:mb-0 md:h-auto md:min-h-0 md:w-72`}
+        data-testid="telemetry-panel"
+      >
+        <button
+          type="button"
+          onClick={toggleTelemetryCollapsed}
+          className="mb-2 flex w-full items-center gap-1.5 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-left text-xs font-semibold text-white/70 md:hidden"
+        >
+          {telemetryCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+          Leaderboard
+        </button>
+        <div className={`${telemetryCollapsed ? "hidden md:block" : "block"} h-full`}>
+          <TelemetryPanel
+            summary={telemetrySummary}
+            rows={telemetryRows}
+            activeOvertakes={activeOvertakes}
+            isLoading={loading}
+          />
+        </div>
+      </aside>
+
+      <aside
+        className={`relative z-10 mx-4 mt-4 ${eventsCollapsed ? "mb-0 h-auto min-h-0" : "mb-6 h-[45vh] min-h-[260px]"} md:absolute md:left-4 md:top-40 md:mx-0 md:mt-0 md:mb-0 md:h-auto md:min-h-0 md:w-64 ${prefs.timelineExpanded ? "md:bottom-[12.75rem]" : "md:bottom-[7.75rem]"}`}
+        data-testid="events-panel-wrapper"
+      >
+        <button
+          type="button"
+          onClick={toggleEventsCollapsed}
+          className="mb-2 flex w-full items-center gap-1.5 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-left text-xs font-semibold text-white/70 md:hidden"
+        >
+          {eventsCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+          Race Events
+        </button>
+        <div className={`${eventsCollapsed ? "hidden md:block" : "block"} h-full`}>
+          <EventsPanel
+            events={timelineEvents}
+            startTimeMs={sessionStartMs}
+            currentTimeMs={replay.currentTimeMs}
+            isPlaying={replay.isPlaying}
+            radioEnabled={prefs.radioEnabled}
+            isRadioPlaying={isAudioPlaying}
+            currentRadio={currentRadio}
+            onPlayRadio={playRadio}
+            onStopRadio={stopRadio}
+            hasEvents={timelineEvents.length > 0}
+            legendCollapsed={legendCollapsed}
+            shortcutsCollapsed={shortcutsCollapsed}
+            onToggleLegendCollapsed={toggleLegendCollapsed}
+            onToggleShortcutsCollapsed={toggleShortcutsCollapsed}
+            onSelectEvent={handleEventSelect}
+          />
+        </div>
       </aside>
     </div>
   );
