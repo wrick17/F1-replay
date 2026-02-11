@@ -3,7 +3,7 @@ import { chromium, type Browser, type Page } from "@playwright/test";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import http from "node:http";
 
-const APP_URL = "http://localhost:3001/replay";
+const APP_URL = "http://localhost:3001/";
 const YEAR = 2025;
 const ROUNDS = [3, 4, 5];
 const VIEWPORTS = [
@@ -163,6 +163,18 @@ const getTrackPathRect = async (page: Page) => {
   });
 };
 
+const getWeatherMetrics = async (page: Page) => {
+  return page.evaluate(() => {
+    const weather = document.querySelector("header > div:nth-child(2)") as HTMLElement | null;
+    if (!weather) return null;
+    return {
+      clientWidth: weather.clientWidth,
+      scrollWidth: weather.scrollWidth,
+      flexWrap: getComputedStyle(weather).flexWrap,
+    };
+  });
+};
+
 describe("trackmap visual layout", () => {
   let server: ChildProcessWithoutNullStreams | null = null;
   let browser: Browser | null = null;
@@ -270,6 +282,13 @@ describe("trackmap visual layout", () => {
                 return dist < best ? dist : best;
               }, Number.POSITIVE_INFINITY);
               expect(closest).toBeLessThan(maxDistance);
+            }
+
+            if (viewport.name === "mobile") {
+              const weather = await getWeatherMetrics(page);
+              expect(weather).not.toBeNull();
+              expect(weather?.flexWrap).toBe("nowrap");
+              expect(weather?.scrollWidth).toBeLessThanOrEqual((weather?.clientWidth ?? 0) + 1);
             }
           } finally {
             await context.close();

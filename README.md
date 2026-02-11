@@ -10,6 +10,7 @@ bun run dev
 ```
 
 Open `http://localhost:3000` and choose a year, round, and session type.
+The app is a single-page mount at `/` and uses URL query params (`year`, `round`, `session`) for shareable state.
 
 ## Manual smoke test
 

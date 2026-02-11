@@ -14,7 +14,6 @@
     "format": "biome format --write src/"
   },
   "dependencies": {
-    "@tanstack/react-router": "^1.158.1",
     "framer-motion": "^12.33.0",
     "lucide-react": "^0.563.0",
     "popper.js": "^1.16.1",

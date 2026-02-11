@@ -35,6 +35,7 @@ F1 Replay is a replay viewer for Formula 1 telemetry data. Built with React and 
 - **Session Picker**: Select from any year, round, and session type
 - **Keyboard Shortcuts**: Quick controls for playback and navigation
 - **Responsive Design**: Works across different screen sizes
+- **Mobile Weather Badge**: Weather widget uses a compact single-row layout on mobile without horizontal scrolling
 - **Persistent Preferences**: Remember user settings across sessions
 
 ## Tech Stack
@@ -47,8 +48,8 @@ F1 Replay is a replay viewer for Formula 1 telemetry data. Built with React and 
 - **Rsbuild 1.7.3**: Fast Rspack-powered build tool
 - **Rspack**: High-performance bundler
 
-### Routing & State
-- **TanStack Router 1.158.1**: Type-safe routing solution
+### URL State
+- **History API + URLSearchParams**: Query-param based session state (`year`, `round`, `session`) on a single-page mount at `/`
 
 ### Styling
 - **Tailwind CSS 4.1.18**: Utility-first CSS framework
@@ -69,11 +70,6 @@ f1-replay/
 ├── src/
 │   ├── index.tsx              # Application entry point
 │   ├── index.css              # Global styles
-│   ├── routes/                # Application routes
-│   │   ├── __root.tsx        # Root route layout
-│   │   ├── index.tsx         # Home route (redirects to /replay)
-│   │   ├── replay.tsx        # Replay route definition
-│   │   └── routeTree.ts      # Generated route tree
 │   └── modules/
 │       └── replay/            # Main replay module
 │           ├── index.ts

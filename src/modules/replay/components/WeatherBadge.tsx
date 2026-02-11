@@ -23,11 +23,11 @@ const WeatherBadgeBase = ({ weather, isLoading = false }: WeatherBadgeProps) => 
   if (!weather) {
     if (!isLoading) return null;
     return (
-      <div className="flex items-center gap-2.5 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-white/70 backdrop-blur-md">
-        <div className="h-3 w-16 rounded bg-white/10 animate-pulse" />
-        <div className="h-3 w-8 rounded bg-white/10 animate-pulse" />
-        <div className="h-3 w-12 rounded bg-white/10 animate-pulse" />
-        <div className="h-3 w-14 rounded bg-white/10 animate-pulse" />
+      <div className="flex w-full flex-nowrap items-center justify-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1.5 text-[10px] text-white/70 whitespace-nowrap backdrop-blur-md sm:gap-2.5 sm:px-3 sm:text-xs md:w-auto md:justify-start">
+        <div className="h-2.5 w-10 rounded bg-white/10 animate-pulse sm:h-3 sm:w-16" />
+        <div className="h-2.5 w-8 rounded bg-white/10 animate-pulse sm:h-3 sm:w-8" />
+        <div className="h-2.5 w-8 rounded bg-white/10 animate-pulse sm:h-3 sm:w-12" />
+        <div className="h-2.5 w-10 rounded bg-white/10 animate-pulse sm:h-3 sm:w-14" />
       </div>
     );
   }
@@ -38,43 +38,45 @@ const WeatherBadgeBase = ({ weather, isLoading = false }: WeatherBadgeProps) => 
   const windLabel = `Wind: ${windKmh} km/h ${compassDir} (${weather.wind_direction}°)`;
 
   return (
-    <div className="flex flex-wrap items-center gap-2.5 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-white/70 backdrop-blur-md">
+    <div className="flex w-full flex-nowrap items-center justify-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1.5 text-[10px] text-white/70 whitespace-nowrap backdrop-blur-md sm:gap-2.5 sm:px-3 sm:text-xs md:w-auto md:justify-start">
       <Tooltip content="Air temperature">
-        <span className="inline-flex items-center gap-1">
-          <Thermometer size={16} /> {weather.air_temperature}°C
+        <span className="inline-flex shrink-0 items-center gap-1">
+          <Thermometer className="h-3 w-3 sm:h-4 sm:w-4" /> {weather.air_temperature}°
         </span>
       </Tooltip>
-      <span className="text-white/20">|</span>
+      <span className="hidden shrink-0 text-white/20 sm:inline">|</span>
       <Tooltip content="Track temperature">
-        <span className="inline-flex items-center gap-1">
-          <Gauge size={16} /> {weather.track_temperature}°C
+        <span className="inline-flex shrink-0 items-center gap-1">
+          <Gauge className="h-3 w-3 sm:h-4 sm:w-4" /> {weather.track_temperature}°
         </span>
       </Tooltip>
       {isRaining && (
         <>
-          <span className="text-white/20">|</span>
+          <span className="hidden shrink-0 text-white/20 sm:inline">|</span>
           <Tooltip content="Rainfall">
-            <span className="inline-flex items-center gap-1 text-blue-300">
-              <CloudRain size={16} /> Rain
+            <span className="inline-flex shrink-0 items-center gap-1 text-blue-300">
+              <CloudRain className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Rain</span>
             </span>
           </Tooltip>
         </>
       )}
-      <span className="text-white/20">|</span>
+      <span className="hidden shrink-0 text-white/20 sm:inline">|</span>
       <Tooltip content={windLabel}>
-        <span className="inline-flex items-center gap-1">
-          <Wind size={16} /> {windKmh} km/h
+        <span className="inline-flex shrink-0 items-center gap-1">
+          <Wind className="h-3 w-3 sm:h-4 sm:w-4" /> {windKmh}
+          <span className="hidden sm:inline">km/h</span>
           <ArrowUp
-            size={14}
+            className="h-2.5 w-2.5 sm:h-3.5 sm:w-3.5"
             style={{ transform: `rotate(${(weather.wind_direction + 180) % 360}deg)` }}
           />
           {compassDir}
         </span>
       </Tooltip>
-      <span className="text-white/20">|</span>
+      <span className="hidden shrink-0 text-white/20 sm:inline">|</span>
       <Tooltip content="Humidity">
-        <span className="inline-flex items-center gap-1">
-          <Droplets size={16} /> {weather.humidity}%
+        <span className="inline-flex shrink-0 items-center gap-1">
+          <Droplets className="h-3 w-3 sm:h-4 sm:w-4" /> {weather.humidity}%
         </span>
       </Tooltip>
     </div>

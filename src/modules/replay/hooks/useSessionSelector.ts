@@ -1,5 +1,4 @@
-import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ALLOWED_SESSION_TYPES, getDefaultYear } from "../constants/replay.constants";
 import type { OpenF1Meeting, OpenF1Session } from "../types/openf1.types";
 import type { SessionType } from "../types/replay.types";
@@ -97,10 +96,72 @@ type UseSessionStateResult = {
   setSessionType: (sessionType: SessionType) => void;
 };
 
+type SessionSearchState = {
+  year?: number;
+  round?: number;
+  session?: string;
+};
+
+const parseNumberParam = (value: string | null): number | undefined => {
+  if (!value) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+const readSearchState = (): SessionSearchState => {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    year: parseNumberParam(params.get("year")),
+    round: parseNumberParam(params.get("round")),
+    session: params.get("session") ?? undefined,
+  };
+};
+
+const writeSearchState = (nextState: SessionSearchState): void => {
+  const params = new URLSearchParams(window.location.search);
+  if (typeof nextState.year === "number") {
+    params.set("year", String(nextState.year));
+  } else {
+    params.delete("year");
+  }
+  if (typeof nextState.round === "number") {
+    params.set("round", String(nextState.round));
+  } else {
+    params.delete("round");
+  }
+  if (typeof nextState.session === "string") {
+    params.set("session", nextState.session);
+  } else {
+    params.delete("session");
+  }
+  const query = params.toString();
+  const nextUrl = query ? `/?${query}${window.location.hash}` : `/${window.location.hash}`;
+  window.history.replaceState({}, "", nextUrl);
+};
+
 export const useSessionState = (): UseSessionStateResult => {
-  const search = useSearch({ from: "/replay" });
-  const navigate = useNavigate();
+  const [search, setSearch] = useState<SessionSearchState>(() => readSearchState());
   const manualRoundRef = useRef(false);
+
+  useEffect(() => {
+    const syncFromLocation = () => {
+      setSearch(readSearchState());
+    };
+    window.addEventListener("popstate", syncFromLocation);
+    return () => {
+      window.removeEventListener("popstate", syncFromLocation);
+    };
+  }, []);
+
+  const updateSearch = useCallback((updater: (prev: SessionSearchState) => SessionSearchState) => {
+    setSearch((prev) => {
+      const next = updater(prev);
+      writeSearchState(next);
+      return next;
+    });
+  }, []);
 
   const defaultYear = getDefaultYear();
   const year = typeof search.year === "number" ? search.year : defaultYear;
@@ -109,41 +170,29 @@ export const useSessionState = (): UseSessionStateResult => {
 
   const setYear = useCallback(
     (nextYear: number) => {
-      navigate({
-        to: "/replay",
-        search: (prev) => ({ ...prev, year: nextYear, round: 1 }),
-        replace: true,
-      });
+      updateSearch((prev) => ({ ...prev, year: nextYear, round: 1 }));
     },
-    [navigate],
+    [updateSearch],
   );
 
   const setRound = useCallback(
     (nextRound: number | ((prev: number) => number)) => {
-      navigate({
-        to: "/replay",
-        search: (prev) => {
-          const resolved =
-            typeof nextRound === "function"
-              ? nextRound(typeof prev.round === "number" ? prev.round : 1)
-              : nextRound;
-          return { ...prev, round: resolved };
-        },
-        replace: true,
+      updateSearch((prev) => {
+        const resolved =
+          typeof nextRound === "function"
+            ? nextRound(typeof prev.round === "number" ? prev.round : 1)
+            : nextRound;
+        return { ...prev, round: resolved };
       });
     },
-    [navigate],
+    [updateSearch],
   );
 
   const setSessionType = useCallback(
     (nextSessionType: SessionType) => {
-      navigate({
-        to: "/replay",
-        search: (prev) => ({ ...prev, session: nextSessionType }),
-        replace: true,
-      });
+      updateSearch((prev) => ({ ...prev, session: nextSessionType }));
     },
-    [navigate],
+    [updateSearch],
   );
 
   return {
