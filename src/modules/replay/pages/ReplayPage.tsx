@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { ChevronRight, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ControlsBar } from "../components/ControlsBar";
 import { EventsPanel } from "../components/EventsPanel";
@@ -234,8 +234,8 @@ export const ReplayPage = () => {
   const skipIntervalLabel =
     SKIP_INTERVAL_LABELS[prefs.skipIntervalMs] ?? `${prefs.skipIntervalMs / 1000}s`;
   const desktopControlsClearanceClass = prefs.timelineExpanded
-    ? "md:bottom-[9.25rem]"
-    : "md:bottom-[8.5rem]";
+    ? "md:bottom-[11.25rem]"
+    : "md:bottom-[8.75rem]";
 
   const drivers = useMemo(() => data?.drivers ?? [], [data]);
   const selectedDrivers = useMemo(() => [], []);
@@ -347,57 +347,65 @@ export const ReplayPage = () => {
       </footer>
 
       <aside
-        className={`relative z-10 mx-4 mt-4 ${telemetryCollapsed ? "mb-0 h-auto min-h-0" : "mb-6 h-[60vh] min-h-[320px]"} md:absolute md:right-4 md:top-4 md:bottom-4 md:mx-0 md:mt-0 md:mb-0 md:h-auto md:min-h-0 md:w-72 md:overflow-y-auto`}
+        className="relative z-10 mx-4 mt-4 mb-4 md:absolute md:right-4 md:top-4 md:bottom-4 md:mx-0 md:mt-0 md:mb-0 md:min-h-0 md:w-72 md:overflow-hidden"
         data-testid="telemetry-panel"
       >
-        <button
-          type="button"
-          onClick={toggleTelemetryCollapsed}
-          className="mb-2 flex w-full items-center gap-1.5 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-left text-xs font-semibold text-white/70 md:hidden"
-        >
-          {telemetryCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-          Leaderboard
-        </button>
-        <div className={`${telemetryCollapsed ? "hidden md:block" : "block"} h-full`}>
-          <TelemetryPanel
-            summary={telemetrySummary}
-            rows={telemetryRows}
-            activeOvertakes={activeOvertakes}
-            isLoading={loading}
-          />
+        {telemetryCollapsed && (
+          <button
+            type="button"
+            onClick={toggleTelemetryCollapsed}
+            className="flex w-full items-center gap-1.5 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-left text-xs font-semibold text-white/70 md:hidden"
+          >
+            <ChevronRight size={14} />
+            Leaderboard
+          </button>
+        )}
+        <div className={`${telemetryCollapsed ? "hidden" : "block"} md:block md:h-full md:min-h-0`}>
+          <div className="h-[60vh] min-h-[320px] md:h-full md:min-h-0">
+            <TelemetryPanel
+              summary={telemetrySummary}
+              rows={telemetryRows}
+              activeOvertakes={activeOvertakes}
+              isLoading={loading}
+            />
+          </div>
         </div>
       </aside>
 
       <aside
-        className={`relative z-10 mx-4 mt-4 ${eventsCollapsed ? "mb-0 h-auto min-h-0" : "mb-6 h-[45vh] min-h-[260px]"} md:absolute md:left-4 md:top-40 ${desktopControlsClearanceClass} md:mx-0 md:mt-0 md:mb-0 md:h-auto md:min-h-0 md:w-64 md:overflow-y-auto`}
+        className={`relative z-10 mx-4 mt-4 mb-6 md:absolute md:left-4 md:top-40 ${desktopControlsClearanceClass} md:mx-0 md:mt-0 md:mb-0 md:min-h-0 md:w-64 md:overflow-hidden`}
         data-testid="events-panel-wrapper"
       >
-        <button
-          type="button"
-          onClick={toggleEventsCollapsed}
-          className="mb-2 flex w-full items-center gap-1.5 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-left text-xs font-semibold text-white/70 md:hidden"
-        >
-          {eventsCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-          Race Events
-        </button>
-        <div className={`${eventsCollapsed ? "hidden md:block" : "block"} h-full`}>
-          <EventsPanel
-            events={timelineEvents}
-            startTimeMs={sessionStartMs}
-            currentTimeMs={replay.currentTimeMs}
-            isPlaying={replay.isPlaying}
-            radioEnabled={prefs.radioEnabled}
-            isRadioPlaying={isAudioPlaying}
-            currentRadio={currentRadio}
-            onPlayRadio={playRadio}
-            onStopRadio={stopRadio}
-            hasEvents={timelineEvents.length > 0}
-            legendCollapsed={legendCollapsed}
-            shortcutsCollapsed={shortcutsCollapsed}
-            onToggleLegendCollapsed={toggleLegendCollapsed}
-            onToggleShortcutsCollapsed={toggleShortcutsCollapsed}
-            onSelectEvent={handleEventSelect}
-          />
+        {eventsCollapsed && (
+          <button
+            type="button"
+            onClick={toggleEventsCollapsed}
+            className="flex w-full items-center gap-1.5 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-left text-xs font-semibold text-white/70 md:hidden"
+          >
+            <ChevronRight size={14} />
+            Race Events
+          </button>
+        )}
+        <div className={`${eventsCollapsed ? "hidden" : "block"} md:block md:h-full md:min-h-0`}>
+          <div className="h-[45vh] min-h-[260px] md:h-full md:min-h-0">
+            <EventsPanel
+              events={timelineEvents}
+              startTimeMs={sessionStartMs}
+              currentTimeMs={replay.currentTimeMs}
+              isPlaying={replay.isPlaying}
+              radioEnabled={prefs.radioEnabled}
+              isRadioPlaying={isAudioPlaying}
+              currentRadio={currentRadio}
+              onPlayRadio={playRadio}
+              onStopRadio={stopRadio}
+              hasEvents={timelineEvents.length > 0}
+              legendCollapsed={legendCollapsed}
+              shortcutsCollapsed={shortcutsCollapsed}
+              onToggleLegendCollapsed={toggleLegendCollapsed}
+              onToggleShortcutsCollapsed={toggleShortcutsCollapsed}
+              onSelectEvent={handleEventSelect}
+            />
+          </div>
         </div>
       </aside>
     </div>

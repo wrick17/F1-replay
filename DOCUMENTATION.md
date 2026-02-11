@@ -38,6 +38,7 @@ F1 Replay is a replay viewer for Formula 1 telemetry data. Built with React and 
 - **Responsive Design**: Works across different screen sizes
 - **Mobile Weather Badge**: Weather widget uses a compact single-row layout on mobile without horizontal scrolling
 - **Mobile Collapsible Panels**: Leaderboard and Events panels can be expanded/collapsed on mobile (default expanded)
+- **Collapsed Mobile Headers**: On mobile, collapsed Leaderboard/Events render as header rows only, and expanding restores the full panel body without overlap
 - **Desktop Panel Safe Zones**: Left/right side panels are constrained with bottom clearance above the controls bar to prevent overlap or out-of-bounds rendering
 - **Responsive Side Panels**: On smaller desktop heights, telemetry/events lists remain usable via internal scrolling without clipping outside the viewport
 - **Persistent Preferences**: Remember user settings across sessions
