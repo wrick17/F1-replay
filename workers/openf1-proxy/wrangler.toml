@@ -8,7 +8,7 @@ compatibility_date = "2026-02-08"
 [[d1_databases]]
 binding = "DB"
 database_name = "openf1-replay"
-database_id = "8a38bf6e-2dcc-4dc9-a7cf-2d491aac3c6e"
+database_id = "fad60a81-12f2-459a-acf2-0e4405e3807e"
 
 [[r2_buckets]]
 binding = "REPLAY_BUCKET"

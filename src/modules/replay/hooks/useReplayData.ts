@@ -391,14 +391,11 @@ export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): R
       });
 
       sessionCacheRef.current.set(session.session_key, baseData);
-      if (!controller.signal.aborted) {
-        void uploadReplayToWorker(
-          session.session_key,
-          baseData,
-          cached.uploadToken,
-          controller.signal,
-        ).catch(() => undefined);
-      }
+      // Upload even if the effect is later cleaned up: the payload is already fully built
+      // at this point, and skipping the upload prevents cache warming.
+      void uploadReplayToWorker(session.session_key, baseData, cached.uploadToken).catch(
+        () => undefined,
+      );
       return baseData;
     };
 

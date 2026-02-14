@@ -186,6 +186,8 @@ The Cloudflare Worker requires:
 - A secret used to sign short-lived upload tokens (e.g., `REPLAY_UPLOAD_SECRET`)
 - A public worker URL that the frontend can call
 
+Note: If you delete/recreate the D1 database, Cloudflare will issue a new `database_id`. Update `workers/openf1-proxy/wrangler.toml` with the new `database_id` and redeploy the worker.
+
 Frontend configuration:
 
 - `RSBUILD_WORKER_URL` env var pointing to the worker base URL (for example: `http://127.0.0.1:8787` in local dev)
