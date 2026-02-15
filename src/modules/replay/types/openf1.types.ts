@@ -110,6 +110,19 @@ export type OpenF1Pit = {
   meeting_key: number;
 };
 
+export type OpenF1CarData = {
+  date: string;
+  driver_number: number;
+  speed: number;
+  n_gear: number;
+  rpm: number;
+  throttle: number;
+  brake: number;
+  drs: number;
+  session_key: number;
+  meeting_key: number;
+};
+
 export type TimedSample<T> = T & {
   timestampMs: number;
 };

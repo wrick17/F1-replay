@@ -29,6 +29,7 @@ F1 Replay is a replay viewer for Formula 1 telemetry data. Built with React and 
 ### 📊 Telemetry & Data
 - **Event Markers**: Visual indicators for DRS zones, pit stops, safety cars, and overtakes
 - **Events Panel**: Left-side chronological event list with timestamp, click-to-seek, active-event red line, playback auto-scroll, inline radio player controls, plus Legend/Shortcuts sections below the list
+- **Leaderboard Telemetry Toggle**: Optional per-driver car telemetry pills (speed/gear/RPM/throttle/brake/DRS) inside the Leaderboard panel
 - **Weather Data**: Live weather conditions including air/track temperature, humidity, and rainfall
 - **Team Radio**: Listen to team radio communications with timestamp markers
 
@@ -175,6 +176,10 @@ bun run test
 
 # Run visual layout tests
 bun run test:visual
+
+# Warm Cloudflare caches
+bun run warm:cache
+bun run warm:telemetry-cache
 ```
 
 ### Worker Configuration
@@ -191,6 +196,7 @@ Note: If you delete/recreate the D1 database, Cloudflare will issue a new `datab
 Frontend configuration:
 
 - `RSBUILD_WORKER_URL` env var pointing to the worker base URL (for example: `http://127.0.0.1:8787` in local dev)
+- `RSBUILD_CAR_TELEMETRY_WORKER_URL` env var pointing to the car telemetry cache worker base URL (separate D1/R2 storage from replay cache)
 
 Database setup:
 
@@ -401,6 +407,10 @@ Weather data management:
 ### OpenF1 Worker (`workers/openf1-proxy`)
 
 The frontend calls a worker endpoint to read cached replay payloads. On cache miss, the worker returns a short-lived upload token so the browser can backfill the cache after aggregating OpenF1 data.
+
+### Car Telemetry Worker (`workers/openf1-car-telemetry`)
+
+Car telemetry for the Leaderboard panel (speed/gear/RPM/throttle/brake/DRS) is cached via a separate worker and separate storage to avoid polluting the replay cache. The browser fetches `GET /car-telemetry?session_key=...`; on cache miss (`202`), the browser fetches OpenF1 `car_data`, down-samples to 500ms buckets, then uploads via `POST /car-telemetry` using the provided token.
 
 #### `GET /replay?session_key=<id>`
 Behavior:

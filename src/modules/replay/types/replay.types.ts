@@ -117,6 +117,10 @@ export type TelemetryPanelProps = {
   rows: TelemetryRow[];
   activeOvertakes?: OpenF1Overtake[];
   isLoading?: boolean;
+  currentTimeMs?: number;
+  sessionKey?: number | null;
+  sessionStartMs?: number;
+  sessionEndMs?: number;
 };
 
 export type MarkerLegendProps = {

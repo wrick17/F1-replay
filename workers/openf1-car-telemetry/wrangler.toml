@@ -1,0 +1,15 @@
+name = "openf1-car-telemetry"
+main = "src/index.ts"
+compatibility_date = "2026-02-08"
+
+# Required secret (set via `wrangler secret put CAR_TELEMETRY_UPLOAD_SECRET`)
+# CAR_TELEMETRY_UPLOAD_SECRET = "<set in secret store>"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "openf1-car-telemetry"
+database_id = "76d6106c-c187-4745-8dd4-e379212148c3"
+
+[[r2_buckets]]
+binding = "CAR_TELEMETRY_BUCKET"
+bucket_name = "openf1-car-telemetry-cache"

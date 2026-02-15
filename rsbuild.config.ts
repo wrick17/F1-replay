@@ -32,6 +32,7 @@ const loadEnvFile = (filePath: string) => {
 loadEnvFile(envPath);
 const rsbuildWorkerUrl = process.env.RSBUILD_WORKER_URL;
 const viteWorkerUrl = process.env.VITE_WORKER_URL;
+const rsbuildCarTelemetryWorkerUrl = process.env.RSBUILD_CAR_TELEMETRY_WORKER_URL;
 
 export default defineConfig({
   plugins: [pluginReact()],
@@ -45,6 +46,9 @@ export default defineConfig({
     define: {
       "import.meta.env.RSBUILD_WORKER_URL": rsbuildWorkerUrl
         ? JSON.stringify(rsbuildWorkerUrl)
+        : "undefined",
+      "import.meta.env.RSBUILD_CAR_TELEMETRY_WORKER_URL": rsbuildCarTelemetryWorkerUrl
+        ? JSON.stringify(rsbuildCarTelemetryWorkerUrl)
         : "undefined",
       "import.meta.env.VITE_WORKER_URL": viteWorkerUrl
         ? JSON.stringify(viteWorkerUrl)

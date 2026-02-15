@@ -1,6 +1,7 @@
 interface ImportMetaEnv {
   readonly RSBUILD_WORKER_URL?: string;
   readonly VITE_WORKER_URL?: string;
+  readonly RSBUILD_CAR_TELEMETRY_WORKER_URL?: string;
 }
 
 // biome-ignore lint/correctness/noUnusedVariables: global ImportMeta augmentation

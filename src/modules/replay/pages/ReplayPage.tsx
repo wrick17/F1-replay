@@ -367,6 +367,10 @@ export const ReplayPage = () => {
               rows={telemetryRows}
               activeOvertakes={activeOvertakes}
               isLoading={loading}
+              currentTimeMs={replay.currentTimeMs}
+              sessionKey={data?.session.session_key ?? null}
+              sessionStartMs={data?.sessionStartMs ?? 0}
+              sessionEndMs={data?.sessionEndMs ?? 0}
             />
           </div>
         </div>
