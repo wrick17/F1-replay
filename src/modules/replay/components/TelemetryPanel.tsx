@@ -91,7 +91,7 @@ const TwoRowPill = ({ item }: { item: TwoRowValue }) => {
       </div>
       <div className="mt-1 h-1.5 w-full overflow-hidden rounded bg-white/10">
         <div
-          className={`h-full ${item.barClass}`}
+          className={`h-full ${item.barClass} motion-reduce:transition-none transition-[width,background-color] duration-300 ease-out will-change-[width]`}
           style={{ width: `${clamp(item.percent, 0, 100)}%` }}
         />
       </div>
