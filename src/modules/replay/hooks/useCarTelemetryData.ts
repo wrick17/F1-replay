@@ -25,7 +25,8 @@ type Params = {
   sessionEndMs: number;
 };
 
-const CAR_DATA_WINDOW_MS = 120_000;
+// Car telemetry is high-volume; use larger OpenF1 windows to reduce request count / 429s.
+const CAR_DATA_WINDOW_MS = 600_000;
 
 export const useCarTelemetryData = ({
   enabled,

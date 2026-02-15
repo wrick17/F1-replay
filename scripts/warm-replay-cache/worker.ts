@@ -27,7 +27,7 @@ export const createWorkerClient = (baseUrl: string, appendLog: (line: string) =>
     uploadToken: string,
     signal?: AbortSignal,
   ): Promise<void> => {
-    const url = `${baseUrl}/replay`;
+    const url = `${baseUrl}/replay${buildQuery({ session_key: sessionKey })}`;
     appendLog(`[Worker] POST ${url} session_key=${sessionKey}`);
     const response = await fetch(url, {
       method: "POST",
@@ -35,7 +35,7 @@ export const createWorkerClient = (baseUrl: string, appendLog: (line: string) =>
         "Content-Type": "application/json",
         Authorization: `Bearer ${uploadToken}`,
       },
-      body: JSON.stringify({ session_key: sessionKey, payload }),
+      body: JSON.stringify(payload),
       signal,
     });
     if (!response.ok && response.status !== 204) {

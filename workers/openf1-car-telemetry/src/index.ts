@@ -97,10 +97,12 @@ const verifyToken = async (token: string, secret: string): Promise<UploadTokenPa
   return payload;
 };
 
-const withCors = (headers: Headers, origin: string | null) => {
-  headers.set("Access-Control-Allow-Origin", origin ?? "*");
+const withCors = (headers: Headers) => {
+  // Public API: allow any origin, avoid cache fragmentation on Origin.
+  headers.set("Access-Control-Allow-Origin", "*");
   headers.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  headers.set("Access-Control-Expose-Headers", "X-Cache");
   headers.set("Access-Control-Max-Age", "86400");
   return headers;
 };
@@ -117,9 +119,13 @@ const jsonResponse = (body: unknown, status = 200, options?: { cacheControl?: st
 
 const handleGetCarTelemetry = async (request: Request, env: Env) => {
   const url = new URL(request.url);
-  const sessionKey = Number(url.searchParams.get("session_key"));
-  if (!Number.isFinite(sessionKey)) {
+  const rawSessionKey = url.searchParams.get("session_key");
+  if (!rawSessionKey) {
     return jsonResponse({ error: "session_key is required" }, 400);
+  }
+  const sessionKey = Number(rawSessionKey);
+  if (!Number.isFinite(sessionKey)) {
+    return jsonResponse({ error: "session_key must be a number" }, 400);
   }
 
   const cached = await env.DB.prepare(
@@ -150,47 +156,63 @@ const handleGetCarTelemetry = async (request: Request, env: Env) => {
 };
 
 const handlePostCarTelemetry = async (request: Request, env: Env) => {
+  const url = new URL(request.url);
+  const rawSessionKey = url.searchParams.get("session_key");
+  if (!rawSessionKey) {
+    return jsonResponse({ error: "session_key is required" }, 400);
+  }
+  const sessionKey = Number(rawSessionKey);
+  if (!Number.isFinite(sessionKey)) {
+    return jsonResponse({ error: "session_key must be a number" }, 400);
+  }
+
   const authHeader = request.headers.get("Authorization") ?? "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
   if (!token) {
     return jsonResponse({ error: "Missing upload token" }, 401);
   }
 
-  const body = (await request.json()) as TelemetryUploadBody;
-  if (!body || typeof body.session_key !== "number" || body.payload === undefined) {
-    return jsonResponse({ error: "Invalid payload" }, 400);
-  }
-
   const tokenPayload = await verifyToken(token, env.CAR_TELEMETRY_UPLOAD_SECRET);
-  if (!tokenPayload || tokenPayload.session_key !== body.session_key) {
+  if (!tokenPayload) {
     return jsonResponse({ error: "Invalid or expired token" }, 401);
   }
 
-  const payloadText = JSON.stringify(body.payload);
-  const r2Key = `car-telemetry/${body.session_key}.json`;
-  await env.CAR_TELEMETRY_BUCKET.put(r2Key, payloadText, {
+  if (tokenPayload.session_key !== sessionKey) {
+    return jsonResponse({ error: "Invalid or expired token" }, 401);
+  }
+
+  // Store the raw payload body to avoid JSON parse/stringify overhead for large sessions.
+  // Clients POST the CarTelemetryPayload JSON directly.
+  if (!request.body) {
+    return jsonResponse({ error: "Missing request body" }, 400);
+  }
+
+  const r2Key = `car-telemetry/${sessionKey}.json`;
+  await env.CAR_TELEMETRY_BUCKET.put(r2Key, request.body, {
     httpMetadata: { contentType: "application/json" },
   });
+
+  const contentLength = Number(request.headers.get("content-length") ?? "");
+  const payloadSize = Number.isFinite(contentLength) ? contentLength : null;
   await env.DB.prepare(
     "INSERT OR REPLACE INTO car_telemetry_cache (session_key, r2_key, payload_size, created_at) VALUES (?, ?, ?, ?)",
   )
-    .bind(body.session_key, r2Key, payloadText.length, new Date().toISOString())
+    .bind(sessionKey, r2Key, payloadSize, new Date().toISOString())
     .run();
 
   return new Response(null, { status: 204 });
 };
 
 export default {
-  async fetch(request: Request, env: Env) {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
-    const origin = request.headers.get("Origin");
     if (request.method === "OPTIONS") {
-      const headers = withCors(new Headers(), origin);
+      const headers = withCors(new Headers());
       return new Response(null, { status: 204, headers });
     }
 
     if (url.pathname !== "/car-telemetry") {
-      const headers = withCors(new Headers(), origin);
+      const headers = withCors(new Headers());
       headers.set("Content-Type", "application/json; charset=utf-8");
       return new Response(JSON.stringify({ error: "Not found" }), {
         status: 404,
@@ -199,19 +221,40 @@ export default {
     }
 
     try {
-      let response: Response;
       if (request.method === "GET") {
-        response = await handleGetCarTelemetry(request, env);
-      } else if (request.method === "POST") {
+        // Cloudflare edge cache (separate from D1/R2) to reduce read pressure.
+        const cacheKey = new Request(request.url, { method: "GET" });
+        const edgeHit = await caches.default.match(cacheKey);
+        if (edgeHit) {
+          const headers = withCors(new Headers(edgeHit.headers));
+          headers.set("X-Cache", "EDGE");
+          return new Response(edgeHit.body, { status: edgeHit.status, headers });
+        }
+
+        const originResponse = await handleGetCarTelemetry(request, env);
+        const headers = withCors(new Headers(originResponse.headers));
+        if (originResponse.status === 200) {
+          const response = new Response(originResponse.body, {
+            status: originResponse.status,
+            headers,
+          });
+          ctx.waitUntil(caches.default.put(cacheKey, response.clone()));
+          return response;
+        }
+        return new Response(originResponse.body, { status: originResponse.status, headers });
+      }
+
+      let response: Response;
+      if (request.method === "POST") {
         response = await handlePostCarTelemetry(request, env);
       } else {
         response = jsonResponse({ error: "Method not allowed" }, 405);
       }
-      const headers = withCors(new Headers(response.headers), origin);
+      const headers = withCors(new Headers(response.headers));
       return new Response(response.body, { status: response.status, headers });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unexpected error";
-      const headers = withCors(new Headers(), origin);
+      const headers = withCors(new Headers());
       return new Response(JSON.stringify({ error: message }), {
         status: 500,
         headers: new Headers({
@@ -222,4 +265,3 @@ export default {
     }
   },
 };
-

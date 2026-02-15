@@ -116,6 +116,86 @@ const jsonResponse = (body: unknown, status = 200, options?: { cacheControl?: st
   return new Response(JSON.stringify(body), { status, headers });
 };
 
+const sliceJsonValue = (text: string, startIndex: number) => {
+  const start = startIndex;
+  const first = text[start];
+  if (first !== "{" && first !== "[") {
+    throw new Error("Invalid JSON payload: expected object/array");
+  }
+
+  const stack: string[] = [];
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i += 1) {
+    const c = text[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (c === "\\") {
+        escaped = true;
+      } else if (c === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (c === "\"") {
+      inString = true;
+      continue;
+    }
+
+    if (c === "{" || c === "[") {
+      stack.push(c);
+      continue;
+    }
+
+    if (c === "}" || c === "]") {
+      const open = stack.pop();
+      if (!open) {
+        throw new Error("Invalid JSON payload: unexpected closing bracket");
+      }
+      if ((open === "{" && c !== "}") || (open === "[" && c !== "]")) {
+        throw new Error("Invalid JSON payload: mismatched brackets");
+      }
+      if (stack.length === 0) {
+        return { json: text.slice(start, i + 1), endIndex: i + 1 };
+      }
+    }
+  }
+
+  throw new Error("Invalid JSON payload: unterminated JSON value");
+};
+
+const parseLegacyUploadBody = (bodyText: string) => {
+  // Legacy clients upload `{ session_key, payload }`. We want to avoid `JSON.parse` + `JSON.stringify`
+  // for huge payloads, so we do a minimal extraction and store only the raw payload JSON in R2.
+  const payloadKeyIdx = bodyText.indexOf("\"payload\"");
+  if (payloadKeyIdx < 0) {
+    throw new Error("Invalid payload: missing payload");
+  }
+
+  const headerText = bodyText.slice(0, payloadKeyIdx);
+  const skMatch = /"session_key"\s*:\s*(\d+)/.exec(headerText);
+  if (!skMatch) {
+    throw new Error("Invalid payload: missing session_key");
+  }
+  const sessionKey = Number(skMatch[1]);
+  if (!Number.isFinite(sessionKey)) {
+    throw new Error("Invalid payload: session_key must be a number");
+  }
+
+  const colonIdx = bodyText.indexOf(":", payloadKeyIdx);
+  if (colonIdx < 0) {
+    throw new Error("Invalid payload: malformed payload key");
+  }
+
+  let i = colonIdx + 1;
+  while (i < bodyText.length && /\s/.test(bodyText[i] as string)) i += 1;
+  const { json: payloadJson } = sliceJsonValue(bodyText, i);
+  return { sessionKey, payloadJson };
+};
+
 const handleGetReplay = async (request: Request, env: Env) => {
   const url = new URL(request.url);
   const sessionKey = Number(url.searchParams.get("session_key"));
@@ -160,31 +240,56 @@ const handleGetReplay = async (request: Request, env: Env) => {
 };
 
 const handlePostReplay = async (request: Request, env: Env) => {
+  const url = new URL(request.url);
+  const rawSessionKey = url.searchParams.get("session_key");
+
   const authHeader = request.headers.get("Authorization") ?? "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
   if (!token) {
     return jsonResponse({ error: "Missing upload token" }, 401);
   }
 
-  const body = (await request.json()) as ReplayUploadBody;
-  if (!body || typeof body.session_key !== "number" || body.payload === undefined) {
-    return jsonResponse({ error: "Invalid payload" }, 400);
-  }
-
   const tokenPayload = await verifyToken(token, env.REPLAY_UPLOAD_SECRET);
-  if (!tokenPayload || tokenPayload.session_key !== body.session_key) {
+  if (!tokenPayload) {
     return jsonResponse({ error: "Invalid or expired token" }, 401);
   }
 
-  const payloadText = JSON.stringify(body.payload);
-  const r2Key = `replay/${body.session_key}.json`;
+  // Preferred format (new):
+  // - `POST /replay?session_key=<n>`
+  // - body is the ReplaySessionData JSON
+  //
+  // Legacy format:
+  // - `POST /replay`
+  // - body is `{ session_key, payload }`
+  let sessionKey: number;
+  let payloadText: string;
+  if (rawSessionKey) {
+    sessionKey = Number(rawSessionKey);
+    if (!Number.isFinite(sessionKey)) {
+      return jsonResponse({ error: "session_key must be a number" }, 400);
+    }
+    if (tokenPayload.session_key !== sessionKey) {
+      return jsonResponse({ error: "Invalid or expired token" }, 401);
+    }
+    payloadText = await request.text();
+  } else {
+    const bodyText = await request.text();
+    const legacy = parseLegacyUploadBody(bodyText);
+    sessionKey = legacy.sessionKey;
+    if (tokenPayload.session_key !== sessionKey) {
+      return jsonResponse({ error: "Invalid or expired token" }, 401);
+    }
+    payloadText = legacy.payloadJson;
+  }
+
+  const r2Key = `replay/${sessionKey}.json`;
   await env.REPLAY_BUCKET.put(r2Key, payloadText, {
     httpMetadata: { contentType: "application/json" },
   });
   await env.DB.prepare(
     "INSERT OR REPLACE INTO replay_cache (session_key, payload, r2_key, payload_size, created_at) VALUES (?, ?, ?, ?, ?)",
   )
-    .bind(body.session_key, "", r2Key, payloadText.length, new Date().toISOString())
+    .bind(sessionKey, "", r2Key, payloadText.length, new Date().toISOString())
     .run();
 
   return new Response(null, { status: 204 });

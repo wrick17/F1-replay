@@ -178,9 +178,20 @@ bun run test
 bun run test:visual
 
 # Warm Cloudflare caches
-bun run warm:cache
-bun run warm:telemetry-cache
+#
+# Combined (replay + car telemetry):
+bun run warm:caches
+
+# Aliases:
+# - bun run warm:cache
+# - bun run warm:telemetry-cache
 ```
+
+Notes:
+- Warmers retry failed API requests with exponential backoff (built-in defaults).
+- If any API request returns `401`, the warmer stops immediately (to avoid spamming when credentials are invalid).
+- The warmer attempts to cache all ended sessions across the dataset (falls back to year-by-year queries if OpenF1's `meetings` endpoint doesn't return multiple years).
+- While the warmer is running, a live dashboard is served at `http://localhost:3002` (override via `DASHBOARD_PORT`).
 
 ### Worker Configuration
 
@@ -412,16 +423,20 @@ The frontend calls a worker endpoint to read cached replay payloads. On cache mi
 
 Car telemetry for the Leaderboard panel (speed/gear/RPM/throttle/brake/DRS) is cached via a separate worker and separate storage to avoid polluting the replay cache. The browser fetches `GET /car-telemetry?session_key=...`; on cache miss (`202`), the browser fetches OpenF1 `car_data`, down-samples to 500ms buckets, then uploads via `POST /car-telemetry` using the provided token.
 
-#### `GET /replay?session_key=<id>`
+The worker also uses Cloudflare's edge cache (`caches.default`) for `200` responses to reduce repeated D1/R2 reads. You can inspect the `X-Cache` header:
+- `EDGE`: served from edge cache
+- `HIT`: served from the worker's D1/R2 cache
+
+#### `GET /car-telemetry?session_key=<id>`
 Behavior:
 - Checks D1 for a cached payload keyed by `session_key`
-- If present, streams payload from R2 (or legacy D1 payload if present)
+- If present, streams payload from R2
 - If absent, returns `202` with `{ uploadToken, expiresAt }`
 
-#### `POST /replay`
+#### `POST /car-telemetry`
 Body:
 - `session_key`: number
-- `payload`: `ReplaySessionData`
+- `payload`: `CarTelemetryPayload`
 
 Headers:
 - `Authorization: Bearer <uploadToken>`
@@ -432,11 +447,11 @@ Behavior:
 
 **Example:**
 ```typescript
-const response = await fetch(`/replay?session_key=${sessionKey}`);
+const response = await fetch(`/car-telemetry?session_key=${sessionKey}`);
 if (response.status === 202) {
   const { uploadToken } = await response.json();
-  const payload = await buildReplayPayload(sessionKey);
-  await fetch("/replay", {
+  const payload = await buildCarTelemetryPayload(sessionKey);
+  await fetch("/car-telemetry", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

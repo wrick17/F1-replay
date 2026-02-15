@@ -64,6 +64,12 @@ export const fetchOpenF1 = <T>(
           attempt += 1;
           continue;
         }
+        // OpenF1 occasionally returns transient 5xxs; retry a couple times to avoid failing large chunk builds.
+        if (response.status >= 500 && response.status < 600 && attempt < 2) {
+          await sleep(500 * (attempt + 1));
+          attempt += 1;
+          continue;
+        }
         throw new Error(`OpenF1 request failed: ${response.status}`);
       }
       const payload = (await response.json()) as T;
@@ -148,14 +154,14 @@ export const uploadReplayToWorker = async (
   uploadToken: string,
   signal?: AbortSignal,
 ): Promise<void> => {
-  const url = `${WORKER_BASE_URL}/replay`;
+  const url = `${WORKER_BASE_URL}/replay${buildQuery({ session_key: sessionKey })}`;
   const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${uploadToken}`,
     },
-    body: JSON.stringify({ session_key: sessionKey, payload }),
+    body: JSON.stringify(payload),
     signal,
   });
   if (!response.ok && response.status !== 204) {

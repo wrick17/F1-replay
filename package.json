@@ -9,8 +9,9 @@
     "preview": "rsbuild preview",
     "test": "bun test test/unittests",
     "test:visual": "RUN_VISUAL_TESTS=1 bun test test/visual/trackmap.visual.spec.ts",
-    "warm:cache": "bun scripts/warm-replay-cache/index.ts",
-    "warm:telemetry-cache": "bun scripts/warm-car-telemetry-cache/index.ts",
+    "warm:caches": "bun scripts/warm-caches/index.ts",
+    "warm:cache": "bun scripts/warm-caches/index.ts",
+    "warm:telemetry-cache": "bun scripts/warm-caches/index.ts",
     "lint": "biome check src/",
     "lint:fix": "biome check --write src/",
     "format": "biome format --write src/"

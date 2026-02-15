@@ -40,7 +40,10 @@ export const fetchAllMeetings = async (
 ) => {
   try {
     const meetings = await fetchOpenF1<OpenF1Meeting[]>("meetings", {});
-    if (meetings.length) {
+    // OpenF1 sometimes returns only the most recent season when year is omitted.
+    // If we don't see multiple years, fall back to an explicit year range.
+    const years = new Set(meetings.map((m) => m.year));
+    if (meetings.length && years.size > 1) {
       return meetings;
     }
   } catch {

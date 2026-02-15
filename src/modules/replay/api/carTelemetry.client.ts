@@ -43,14 +43,16 @@ export const uploadCarTelemetryToWorker = async (
   uploadToken: string,
   signal?: AbortSignal,
 ): Promise<void> => {
-  const url = `${CAR_TELEMETRY_WORKER_BASE_URL}/car-telemetry`;
+  const url = `${CAR_TELEMETRY_WORKER_BASE_URL}/car-telemetry${buildQuery({
+    session_key: sessionKey,
+  } satisfies QueryParams)}`;
   const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${uploadToken}`,
     },
-    body: JSON.stringify({ session_key: sessionKey, payload }),
+    body: JSON.stringify(payload),
     signal,
   });
   if (!response.ok && response.status !== 204) {

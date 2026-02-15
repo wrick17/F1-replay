@@ -1,5 +1,29 @@
-import { rateLimit, sleep } from "../../src/modules/replay/api/rateLimiter";
-import type { QueryParams } from "./types";
+import { ApiError } from "./errors";
+import type { QueryParams } from "../warm-replay-cache/types";
+
+const sleep = (ms: number) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const createRateLimiter = (minIntervalMs: number) => {
+  let chain = Promise.resolve(0);
+  const rateLimit = () => {
+    chain = chain.then(async (lastRequestAt) => {
+      const now = Date.now();
+      const elapsed = now - lastRequestAt;
+      if (elapsed < minIntervalMs) {
+        await sleep(minIntervalMs - elapsed);
+      }
+      return Date.now();
+    });
+    return chain;
+  };
+  return { rateLimit };
+};
+
+// Warmer is intentionally slower than the in-app client to reduce OpenF1 5xx/503 bursts.
+const { rateLimit } = createRateLimiter(750);
 
 export const buildQuery = (params: QueryParams) => {
   const entries = Object.entries(params).filter(
@@ -21,35 +45,39 @@ export const buildQuery = (params: QueryParams) => {
 };
 
 export const createOpenF1Client = (apiBaseUrl: string, appendLog: (line: string) => void) => {
-  const fetchOpenF1 = async <T>(
-    path: string,
-    params: QueryParams,
-    signal?: AbortSignal,
-  ): Promise<T> => {
+  const fetchOpenF1 = async <T>(path: string, params: QueryParams, signal?: AbortSignal) => {
     const key = `${path}${buildQuery(params)}`;
-    appendLog(`[OpenF1] GET ${apiBaseUrl}/${key}`);
+    const url = `${apiBaseUrl}/${key}`;
+    appendLog(`[OpenF1] GET ${url}`);
+
     let attempt = 0;
-    while (attempt < 3) {
+    while (attempt < 4) {
       await rateLimit();
-      const response = await fetch(`${apiBaseUrl}/${key}`, { signal });
+      const response = await fetch(url, { signal });
       if (!response.ok) {
-        if (response.status === 429 && attempt < 2) {
-          const retryAfter = Number(response.headers.get("retry-after"));
-          const waitMs = Number.isNaN(retryAfter) ? 1000 * (attempt + 1) : retryAfter * 1000;
+        const retryAfter = Number(response.headers.get("retry-after"));
+        const retryAfterMs = Number.isNaN(retryAfter) ? null : retryAfter * 1000;
+
+        // OpenF1 throttling
+        if (response.status === 429 && attempt < 3) {
+          const waitMs = retryAfterMs ?? 1500 * (attempt + 1);
           await sleep(waitMs);
           attempt += 1;
           continue;
         }
-        if (response.status >= 500 && response.status < 600 && attempt < 2) {
-          await sleep(500 * (attempt + 1));
+
+        // Transient server errors: use slower exponential backoff. 503 in particular is common during load.
+        if (response.status >= 500 && response.status < 600 && attempt < 3) {
+          const waitMs = retryAfterMs ?? Math.min(20000, 2000 * 2 ** attempt);
+          await sleep(waitMs);
           attempt += 1;
           continue;
         }
-        throw new Error(`OpenF1 request failed: ${response.status}`);
+        throw new ApiError(`OpenF1 request failed: ${response.status}`, response.status, url);
       }
       return (await response.json()) as T;
     }
-    throw new Error("OpenF1 request failed after retries");
+    throw new ApiError("OpenF1 request failed after retries", 599, url);
   };
 
   const fetchChunked = async <T extends { date?: string }>(

@@ -1,12 +1,17 @@
 import type { OpenF1Meeting, OpenF1Session } from "../../src/modules/replay/types/openf1.types";
-import { filterEndedMeetings } from "../../src/modules/replay/services/telemetry.service";
-import type { SupportedSessionType } from "./types";
+import { SupportedSessionType } from "./config";
+
+export const filterEndedMeetings = (meetings: OpenF1Meeting[], now: number) => {
+  return meetings.filter((meeting) => {
+    const name = `${meeting.meeting_name} ${meeting.meeting_official_name}`;
+    const endMs = new Date(meeting.date_end).getTime();
+    return !/pre[- ]season/i.test(name) && Number.isFinite(endMs) && endMs <= now;
+  });
+};
 
 export const fetchAllMeetings = async (
   fetchOpenF1: <T>(path: string, params: Record<string, string | number>) => Promise<T>,
-): Promise<OpenF1Meeting[]> => {
-  // Prefer the "all meetings" query if it returns multiple years.
-  // When it returns only the most recent season, fall back to an explicit year range.
+) => {
   try {
     const meetings = await fetchOpenF1<OpenF1Meeting[]>("meetings", {});
     const years = new Set(meetings.map((m) => m.year));
@@ -17,8 +22,9 @@ export const fetchAllMeetings = async (
     // fall through
   }
 
-  const minYear = Number(process.env.MIN_YEAR ?? "2023");
-  const maxYear = Number(process.env.MAX_YEAR ?? String(new Date().getFullYear()));
+  // OpenF1's dataset is heavily modern; starting at 2018 is a reasonable default.
+  const minYear = 2018;
+  const maxYear = new Date().getFullYear();
   const years = Array.from({ length: Math.max(0, maxYear - minYear + 1) }, (_, i) => minYear + i);
   const results: OpenF1Meeting[] = [];
   for (const year of years) {
@@ -26,7 +32,7 @@ export const fetchAllMeetings = async (
       const meetings = await fetchOpenF1<OpenF1Meeting[]>("meetings", { year });
       results.push(...meetings);
     } catch {
-      // ignore year failures
+      // ignore year failures; retry logic lives at call sites
     }
   }
   return results;
@@ -49,13 +55,9 @@ export const buildMeetingIndex = (meetings: OpenF1Meeting[]) => {
   return { byYear, years };
 };
 
-export const getEndedMeetings = (meetings: OpenF1Meeting[], now: number) => {
-  return filterEndedMeetings(meetings, now);
-};
-
 export const findSessionByType = (sessions: OpenF1Session[], sessionType: SupportedSessionType) => {
   const matches = sessions
-    .filter((session) => session.session_type === sessionType)
+    .filter((s) => s.session_type === sessionType)
     .sort((a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime());
   return matches[matches.length - 1] ?? null;
 };
