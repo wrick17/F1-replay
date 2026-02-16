@@ -29,6 +29,7 @@ const SHORTCUT_ITEMS = [
   { key: "M", description: "Toggle radio" },
   { key: "I", description: "Cycle skip interval" },
   { key: "E", description: "Expand timeline" },
+  { key: "T", description: "Toggle telemetry" },
 ] as const;
 
 export const MarkerLegend = ({

@@ -260,6 +260,23 @@ export const TelemetryPanel = ({
     }
   }, []);
 
+  useEffect(() => {
+    const handleKeyboardToggle = () => {
+      setTelemetryEnabled((prev) => {
+        const next = !prev;
+        try {
+          localStorage.setItem("f1.telemetry.enabled", String(next));
+        } catch {
+          // ignore
+        }
+        return next;
+      });
+    };
+
+    window.addEventListener("f1:toggle-telemetry", handleKeyboardToggle);
+    return () => window.removeEventListener("f1:toggle-telemetry", handleKeyboardToggle);
+  }, []);
+
   const handleToggleTelemetry = () => {
     setTelemetryEnabled((prev) => {
       const next = !prev;
@@ -361,24 +378,26 @@ export const TelemetryPanel = ({
       <div>
         <div className="flex items-center justify-between gap-3">
           <div className="text-sm font-semibold text-white">Leaderboard</div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-semibold tracking-wide text-white/60">TELEMETRY</span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={telemetryEnabled}
-              onClick={handleToggleTelemetry}
-              className={`relative h-5 w-9 rounded-full border transition ${
-                telemetryEnabled ? "border-red-500/50 bg-red-500/30" : "border-white/20 bg-white/10"
+          <button
+            type="button"
+            aria-pressed={telemetryEnabled}
+            onClick={handleToggleTelemetry}
+            className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[10px] font-semibold tracking-wide transition ${
+              telemetryEnabled
+                ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-100"
+                : "border-red-400/30 bg-red-500/10 text-red-100"
+            }`}
+          >
+            <span>TELEMETRY</span>
+            <span
+              aria-hidden="true"
+              className={`h-2 w-2 rounded-full ${
+                telemetryEnabled
+                  ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.55)]"
+                  : "bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.45)]"
               }`}
-            >
-              <span
-                className={`absolute top-0.5 h-4 w-4 rounded-full bg-white/80 transition ${
-                  telemetryEnabled ? "left-4" : "left-0.5"
-                }`}
-              />
-            </button>
-          </div>
+            />
+          </button>
         </div>
         {telemetryEnabled && telemetry.error && (
           <div className="mt-1 text-[10px] text-red-200/80">Telemetry error: {telemetry.error}</div>

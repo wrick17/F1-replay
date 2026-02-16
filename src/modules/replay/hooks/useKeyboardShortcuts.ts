@@ -92,6 +92,10 @@ export const useKeyboardShortcuts = (actions: KeyboardShortcutActions) => {
         case "E":
           a.toggleTimelineExpanded();
           break;
+        case "t":
+        case "T":
+          window.dispatchEvent(new Event("f1:toggle-telemetry"));
+          break;
       }
     };
 

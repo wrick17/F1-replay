@@ -380,7 +380,14 @@ Persists user preferences:
 Keyboard shortcuts for power users:
 - `Space`: Play/Pause
 - `←/→`: Seek backward/forward
-- Number keys: Adjust playback speed
+- `↑/↓`: Next/previous round
+- `Shift + ↑/↓`: Next/previous year
+- `Ctrl + Shift + ↑/↓`: Next/previous session
+- `S`: Cycle playback speed
+- `M`: Toggle team radio
+- `I`: Cycle skip interval
+- `E`: Expand/collapse timeline
+- `T`: Toggle leaderboard telemetry
 
 ## Services
 
