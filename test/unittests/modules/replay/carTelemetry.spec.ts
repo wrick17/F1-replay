@@ -46,12 +46,14 @@ describe("carTelemetry.service", () => {
     expect(payload.byDriver[1]?.[0]?.gear).toBe(4);
   });
 
-  it("maps DRS ON for raw values 10/12/14", () => {
+  it("maps DRS ON for raw values 8/10/12/14", () => {
+    expect(isDrsOn(8)).toBe(true);
     expect(isDrsOn(10)).toBe(true);
     expect(isDrsOn(12)).toBe(true);
     expect(isDrsOn(14)).toBe(true);
     expect(isDrsOn(0)).toBe(false);
-    expect(normalizeDrsPercent(12)).toBe(100);
+    expect(normalizeDrsPercent(12)).toBeCloseTo((12 / 14) * 100, 5);
+    expect(normalizeDrsPercent(14)).toBe(100);
     expect(normalizeDrsPercent(0)).toBe(0);
   });
 
@@ -96,4 +98,3 @@ describe("carTelemetry.service", () => {
     expect(stats.speedMaxSession).toBe(250);
   });
 });
-

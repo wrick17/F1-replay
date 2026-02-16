@@ -12,11 +12,16 @@ export const getBarColorClass = (percent: number) => {
   return "bg-blue-400";
 };
 
-export const isDrsOn = (rawDrs: number) => rawDrs === 10 || rawDrs === 12 || rawDrs === 14;
+// OpenF1 DRS state values observed in car_data include 0/1/2/3/8/10/12/14.
+// Treat 8/10/12/14 as active so UI reflects enabled/active DRS phases.
+export const isDrsOn = (rawDrs: number) =>
+  rawDrs === 8 || rawDrs === 10 || rawDrs === 12 || rawDrs === 14;
 
 export const normalizeBrakePercent = (rawBrake: number) => (rawBrake > 0 ? 100 : 0);
 
-export const normalizeDrsPercent = (rawDrs: number) => (isDrsOn(rawDrs) ? 100 : 0);
+// OpenF1 DRS raw values are typically in the 0..14 range.
+// Scale the bar based on the raw value instead of binary ON/OFF.
+export const normalizeDrsPercent = (rawDrs: number) => clamp((rawDrs / 14) * 100, 0, 100);
 
 export const isSpeedDanger = (speed: number) => speed > 200;
 

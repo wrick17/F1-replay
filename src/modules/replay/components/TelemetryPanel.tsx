@@ -8,7 +8,6 @@ import {
   formatGear,
   formatInt,
   getBarColorClass,
-  isDrsOn,
   isSpeedDanger,
   normalizeBrakePercent,
   normalizeDrsPercent,
@@ -191,9 +190,9 @@ const TelemetryRowItem = memo(
             <div className="col-span-2 mt-2 grid grid-cols-2 gap-1.5">
               <TwoRowPill item={telemetryView.speed} />
               <OneRowPill item={telemetryView.gear} />
-              <TwoRowPill item={telemetryView.rpm} />
               <TwoRowPill item={telemetryView.throttle} />
               <TwoRowPill item={telemetryView.brake} />
+              <TwoRowPill item={telemetryView.rpm} />
               <TwoRowPill item={telemetryView.drs} />
             </div>
           )}
@@ -329,7 +328,6 @@ export const TelemetryPanel = ({
 
       const speedDanger = speed !== null && isSpeedDanger(speed);
       const brakeOn = rawBrake !== null && normalizeBrakePercent(rawBrake) > 0;
-      const drsOn = rawDrs !== null && isDrsOn(rawDrs);
 
       map.set(row.driverNumber, {
         speed: {
@@ -363,7 +361,7 @@ export const TelemetryPanel = ({
         },
         drs: {
           label: "DRS",
-          value: rawDrs === null ? "--" : drsOn ? "ON" : "OFF",
+          value: rawDrs === null ? "--" : formatInt(rawDrs),
           percent: drsPercent,
           barClass: getBarColorClass(drsPercent),
         },
