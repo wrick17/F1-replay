@@ -39,6 +39,7 @@ const overtakeStyles: Record<string, string> = {
 };
 
 const SKELETON_ROWS = Array.from({ length: 8 }, (_, index) => `skeleton-${index + 1}`);
+const TELEMETRY_FILL_ANIMATION_MS = 500;
 
 type TelemetryRowProps = {
   row: TelemetryRow;
@@ -53,6 +54,7 @@ type TwoRowValue = {
   percent: number;
   barClass: string;
   danger?: boolean;
+  transitionMs?: number;
 };
 
 type OneRowValue = {
@@ -90,8 +92,12 @@ const TwoRowPill = ({ item }: { item: TwoRowValue }) => {
       </div>
       <div className="mt-1 h-1.5 w-full overflow-hidden rounded bg-white/10">
         <div
-          className={`h-full ${item.barClass} motion-reduce:transition-none transition-[width,background-color] duration-300 ease-out will-change-[width]`}
-          style={{ width: `${clamp(item.percent, 0, 100)}%` }}
+          className={`h-full ${item.barClass} motion-reduce:transition-none transition-[width,background-color] will-change-[width]`}
+          style={{
+            width: `${clamp(item.percent, 0, 100)}%`,
+            transitionDuration: `${Math.max(120, item.transitionMs ?? TELEMETRY_FILL_ANIMATION_MS)}ms`,
+            transitionTimingFunction: "linear",
+          }}
         />
       </div>
     </div>
@@ -307,6 +313,7 @@ export const TelemetryPanel = ({
     const map = new Map<number, DriverTelemetryView>();
     const speedMaxSession = stats?.speedMaxSession ?? 300;
     const rpmMaxSession = stats?.rpmMaxSession ?? 12000;
+    const telemetryTransitionMs = TELEMETRY_FILL_ANIMATION_MS;
 
     for (const row of rows) {
       const samples = telemetry.payload?.byDriver[row.driverNumber] ?? [];
@@ -336,6 +343,7 @@ export const TelemetryPanel = ({
           percent: speedPercent,
           barClass: getBarColorClass(speedPercent),
           danger: speedDanger,
+          transitionMs: telemetryTransitionMs,
         },
         gear: {
           label: "Gear",
@@ -346,24 +354,28 @@ export const TelemetryPanel = ({
           value: rpm === null ? "--" : formatInt(rpm),
           percent: rpmPercent,
           barClass: getBarColorClass(rpmPercent),
+          transitionMs: telemetryTransitionMs,
         },
         throttle: {
           label: "Throttle",
           value: throttle === null ? "--" : `${formatInt(throttlePercent)}%`,
           percent: throttlePercent,
           barClass: getBarColorClass(throttlePercent),
+          transitionMs: telemetryTransitionMs,
         },
         brake: {
           label: "Brake",
           value: rawBrake === null ? "--" : brakeOn ? "ON" : "OFF",
           percent: brakePercent,
           barClass: getBarColorClass(brakePercent),
+          transitionMs: telemetryTransitionMs,
         },
         drs: {
           label: "DRS",
           value: rawDrs === null ? "--" : formatInt(rawDrs),
           percent: drsPercent,
           barClass: getBarColorClass(drsPercent),
+          transitionMs: telemetryTransitionMs,
         },
       });
     }
