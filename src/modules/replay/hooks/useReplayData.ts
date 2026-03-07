@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchChunked,
   fetchOpenF1,
+  fetchOpenF1OrEmpty,
   fetchReplayFromWorker,
   uploadReplayToWorker,
 } from "../api/openf1.client";
@@ -9,8 +10,9 @@ import {
   buildYearOptions,
   chunkAppend,
   createTelemetryMap,
-  filterEndedMeetings,
+  filterReplayableMeetings,
   getLatestTelemetryTimestamp,
+  hasReplayableSessions,
 } from "../services/telemetry.service";
 import type {
   OpenF1Driver,
@@ -85,12 +87,15 @@ export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): R
     setAvailableEndMs(0);
     setDataRevision(0);
 
-    fetchOpenF1<OpenF1Meeting[]>("meetings", { year }, undefined, "persist")
-      .then((result) => {
+    Promise.all([
+      fetchOpenF1<OpenF1Meeting[]>("meetings", { year }, undefined, "persist"),
+      fetchOpenF1<OpenF1Session[]>("sessions", { year }, undefined, "persist"),
+    ])
+      .then(([meetingResult, sessionResult]) => {
         if (meetingsRequestRef.current !== requestId) {
           return;
         }
-        setMeetings(filterEndedMeetings(result, Date.now()));
+        setMeetings(filterReplayableMeetings(meetingResult, sessionResult, Date.now()));
       })
       .catch((err: Error) => {
         if (meetingsRequestRef.current !== requestId) {
@@ -109,26 +114,25 @@ export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): R
     let cancelled = false;
     const loadYears = async () => {
       const now = Date.now();
-      const available: number[] = [];
-      for (const option of yearOptions) {
-        try {
-          const result = await fetchOpenF1<OpenF1Meeting[]>(
-            "meetings",
-            { year: option },
-            undefined,
-            "persist",
-          );
-          if (cancelled) {
-            return;
-          }
-          if (filterEndedMeetings(result, now).length > 0) {
-            available.push(option);
-          }
-        } catch {
-          if (cancelled) {
-            return;
-          }
-        }
+      const available = (
+        await Promise.all(
+          yearOptions.map(async (option) => {
+            try {
+              const result = await fetchOpenF1<OpenF1Session[]>(
+                "sessions",
+                { year: option },
+                undefined,
+                "persist",
+              );
+              return hasReplayableSessions(result, now) ? option : null;
+            } catch {
+              return null;
+            }
+          }),
+        )
+      ).filter((option): option is number => option !== null);
+      if (cancelled) {
+        return;
       }
       if (!cancelled) {
         setAvailableYears(available);
@@ -245,13 +249,13 @@ export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): R
           controller.signal,
           "persist",
         ),
-        fetchOpenF1<OpenF1TeamRadio[]>(
+        fetchOpenF1OrEmpty<OpenF1TeamRadio[]>(
           "team_radio",
           { session_key: session.session_key },
           controller.signal,
           "persist",
         ),
-        fetchOpenF1<OpenF1Overtake[]>(
+        fetchOpenF1OrEmpty<OpenF1Overtake[]>(
           "overtakes",
           { session_key: session.session_key },
           controller.signal,

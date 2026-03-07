@@ -1,4 +1,4 @@
-export const ALLOWED_SESSION_TYPES = ["Race", "Sprint", "Qualifying"] as const;
+export const ALLOWED_SESSION_TYPES = ["Race", "Qualifying"] as const;
 
 export const TRACK_TIME_GAP_MS = 2000;
 

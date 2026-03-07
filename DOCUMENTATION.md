@@ -29,9 +29,9 @@ F1 Replay is a replay viewer for Formula 1 telemetry data. Built with React and 
 ### 📊 Telemetry & Data
 - **Event Markers**: Visual indicators for DRS zones, pit stops, safety cars, and overtakes
 - **Events Panel**: Left-side chronological event list with timestamp, click-to-seek, active-event red line, playback auto-scroll, inline radio player controls, plus Legend/Shortcuts sections below the list
-- **Leaderboard Telemetry Toggle**: Optional per-driver car telemetry pills (speed/gear/RPM/throttle/brake/DRS) inside the Leaderboard panel
+- **Leaderboard Telemetry Toggle**: Optional per-driver car telemetry pills (speed/gear/RPM/throttle/brake/DRS) inside the Leaderboard panel, shown only when car telemetry exists for the selected session
 - **Weather Data**: Live weather conditions including air/track temperature, humidity, and rainfall
-- **Team Radio**: Listen to team radio communications with timestamp markers
+- **Team Radio**: Listen to team radio communications with timestamp markers when OpenF1 provides radio clips for the selected session
 
 ### 🎯 User Experience
 - **Session Picker**: Select from any year, round, and session type
@@ -260,7 +260,7 @@ Main page component that orchestrates the entire replay experience. Manages stat
 Allows users to select:
 - Year (from available F1 seasons)
 - Round (race weekend)
-- Session type (Practice, Qualifying, Sprint, Race)
+- Session type (Qualifying, Race)
 
 #### `ControlsBar`
 Playback controls including:
@@ -309,6 +309,7 @@ Displays detailed telemetry for selected driver:
 - Throttle percentage
 - Brake status
 - DRS status
+- The telemetry toggle and driver pills are only rendered after car telemetry data is available for the current session
 
 #### `WeatherBadge`
 Shows current weather conditions:
@@ -331,6 +332,8 @@ Primary data management hook that:
 - Fetches aggregated session data from the worker
 - Manages loading states and errors
 - Provides available years and sessions
+- Exposes a year only when at least one qualifying or race session has ended
+- Exposes a meeting only when at least one qualifying or race session has ended
 - Returns structured `ReplaySessionData`
 
 **Usage:**
@@ -355,7 +358,7 @@ const { currentMs, isPlaying, speed, setPlaying, setSpeed, seekTo } =
 ### `useSessionSelector`
 Handles session selection logic:
 - Validates year/round/session combinations
-- Auto-selects latest available session
+- Auto-selects the first available supported session (`Race` or `Qualifying`)
 - Manages round and session options
 
 ### `useTeamRadio`
@@ -363,6 +366,7 @@ Manages team radio playback:
 - Filters radio messages for current time
 - Handles audio playback
 - Manages popup state
+- Team radio controls are hidden when the selected session has no radio clips
 
 ### `useTrackComputation`
 Computes track visualization data:
@@ -513,7 +517,7 @@ bun test test/unittests/specific-test.ts
 
 ### Manual Smoke Test
 
-1. Select the latest year and round with a Race session
+1. Select the latest replayable year and round, and confirm the session picker only shows `Race` and `Qualifying`
 2. Wait for telemetry data to load
 3. Press Play button
 4. Verify:

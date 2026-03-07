@@ -12,6 +12,7 @@ import {
   normalizeBrakePercent,
   normalizeDrsPercent,
 } from "../services/carTelemetry.service";
+import type { CarTelemetryPayload } from "../types/carTelemetry.types";
 import type { TelemetryPanelProps, TelemetryRow } from "../types/replay.types";
 import { getCompoundBadge, getCompoundLabel } from "../utils/format.util";
 import { Tooltip } from "./Tooltip";
@@ -70,6 +71,11 @@ type DriverTelemetryView = {
   brake: TwoRowValue;
   drs: TwoRowValue;
 };
+
+export const hasCarTelemetryPayload = (
+  payload: CarTelemetryPayload | null,
+): payload is CarTelemetryPayload =>
+  Boolean(payload && Object.values(payload.byDriver).some((samples) => samples.length > 0));
 
 const TwoRowPill = ({ item }: { item: TwoRowValue }) => {
   return (
@@ -295,18 +301,23 @@ export const TelemetryPanel = ({
   };
 
   const telemetry = useCarTelemetryData({
-    enabled: telemetryEnabled && !isLoading,
+    enabled: !isLoading,
     sessionKey,
     sessionStartMs,
     sessionEndMs,
   });
+  const hasTelemetryData = useMemo(
+    () => hasCarTelemetryPayload(telemetry.payload),
+    [telemetry.payload],
+  );
+  const showTelemetryCards = telemetryEnabled && hasTelemetryData;
 
   const stats = useMemo(() => {
     return telemetry.payload ? computeSessionStats(telemetry.payload) : null;
   }, [telemetry.payload]);
 
   const telemetryViewByDriver = useMemo(() => {
-    if (!telemetryEnabled) {
+    if (!showTelemetryCards) {
       return new Map<number, DriverTelemetryView>();
     }
 
@@ -381,38 +392,40 @@ export const TelemetryPanel = ({
     }
 
     return map;
-  }, [telemetryEnabled, telemetry.payload, currentTimeMs, rows, stats]);
+  }, [showTelemetryCards, telemetry.payload, currentTimeMs, rows, stats]);
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 rounded-xl border border-white/20 bg-white/5 p-4 backdrop-blur-xl">
       <div>
         <div className="flex items-center justify-between gap-3">
           <div className="text-sm font-semibold text-white">Leaderboard</div>
-          <button
-            type="button"
-            aria-pressed={telemetryEnabled}
-            onClick={handleToggleTelemetry}
-            className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[10px] font-semibold tracking-wide transition ${
-              telemetryEnabled
-                ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-100"
-                : "border-red-400/30 bg-red-500/10 text-red-100"
-            }`}
-          >
-            <span>TELEMETRY</span>
-            <span
-              aria-hidden="true"
-              className={`h-2 w-2 rounded-full ${
+          {hasTelemetryData && (
+            <button
+              type="button"
+              aria-pressed={telemetryEnabled}
+              onClick={handleToggleTelemetry}
+              className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[10px] font-semibold tracking-wide transition ${
                 telemetryEnabled
-                  ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.55)]"
-                  : "bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.45)]"
+                  ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-100"
+                  : "border-red-400/30 bg-red-500/10 text-red-100"
               }`}
-            />
-          </button>
+            >
+              <span>TELEMETRY</span>
+              <span
+                aria-hidden="true"
+                className={`h-2 w-2 rounded-full ${
+                  telemetryEnabled
+                    ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.55)]"
+                    : "bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.45)]"
+                }`}
+              />
+            </button>
+          )}
         </div>
-        {telemetryEnabled && telemetry.error && (
+        {hasTelemetryData && telemetryEnabled && telemetry.error && (
           <div className="mt-1 text-[10px] text-red-200/80">Telemetry error: {telemetry.error}</div>
         )}
-        {telemetryEnabled && !telemetry.error && telemetry.loading && (
+        {hasTelemetryData && telemetryEnabled && !telemetry.error && telemetry.loading && (
           <div className="mt-1 text-[10px] text-white/50">Loading telemetry…</div>
         )}
       </div>
@@ -476,7 +489,7 @@ export const TelemetryPanel = ({
                     key={row.driverNumber}
                     row={row}
                     overtakeRole={overtakeRoleMap.get(row.driverNumber) ?? null}
-                    telemetryEnabled={telemetryEnabled}
+                    telemetryEnabled={showTelemetryCards}
                     telemetryView={telemetryViewByDriver.get(row.driverNumber) ?? null}
                   />
                 ))}

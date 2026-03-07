@@ -3,6 +3,21 @@ import { ALLOWED_SESSION_TYPES, getDefaultYear } from "../constants/replay.const
 import type { OpenF1Meeting, OpenF1Session } from "../types/openf1.types";
 import type { SessionType } from "../types/replay.types";
 
+export const getAvailableSessionTypes = (sessions: OpenF1Session[]): SessionType[] => {
+  const sessionSet = new Set(sessions.map((session) => session.session_type));
+  return ALLOWED_SESSION_TYPES.filter((sessionType) => sessionSet.has(sessionType));
+};
+
+export const getFallbackSessionType = (sessions: OpenF1Session[]): SessionType | null =>
+  getAvailableSessionTypes(sessions)[0] ?? null;
+
+export const getCorrectedYear = (availableYears: number[], year: number): number | null => {
+  if (availableYears.length === 0 || availableYears.includes(year)) {
+    return null;
+  }
+  return availableYears[0] ?? null;
+};
+
 type UseSessionAutoCorrectParams = {
   meetings: OpenF1Meeting[];
   sessions: OpenF1Session[];
@@ -29,11 +44,7 @@ export const useSessionAutoCorrect = ({
   manualRoundRef,
 }: UseSessionAutoCorrectParams) => {
   const hasSupportedSession = useMemo(() => {
-    return sessions.some((session) =>
-      ALLOWED_SESSION_TYPES.includes(
-        session.session_type as (typeof ALLOWED_SESSION_TYPES)[number],
-      ),
-    );
+    return getAvailableSessionTypes(sessions).length > 0;
   }, [sessions]);
 
   const hasSelectedSession = useMemo(() => {
@@ -44,27 +55,18 @@ export const useSessionAutoCorrect = ({
     if (sessions.length === 0 || hasSelectedSession) {
       return;
     }
-    const fallback = sessions.find((session) =>
-      ALLOWED_SESSION_TYPES.includes(
-        session.session_type as (typeof ALLOWED_SESSION_TYPES)[number],
-      ),
-    );
+    const fallback = getFallbackSessionType(sessions);
     if (fallback) {
-      setSessionType(fallback.session_type as SessionType);
+      setSessionType(fallback);
     }
   }, [sessions, hasSelectedSession, setSessionType]);
 
   useEffect(() => {
-    if (availableYears.length === 0) {
-      return;
-    }
-    if (!availableYears.includes(year)) {
-      const nextYear = availableYears[0];
-      if (nextYear !== year) {
-        setYear(nextYear);
-        setRound(1);
-        manualRoundRef.current = false;
-      }
+    const nextYear = getCorrectedYear(availableYears, year);
+    if (nextYear !== null && nextYear !== year) {
+      setYear(nextYear);
+      setRound(1);
+      manualRoundRef.current = false;
     }
   }, [availableYears, year, setYear, setRound, manualRoundRef]);
 
@@ -83,8 +85,8 @@ export const useSessionAutoCorrect = ({
   return { hasSupportedSession, hasSelectedSession };
 };
 
-const isValidSessionType = (value: unknown): value is SessionType =>
-  value === "Race" || value === "Sprint" || value === "Qualifying";
+export const isValidSessionType = (value: unknown): value is SessionType =>
+  value === "Race" || value === "Qualifying";
 
 type UseSessionStateResult = {
   year: number;

@@ -1,14 +1,6 @@
+import { ALLOWED_SESSION_TYPES } from "../constants/replay.constants";
+import { buildYearOptions } from "../services/telemetry.service";
 import type { SessionPickerProps, SessionType } from "../types/replay.types";
-
-const SESSION_TYPES: SessionType[] = ["Race", "Sprint", "Qualifying"];
-
-const buildYearOptions = (currentYear: number) => {
-  const years: number[] = [];
-  for (let year = currentYear; year >= currentYear - 5; year -= 1) {
-    years.push(year);
-  }
-  return years;
-};
 
 export const SessionPicker = ({
   year,
@@ -76,7 +68,7 @@ export const SessionPicker = ({
           disabled={isLoading}
           className="w-full appearance-none rounded-md border border-white/20 bg-white/5 px-2 py-2 text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E10600]/70 md:px-3"
         >
-          {SESSION_TYPES.map((type) => (
+          {ALLOWED_SESSION_TYPES.map((type) => (
             <option key={type} value={type}>
               {type}
             </option>

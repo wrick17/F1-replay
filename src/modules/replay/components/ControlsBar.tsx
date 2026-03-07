@@ -23,6 +23,7 @@ export const ControlsBar = ({
   endTimeMs,
   canPlay,
   timelineEvents,
+  hasTeamRadio,
   radioEnabled,
   drivers,
   isRadioPlaying,
@@ -153,20 +154,22 @@ export const ControlsBar = ({
           </Tooltip>
 
           {/* Radio toggle */}
-          <Tooltip content={radioTooltip}>
-            <button
-              type="button"
-              onClick={onRadioToggle}
-              className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
-                radioEnabled
-                  ? "bg-blue-500/20 text-blue-300 hover:bg-blue-500/30"
-                  : "bg-white/10 text-white/50 hover:bg-white/15"
-              }`}
-              aria-label={radioTooltip}
-            >
-              {radioEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
-            </button>
-          </Tooltip>
+          {hasTeamRadio && (
+            <Tooltip content={radioTooltip}>
+              <button
+                type="button"
+                onClick={onRadioToggle}
+                className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
+                  radioEnabled
+                    ? "bg-blue-500/20 text-blue-300 hover:bg-blue-500/30"
+                    : "bg-white/10 text-white/50 hover:bg-white/15"
+                }`}
+                aria-label={radioTooltip}
+              >
+                {radioEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+              </button>
+            </Tooltip>
+          )}
 
           {/* Expand/collapse timeline */}
           <Tooltip content={expandTooltip}>

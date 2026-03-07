@@ -10,7 +10,11 @@ import { ALLOWED_SESSION_TYPES, SKIP_INTERVAL_LABELS } from "../constants/replay
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useReplayController } from "../hooks/useReplayController";
 import { useReplayData } from "../hooks/useReplayData";
-import { useSessionAutoCorrect, useSessionState } from "../hooks/useSessionSelector";
+import {
+  getAvailableSessionTypes,
+  useSessionAutoCorrect,
+  useSessionState,
+} from "../hooks/useSessionSelector";
 import { useTeamRadio } from "../hooks/useTeamRadio";
 import { useTrackComputation } from "../hooks/useTrackComputation";
 import { useUserPreferences } from "../hooks/useUserPreferences";
@@ -141,10 +145,7 @@ export const ReplayPage = () => {
   const toggleTelemetryCollapsed = useCallback(() => setTelemetryCollapsed((prev) => !prev), []);
   const toggleEventsCollapsed = useCallback(() => setEventsCollapsed((prev) => !prev), []);
 
-  const availableSessionTypes = useMemo(() => {
-    const sessionSet = new Set(sessions.map((entry) => entry.session_type));
-    return ALLOWED_SESSION_TYPES.filter((entry) => sessionSet.has(entry));
-  }, [sessions]);
+  const availableSessionTypes = useMemo(() => getAvailableSessionTypes(sessions), [sessions]);
 
   const nextRound = useCallback(() => {
     if (!meetings.length) {
@@ -298,8 +299,7 @@ export const ReplayPage = () => {
       <div className="relative z-10 mx-4 mt-3 flex max-w-[420px] flex-col gap-2 md:absolute md:left-4 md:top-24 md:mx-0 md:mt-0">
         {!hasSupportedSession && sessions.length > 0 && (
           <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-            No supported session types (Race, Sprint, Qualifying) for this round. Choose another
-            round.
+            No supported session types (Race, Qualifying) for this round. Choose another round.
           </div>
         )}
       </div>
@@ -325,6 +325,7 @@ export const ReplayPage = () => {
           endTimeMs={effectiveEndMs}
           canPlay={canPlay}
           timelineEvents={timelineEvents}
+          hasTeamRadio={Boolean(data?.teamRadios?.length)}
           radioEnabled={prefs.radioEnabled}
           drivers={drivers}
           isRadioPlaying={isAudioPlaying}

@@ -1,6 +1,8 @@
+import { ALLOWED_SESSION_TYPES } from "../constants/replay.constants";
 import type {
   OpenF1Driver,
   OpenF1Meeting,
+  OpenF1Session,
   ReplaySessionData,
   ReplayTelemetry,
 } from "../types/openf1.types";
@@ -42,11 +44,47 @@ export const createTelemetryMap = (drivers: OpenF1Driver[]): Record<number, Repl
 export const buildYearOptions = (currentYear: number) =>
   Array.from({ length: 6 }, (_, index) => currentYear - index);
 
+export const isSupportedReplaySession = (
+  session: Pick<OpenF1Session, "session_type">,
+): session is Pick<OpenF1Session, "session_type"> & {
+  session_type: (typeof ALLOWED_SESSION_TYPES)[number];
+} => ALLOWED_SESSION_TYPES.includes(session.session_type as (typeof ALLOWED_SESSION_TYPES)[number]);
+
+export const hasEndedReplaySession = (
+  session: Pick<OpenF1Session, "session_type" | "date_end">,
+  now: number,
+) => isSupportedReplaySession(session) && new Date(session.date_end).getTime() <= now;
+
+export const hasReplayableSessions = (sessions: OpenF1Session[], now: number) =>
+  sessions.some((session) => hasEndedReplaySession(session, now));
+
+export const getReplayableMeetingKeys = (sessions: OpenF1Session[], now: number) => {
+  const replayableMeetingKeys = new Set<number>();
+  sessions.forEach((session) => {
+    if (hasEndedReplaySession(session, now)) {
+      replayableMeetingKeys.add(session.meeting_key);
+    }
+  });
+  return replayableMeetingKeys;
+};
+
 export const filterEndedMeetings = (meetings: OpenF1Meeting[], now: number) => {
   return meetings.filter((meeting) => {
     const name = `${meeting.meeting_name} ${meeting.meeting_official_name}`;
     const endMs = new Date(meeting.date_end).getTime();
     return !/pre[- ]season/i.test(name) && endMs <= now;
+  });
+};
+
+export const filterReplayableMeetings = (
+  meetings: OpenF1Meeting[],
+  sessions: OpenF1Session[],
+  now: number,
+) => {
+  const replayableMeetingKeys = getReplayableMeetingKeys(sessions, now);
+  return meetings.filter((meeting) => {
+    const name = `${meeting.meeting_name} ${meeting.meeting_official_name}`;
+    return !/pre[- ]season/i.test(name) && replayableMeetingKeys.has(meeting.meeting_key);
   });
 };
 

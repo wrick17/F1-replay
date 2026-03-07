@@ -91,6 +91,22 @@ export const fetchOpenF1 = <T>(
   return request;
 };
 
+export const fetchOpenF1OrEmpty = async <T extends unknown[]>(
+  path: string,
+  params: QueryParams,
+  signal?: AbortSignal,
+  cacheMode: CacheMode = "no-store",
+): Promise<T> => {
+  try {
+    return await fetchOpenF1<T>(path, params, signal, cacheMode);
+  } catch (error) {
+    if (error instanceof Error && error.message === "OpenF1 request failed: 404") {
+      return [] as T;
+    }
+    throw error;
+  }
+};
+
 export const fetchChunked = async <T extends { date?: string }>(
   path: string,
   params: QueryParams,
@@ -110,7 +126,7 @@ export const fetchChunked = async <T extends { date?: string }>(
       "date>=": new Date(cursor).toISOString(),
       "date<=": new Date(chunkEnd).toISOString(),
     };
-    const chunk = await fetchOpenF1<T[]>(path, chunkParams, signal, cacheMode);
+    const chunk = await fetchOpenF1OrEmpty<T[]>(path, chunkParams, signal, cacheMode);
     if (chunk.length) {
       results.push(...chunk);
     }

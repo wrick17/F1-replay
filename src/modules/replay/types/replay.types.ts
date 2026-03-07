@@ -8,7 +8,7 @@ import type {
   TimedSample,
 } from "./openf1.types";
 
-export type SessionType = "Race" | "Sprint" | "Qualifying";
+export type SessionType = "Race" | "Qualifying";
 
 export type DriverRenderState = {
   position: NormalizedPosition | null;
@@ -79,6 +79,7 @@ export type ControlsBarProps = {
   endTimeMs: number;
   canPlay: boolean;
   timelineEvents: TimelineEvent[];
+  hasTeamRadio: boolean;
   radioEnabled: boolean;
   drivers: OpenF1Driver[];
   isRadioPlaying: boolean;
