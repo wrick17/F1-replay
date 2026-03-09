@@ -1,4 +1,4 @@
-export const ALLOWED_SESSION_TYPES = ["Race", "Qualifying"] as const;
+export const ALLOWED_SESSION_TYPES = ["Qualifying", "Sprint", "Race"] as const;
 
 export const TRACK_TIME_GAP_MS = 2000;
 
@@ -14,5 +14,3 @@ export const SKIP_INTERVAL_LABELS: Record<number, string> = {
   60000: "1m",
   300000: "5m",
 };
-
-export const getDefaultYear = () => new Date().getFullYear() - 1;

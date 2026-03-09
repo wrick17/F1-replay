@@ -6,7 +6,7 @@ import { SessionPicker } from "../components/SessionPicker";
 import { TelemetryPanel } from "../components/TelemetryPanel";
 import { TrackView } from "../components/TrackView";
 import { WeatherBadge } from "../components/WeatherBadge";
-import { ALLOWED_SESSION_TYPES, SKIP_INTERVAL_LABELS } from "../constants/replay.constants";
+import { SKIP_INTERVAL_LABELS } from "../constants/replay.constants";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useReplayController } from "../hooks/useReplayController";
 import { useReplayData } from "../hooks/useReplayData";
@@ -39,6 +39,7 @@ export const ReplayPage = () => {
     sessions,
     availableYears,
     year: session.year,
+    hasExplicitYear: session.hasExplicitYear,
     round: session.round,
     sessionType: session.sessionType,
     setYear: session.setYear,
@@ -146,6 +147,7 @@ export const ReplayPage = () => {
   const toggleEventsCollapsed = useCallback(() => setEventsCollapsed((prev) => !prev), []);
 
   const availableSessionTypes = useMemo(() => getAvailableSessionTypes(sessions), [sessions]);
+  const selectedYear = session.year ?? availableYears[0] ?? new Date().getFullYear();
 
   const nextRound = useCallback(() => {
     if (!meetings.length) {
@@ -168,50 +170,42 @@ export const ReplayPage = () => {
       return;
     }
     const sorted = [...availableYears].sort((a, b) => b - a);
-    const index = sorted.indexOf(session.year);
+    const index = sorted.indexOf(selectedYear);
     const nextIndex = Math.max(0, index - 1);
     session.setYear(sorted[nextIndex] ?? sorted[0]);
-  }, [availableYears, session]);
+  }, [availableYears, selectedYear, session]);
 
   const prevYear = useCallback(() => {
     if (!availableYears.length) {
       return;
     }
     const sorted = [...availableYears].sort((a, b) => b - a);
-    const index = sorted.indexOf(session.year);
+    const index = sorted.indexOf(selectedYear);
     const nextIndex = Math.min(sorted.length - 1, index + 1);
     session.setYear(sorted[nextIndex] ?? sorted[sorted.length - 1]);
-  }, [availableYears, session]);
+  }, [availableYears, selectedYear, session]);
 
   const nextSession = useCallback(() => {
     if (!availableSessionTypes.length) {
       return;
     }
-    const currentIndex = ALLOWED_SESSION_TYPES.indexOf(session.sessionType);
-    for (let i = 1; i <= ALLOWED_SESSION_TYPES.length; i += 1) {
-      const nextType = ALLOWED_SESSION_TYPES[(currentIndex + i) % ALLOWED_SESSION_TYPES.length];
-      if (availableSessionTypes.includes(nextType)) {
-        session.setSessionType(nextType);
-        return;
-      }
-    }
+    const currentIndex = availableSessionTypes.indexOf(session.sessionType);
+    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % availableSessionTypes.length : 0;
+    session.setSessionType(availableSessionTypes[nextIndex] ?? availableSessionTypes[0]);
   }, [availableSessionTypes, session]);
 
   const prevSession = useCallback(() => {
     if (!availableSessionTypes.length) {
       return;
     }
-    const currentIndex = ALLOWED_SESSION_TYPES.indexOf(session.sessionType);
-    for (let i = 1; i <= ALLOWED_SESSION_TYPES.length; i += 1) {
-      const nextType =
-        ALLOWED_SESSION_TYPES[
-          (currentIndex - i + ALLOWED_SESSION_TYPES.length) % ALLOWED_SESSION_TYPES.length
-        ];
-      if (availableSessionTypes.includes(nextType)) {
-        session.setSessionType(nextType);
-        return;
-      }
-    }
+    const currentIndex = availableSessionTypes.indexOf(session.sessionType);
+    const prevIndex =
+      currentIndex >= 0
+        ? (currentIndex - 1 + availableSessionTypes.length) % availableSessionTypes.length
+        : availableSessionTypes.length - 1;
+    session.setSessionType(
+      availableSessionTypes[prevIndex] ?? availableSessionTypes[availableSessionTypes.length - 1],
+    );
   }, [availableSessionTypes, session]);
 
   // Keyboard shortcuts
@@ -240,9 +234,12 @@ export const ReplayPage = () => {
 
   const drivers = useMemo(() => data?.drivers ?? [], [data]);
   const selectedDrivers = useMemo(() => [], []);
-  const hasStatus = loading || Boolean(error);
-  const statusText = loading ? "Loading telemetry data…" : (error ?? "Loading telemetry data…");
-  const statusClass = loading
+  const isBlockingLoad = loading && !data;
+  const hasStatus = isBlockingLoad || Boolean(error);
+  const statusText = isBlockingLoad
+    ? "Loading telemetry data…"
+    : (error ?? "Loading telemetry data…");
+  const statusClass = isBlockingLoad
     ? "border-amber-500/30 bg-amber-500/20 text-amber-300"
     : "border-red-500/30 bg-red-500/15 text-red-200";
 
@@ -270,19 +267,19 @@ export const ReplayPage = () => {
             }`}
             aria-hidden={!hasStatus}
           >
-            {loading && <Loader2 size={14} className="animate-spin" />}
+            {isBlockingLoad && <Loader2 size={14} className="animate-spin" />}
             <span className="truncate">{statusText}</span>
           </span>
         </div>
-        <WeatherBadge weather={currentWeather} isLoading={loading} />
+        <WeatherBadge weather={currentWeather} isLoading={isBlockingLoad} />
         <SessionPicker
-          year={session.year}
+          year={selectedYear}
           round={session.round}
           sessionType={session.sessionType}
           meetings={meetings}
           sessions={sessions}
           yearOptions={availableYears}
-          isLoading={loading}
+          isLoading={isBlockingLoad}
           onYearChange={(nextYear) => {
             session.setYear(nextYear);
             session.setRound(1);
@@ -299,7 +296,7 @@ export const ReplayPage = () => {
       <div className="relative z-10 mx-4 mt-3 flex max-w-[420px] flex-col gap-2 md:absolute md:left-4 md:top-24 md:mx-0 md:mt-0">
         {!hasSupportedSession && sessions.length > 0 && (
           <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-            No supported session types (Race, Qualifying) for this round. Choose another round.
+            No replayable session types are available for this round yet. Choose another round.
           </div>
         )}
       </div>
@@ -367,7 +364,7 @@ export const ReplayPage = () => {
               summary={telemetrySummary}
               rows={telemetryRows}
               activeOvertakes={activeOvertakes}
-              isLoading={loading}
+              isLoading={isBlockingLoad}
               currentTimeMs={replay.currentTimeMs}
               sessionKey={data?.session.session_key ?? null}
               sessionStartMs={data?.sessionStartMs ?? 0}

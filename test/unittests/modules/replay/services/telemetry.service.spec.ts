@@ -1,10 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import {
+  buildYearOptions,
+  dedupeDrivers,
   filterReplayableMeetings,
   getReplayableMeetingKeys,
   hasReplayableSessions,
 } from "modules/replay/services/telemetry.service";
-import type { OpenF1Meeting, OpenF1Session } from "modules/replay/types/openf1.types";
+import type { OpenF1Driver, OpenF1Meeting, OpenF1Session } from "modules/replay/types/openf1.types";
 
 const NOW = Date.parse("2026-03-07T17:14:48Z");
 
@@ -37,17 +39,52 @@ const createSession = (
   ...overrides,
 });
 
+const createDriver = (
+  driver_number: number,
+  overrides: Partial<OpenF1Driver> = {},
+): OpenF1Driver => ({
+  driver_number,
+  full_name: `Driver ${driver_number}`,
+  name_acronym: `D${driver_number}`,
+  team_name: "Team",
+  team_colour: "FFFFFF",
+  headshot_url: null,
+  ...overrides,
+});
+
 describe("telemetry.service replayability", () => {
   it("marks a year as replayable when only Qualifying has ended", () => {
     expect(hasReplayableSessions([createSession("Qualifying")], NOW)).toBe(true);
   });
 
   it("does not mark a year as replayable when only Practice or Sprint has ended", () => {
+    expect(hasReplayableSessions([createSession("Practice")], NOW)).toBe(false);
+  });
+
+  it("marks a year as replayable when only Sprint has ended on a sprint weekend", () => {
+    expect(hasReplayableSessions([createSession("Sprint", { session_key: 2 })], NOW)).toBe(true);
+  });
+
+  it("keeps a meeting when sprint has ended and race is still in the future", () => {
+    const meetings = [createMeeting("Chinese Grand Prix")];
+    const sessions = [
+      createSession("Sprint", { session_key: 2 }),
+      createSession("Race", {
+        session_key: 3,
+        date_start: "2026-03-08T04:00:00Z",
+        date_end: "2026-03-08T06:00:00Z",
+      }),
+    ];
+
+    expect(filterReplayableMeetings(meetings, sessions, NOW)).toEqual(meetings);
+  });
+
+  it("does not mark a year as replayable when only unsupported sessions have ended", () => {
     expect(
       hasReplayableSessions(
         [
           createSession("Practice"),
-          createSession("Sprint", { session_key: 2 }),
+          createSession("Sprint Shootout", { session_key: 2 }),
         ],
         NOW,
       ),
@@ -79,7 +116,7 @@ describe("telemetry.service replayability", () => {
     expect(filterReplayableMeetings(meetings, sessions, NOW)).toEqual([]);
   });
 
-  it("returns only meeting keys with ended Race or Qualifying sessions", () => {
+  it("returns only meeting keys with ended supported replay sessions", () => {
     const replayableMeetingKeys = getReplayableMeetingKeys(
       [
         createSession("Qualifying", { meeting_key: 100 }),
@@ -93,6 +130,24 @@ describe("telemetry.service replayability", () => {
       NOW,
     );
 
-    expect([...replayableMeetingKeys]).toEqual([100]);
+    expect([...replayableMeetingKeys]).toEqual([100, 101]);
+  });
+
+  it("dedupes drivers by driver number", () => {
+    expect(
+      dedupeDrivers([
+        createDriver(87, { full_name: "Oliver Bearman" }),
+        createDriver(87, { full_name: "Ollie Bearman" }),
+        createDriver(12, { full_name: "Kimi Antonelli" }),
+      ]),
+    ).toEqual([
+      createDriver(87, { full_name: "Oliver Bearman" }),
+      createDriver(12, { full_name: "Kimi Antonelli" }),
+    ]);
+  });
+
+  it("does not build year options before 2023", () => {
+    expect(buildYearOptions(2026)).toEqual([2026, 2025, 2024, 2023]);
+    expect(buildYearOptions(2023)).toEqual([2023]);
   });
 });

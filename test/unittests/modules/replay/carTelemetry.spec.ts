@@ -97,4 +97,46 @@ describe("carTelemetry.service", () => {
     expect(stats.rpmMaxSession).toBe(15000);
     expect(stats.speedMaxSession).toBe(250);
   });
+
+  it("builds usable payload snapshots before the full session is ingested", () => {
+    const state = createDownsampleState(123, 500);
+
+    ingestCarDataChunk(state, [
+      {
+        date: "2024-01-01T00:00:00.100Z",
+        driver_number: 4,
+        speed: 180,
+        n_gear: 5,
+        rpm: 10500,
+        throttle: 82,
+        brake: 0,
+        drs: 0,
+        session_key: 123,
+        meeting_key: 1,
+      },
+    ]);
+
+    const partialPayload = finalizeCarTelemetryPayload(state);
+    expect(partialPayload.byDriver[4]?.length).toBe(1);
+    expect(partialPayload.byDriver[4]?.[0]?.speed).toBe(180);
+
+    ingestCarDataChunk(state, [
+      {
+        date: "2024-01-01T00:00:01.100Z",
+        driver_number: 4,
+        speed: 210,
+        n_gear: 6,
+        rpm: 11200,
+        throttle: 100,
+        brake: 0,
+        drs: 8,
+        session_key: 123,
+        meeting_key: 1,
+      },
+    ]);
+
+    const finalPayload = finalizeCarTelemetryPayload(state);
+    expect(finalPayload.byDriver[4]?.length).toBe(2);
+    expect(finalPayload.byDriver[4]?.[1]?.speed).toBe(210);
+  });
 });

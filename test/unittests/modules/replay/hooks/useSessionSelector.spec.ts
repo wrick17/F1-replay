@@ -22,8 +22,8 @@ const createSession = (
 });
 
 describe("useSessionSelector helpers", () => {
-  it("rejects Sprint as a valid session type", () => {
-    expect(isValidSessionType("Sprint")).toBe(false);
+  it("accepts Sprint as a valid session type", () => {
+    expect(isValidSessionType("Sprint")).toBe(true);
     expect(isValidSessionType("Race")).toBe(true);
     expect(isValidSessionType("Qualifying")).toBe(true);
   });
@@ -38,17 +38,34 @@ describe("useSessionSelector helpers", () => {
     expect(fallback).toBe("Qualifying");
   });
 
-  it("filters Sprint out of the supported session list", () => {
+  it("includes Sprint when it exists alongside other supported sessions", () => {
     const available = getAvailableSessionTypes([
       createSession("Sprint"),
       createSession("Race", { session_key: 2 }),
       createSession("Qualifying", { session_key: 3 }),
     ]);
 
-    expect(available).toEqual(["Race", "Qualifying"]);
+    expect(available).toEqual(["Qualifying", "Sprint", "Race"]);
+  });
+
+  it("shows only the supported sessions that exist for the round", () => {
+    const available = getAvailableSessionTypes([
+      createSession("Practice"),
+      createSession("Race", { session_key: 2 }),
+    ]);
+
+    expect(available).toEqual(["Race"]);
   });
 
   it("does not correct the year when 2026 is already available", () => {
-    expect(getCorrectedYear([2026, 2025, 2024], 2026)).toBeNull();
+    expect(getCorrectedYear([2026, 2025, 2024], 2026, true)).toBeNull();
+  });
+
+  it("falls back to the latest replayable year when the requested year is unavailable", () => {
+    expect(getCorrectedYear([2026, 2025, 2024], 2027, true)).toBe(2026);
+  });
+
+  it("defaults to the latest replayable year when the url does not specify one", () => {
+    expect(getCorrectedYear([2026, 2025, 2024], null, false)).toBe(2026);
   });
 });

@@ -1,4 +1,4 @@
-import { ALLOWED_SESSION_TYPES } from "../constants/replay.constants";
+import { getAvailableSessionTypes } from "../hooks/useSessionSelector";
 import { buildYearOptions } from "../services/telemetry.service";
 import type { SessionPickerProps, SessionType } from "../types/replay.types";
 
@@ -7,7 +7,7 @@ export const SessionPicker = ({
   round,
   sessionType,
   meetings,
-  sessions: _sessions,
+  sessions,
   yearOptions: availableYears,
   isLoading = false,
   onYearChange,
@@ -22,8 +22,10 @@ export const SessionPicker = ({
     round: index + 1,
     label: meeting.meeting_name,
   }));
+  const availableSessionTypes = getAvailableSessionTypes(sessions);
+
   return (
-    <div className="flex w-full flex-nowrap items-end gap-2 overflow-hidden text-xs md:flex-wrap md:items-center md:gap-3">
+    <div className="flex w-full flex-nowrap items-end gap-2 overflow-visible text-xs md:flex-wrap md:items-center md:gap-3">
       <div className="flex w-20 flex-col gap-1 sm:w-24 md:w-auto">
         <span className="text-[10px] uppercase text-white/60">Year</span>
         <select
@@ -31,8 +33,8 @@ export const SessionPicker = ({
           name="replay-year"
           value={year}
           onChange={(event) => onYearChange(Number(event.target.value))}
-          disabled={isLoading}
-          className="w-full appearance-none rounded-md border border-white/20 bg-white/5 px-2 py-2 text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E10600]/70 md:px-3"
+          disabled={yearOptions.length === 0}
+          className="w-full appearance-none rounded-md border border-white/20 bg-white/5 px-2 py-2 text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E10600]/70 md:min-w-20 md:px-3"
         >
           {yearOptions.map((option) => (
             <option key={option} value={option}>
@@ -48,7 +50,7 @@ export const SessionPicker = ({
           name="replay-round"
           value={round}
           onChange={(event) => onRoundChange(Number(event.target.value))}
-          disabled={isLoading}
+          disabled={isLoading && rounds.length === 0}
           className="w-full appearance-none truncate rounded-md border border-white/20 bg-white/5 px-2 py-2 text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E10600]/70 md:px-3"
         >
           {rounds.map((option) => (
@@ -65,10 +67,10 @@ export const SessionPicker = ({
           name="replay-session"
           value={sessionType}
           onChange={(event) => onSessionTypeChange(event.target.value as SessionType)}
-          disabled={isLoading}
+          disabled={isLoading && availableSessionTypes.length === 0}
           className="w-full appearance-none rounded-md border border-white/20 bg-white/5 px-2 py-2 text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E10600]/70 md:px-3"
         >
-          {ALLOWED_SESSION_TYPES.map((type) => (
+          {availableSessionTypes.map((type) => (
             <option key={type} value={type}>
               {type}
             </option>

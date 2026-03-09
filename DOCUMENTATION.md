@@ -227,6 +227,8 @@ Database setup:
 ### API Integration
 
 The app calls the [OpenF1 API](https://openf1.org/) directly for live data and uses a Cloudflare Worker for replay caching at `GET /replay` and `POST /replay`.
+To reduce first-load failures on current-season sessions, the client prioritizes the selected replay session before background year discovery and retries transient OpenF1 `429` responses more aggressively.
+When OpenF1 rate-limits the client, those retries stay in the background and do not surface a user-facing error while partial replay data is already available.
 
 OpenF1 endpoints used by the client include:
 - Meeting and session information
@@ -309,7 +311,7 @@ Displays detailed telemetry for selected driver:
 - Throttle percentage
 - Brake status
 - DRS status
-- The telemetry toggle and driver pills are only rendered after car telemetry data is available for the current session
+- The telemetry toggle and driver pills are only rendered after car telemetry data is available for the current session, and they appear as soon as the first usable telemetry chunk is ingested rather than waiting for the full session backfill
 
 #### `WeatherBadge`
 Shows current weather conditions:
@@ -332,8 +334,12 @@ Primary data management hook that:
 - Fetches aggregated session data from the worker
 - Manages loading states and errors
 - Provides available years and sessions
-- Exposes a year only when at least one qualifying or race session has ended
-- Exposes a meeting only when at least one qualifying or race session has ended
+- Exposes a year only when at least one supported replay session (`Qualifying`, `Sprint`, or `Race`) has ended
+- Exposes a meeting only when at least one supported replay session (`Qualifying`, `Sprint`, or `Race`) has ended
+- Limits year discovery to OpenF1-supported replay seasons (`2023` onward) so the client does not probe older unavailable years
+- Prioritizes the selected replay session before background year discovery so current-session pages load first
+- Keeps transient OpenF1 `429` retries in the background so already-loaded replay data remains interactive
+- Uses a native year select that stays interactive during in-flight replay loads so users can switch seasons without waiting for the previous request to finish
 - Returns structured `ReplaySessionData`
 
 **Usage:**

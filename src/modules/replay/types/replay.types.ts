@@ -8,7 +8,7 @@ import type {
   TimedSample,
 } from "./openf1.types";
 
-export type SessionType = "Race" | "Qualifying";
+export type SessionType = "Qualifying" | "Sprint" | "Race";
 
 export type DriverRenderState = {
   position: NormalizedPosition | null;

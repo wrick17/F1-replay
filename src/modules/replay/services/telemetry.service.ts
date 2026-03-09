@@ -16,6 +16,8 @@ import {
   groupByDriverNumber,
 } from "../utils/telemetry.util";
 
+const MIN_REPLAY_YEAR = 2023;
+
 export const getLatestTelemetryTimestamp = (
   telemetryByDriver: Record<number, ReplayTelemetry>,
 ): number => {
@@ -41,8 +43,22 @@ export const createTelemetryMap = (drivers: OpenF1Driver[]): Record<number, Repl
   }, {});
 };
 
+export const dedupeDrivers = (drivers: OpenF1Driver[]) => {
+  const seen = new Set<number>();
+  return drivers.filter((driver) => {
+    if (seen.has(driver.driver_number)) {
+      return false;
+    }
+    seen.add(driver.driver_number);
+    return true;
+  });
+};
+
 export const buildYearOptions = (currentYear: number) =>
-  Array.from({ length: 6 }, (_, index) => currentYear - index);
+  Array.from(
+    { length: Math.max(0, currentYear - MIN_REPLAY_YEAR + 1) },
+    (_, index) => currentYear - index,
+  );
 
 export const isSupportedReplaySession = (
   session: Pick<OpenF1Session, "session_type">,
@@ -57,6 +73,9 @@ export const hasEndedReplaySession = (
 
 export const hasReplayableSessions = (sessions: OpenF1Session[], now: number) =>
   sessions.some((session) => hasEndedReplaySession(session, now));
+
+export const filterReplayableSessions = (sessions: OpenF1Session[], now: number) =>
+  sessions.filter((session) => hasEndedReplaySession(session, now));
 
 export const getReplayableMeetingKeys = (sessions: OpenF1Session[], now: number) => {
   const replayableMeetingKeys = new Set<number>();

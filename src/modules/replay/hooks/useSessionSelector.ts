@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ALLOWED_SESSION_TYPES, getDefaultYear } from "../constants/replay.constants";
+import { ALLOWED_SESSION_TYPES } from "../constants/replay.constants";
 import type { OpenF1Meeting, OpenF1Session } from "../types/openf1.types";
 import type { SessionType } from "../types/replay.types";
 
@@ -11,8 +11,18 @@ export const getAvailableSessionTypes = (sessions: OpenF1Session[]): SessionType
 export const getFallbackSessionType = (sessions: OpenF1Session[]): SessionType | null =>
   getAvailableSessionTypes(sessions)[0] ?? null;
 
-export const getCorrectedYear = (availableYears: number[], year: number): number | null => {
-  if (availableYears.length === 0 || availableYears.includes(year)) {
+export const getCorrectedYear = (
+  availableYears: number[],
+  year: number | null,
+  hasExplicitYear: boolean,
+): number | null => {
+  if (availableYears.length === 0) {
+    return null;
+  }
+  if (!hasExplicitYear || year === null) {
+    return availableYears[0] ?? null;
+  }
+  if (availableYears.includes(year)) {
     return null;
   }
   return availableYears[0] ?? null;
@@ -22,7 +32,8 @@ type UseSessionAutoCorrectParams = {
   meetings: OpenF1Meeting[];
   sessions: OpenF1Session[];
   availableYears: number[];
-  year: number;
+  year: number | null;
+  hasExplicitYear: boolean;
   round: number;
   sessionType: SessionType;
   setYear: (year: number) => void;
@@ -36,6 +47,7 @@ export const useSessionAutoCorrect = ({
   sessions,
   availableYears,
   year,
+  hasExplicitYear,
   round,
   sessionType,
   setYear,
@@ -62,13 +74,13 @@ export const useSessionAutoCorrect = ({
   }, [sessions, hasSelectedSession, setSessionType]);
 
   useEffect(() => {
-    const nextYear = getCorrectedYear(availableYears, year);
+    const nextYear = getCorrectedYear(availableYears, year, hasExplicitYear);
     if (nextYear !== null && nextYear !== year) {
       setYear(nextYear);
       setRound(1);
       manualRoundRef.current = false;
     }
-  }, [availableYears, year, setYear, setRound, manualRoundRef]);
+  }, [availableYears, year, hasExplicitYear, setYear, setRound, manualRoundRef]);
 
   useEffect(() => {
     if (manualRoundRef.current) {
@@ -86,10 +98,11 @@ export const useSessionAutoCorrect = ({
 };
 
 export const isValidSessionType = (value: unknown): value is SessionType =>
-  value === "Race" || value === "Qualifying";
+  value === "Race" || value === "Qualifying" || value === "Sprint";
 
 type UseSessionStateResult = {
-  year: number;
+  year: number | null;
+  hasExplicitYear: boolean;
   round: number;
   sessionType: SessionType;
   manualRoundRef: React.RefObject<boolean>;
@@ -165,8 +178,8 @@ export const useSessionState = (): UseSessionStateResult => {
     });
   }, []);
 
-  const defaultYear = getDefaultYear();
-  const year = typeof search.year === "number" ? search.year : defaultYear;
+  const hasExplicitYear = typeof search.year === "number";
+  const year = hasExplicitYear ? (search.year ?? null) : null;
   const round = typeof search.round === "number" ? search.round : 1;
   const sessionType = isValidSessionType(search.session) ? search.session : "Race";
 
@@ -199,6 +212,7 @@ export const useSessionState = (): UseSessionStateResult => {
 
   return {
     year,
+    hasExplicitYear,
     round,
     sessionType,
     manualRoundRef,

@@ -1,9 +1,27 @@
 const minIntervalMs = 400;
 let rateLimitChain = Promise.resolve(0);
 
-export const sleep = (ms: number) =>
-  new Promise((resolve) => {
-    setTimeout(resolve, ms);
+const createAbortError = () => new DOMException("The operation was aborted.", "AbortError");
+
+export const sleep = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(createAbortError());
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      signal?.removeEventListener("abort", handleAbort);
+      resolve();
+    }, ms);
+
+    const handleAbort = () => {
+      clearTimeout(timeoutId);
+      signal?.removeEventListener("abort", handleAbort);
+      reject(createAbortError());
+    };
+
+    signal?.addEventListener("abort", handleAbort, { once: true });
   });
 
 export const rateLimit = () => {

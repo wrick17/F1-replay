@@ -81,6 +81,9 @@ export const useCarTelemetryData = ({
         CAR_DATA_WINDOW_MS,
         (chunk) => {
           ingestCarDataChunk(state, chunk);
+          if (!controller.signal.aborted && chunk.length > 0) {
+            setPayload(finalizeCarTelemetryPayload(state));
+          }
         },
         controller.signal,
         "persist",

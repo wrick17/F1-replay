@@ -10,7 +10,9 @@ import {
   buildYearOptions,
   chunkAppend,
   createTelemetryMap,
+  dedupeDrivers,
   filterReplayableMeetings,
+  filterReplayableSessions,
   getLatestTelemetryTimestamp,
   hasReplayableSessions,
 } from "../services/telemetry.service";
@@ -45,7 +47,7 @@ type ReplayDataState = {
 };
 
 type ReplayDataParams = {
-  year: number;
+  year: number | null;
   round: number;
   sessionType: SessionType;
 };
@@ -59,6 +61,7 @@ export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): R
   const [availableYears, setAvailableYears] = useState<number[]>([]);
   const [availableEndMs, setAvailableEndMs] = useState(0);
   const [dataRevision, setDataRevision] = useState(0);
+  const [isPrimarySessionSettled, setIsPrimarySessionSettled] = useState(false);
   const sessionCacheRef = useRef<Map<number, ReplaySessionData>>(new Map());
   const abortRef = useRef<AbortController | null>(null);
   const meetingsRequestRef = useRef(0);
@@ -77,6 +80,17 @@ export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): R
   selectedMeetingRef.current = selectedMeeting;
 
   useEffect(() => {
+    if (year === null) {
+      setLoading(false);
+      setError(null);
+      setMeetings([]);
+      setSessions([]);
+      setData(null);
+      setAvailableEndMs(0);
+      setDataRevision(0);
+      setIsPrimarySessionSettled(false);
+      return;
+    }
     const requestId = meetingsRequestRef.current + 1;
     meetingsRequestRef.current = requestId;
     setLoading(true);
@@ -86,6 +100,7 @@ export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): R
     setData(null);
     setAvailableEndMs(0);
     setDataRevision(0);
+    setIsPrimarySessionSettled(false);
 
     Promise.all([
       fetchOpenF1<OpenF1Meeting[]>("meetings", { year }, undefined, "persist"),
@@ -111,28 +126,33 @@ export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): R
   }, [year]);
 
   useEffect(() => {
+    if (!isPrimarySessionSettled && year !== null) {
+      return;
+    }
     let cancelled = false;
     const loadYears = async () => {
       const now = Date.now();
-      const available = (
-        await Promise.all(
-          yearOptions.map(async (option) => {
-            try {
-              const result = await fetchOpenF1<OpenF1Session[]>(
-                "sessions",
-                { year: option },
-                undefined,
-                "persist",
-              );
-              return hasReplayableSessions(result, now) ? option : null;
-            } catch {
-              return null;
+      const available: number[] = [];
+      for (const option of yearOptions) {
+        if (cancelled) {
+          return;
+        }
+        try {
+          const result = await fetchOpenF1<OpenF1Session[]>(
+            "sessions",
+            { year: option },
+            undefined,
+            "persist",
+          );
+          if (hasReplayableSessions(result, now)) {
+            available.push(option);
+            if (!cancelled) {
+              setAvailableYears([...available]);
             }
-          }),
-        )
-      ).filter((option): option is number => option !== null);
-      if (cancelled) {
-        return;
+          }
+        } catch {
+          // Ignore year-level failures so the current replay remains usable.
+        }
       }
       if (!cancelled) {
         setAvailableYears(available);
@@ -142,10 +162,17 @@ export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): R
     return () => {
       cancelled = true;
     };
-  }, [yearOptions]);
+  }, [isPrimarySessionSettled, year, yearOptions]);
 
   useEffect(() => {
     if (!selectedMeetingKey) {
+      setLoading(false);
+      setError(null);
+      setSessions([]);
+      setData(null);
+      setAvailableEndMs(0);
+      setDataRevision(0);
+      setIsPrimarySessionSettled(true);
       return;
     }
     const requestId = sessionsRequestRef.current + 1;
@@ -156,6 +183,7 @@ export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): R
     setData(null);
     setAvailableEndMs(0);
     setDataRevision(0);
+    setIsPrimarySessionSettled(false);
 
     fetchOpenF1<OpenF1Session[]>(
       "sessions",
@@ -168,10 +196,7 @@ export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): R
           return;
         }
         const now = Date.now();
-        const filtered = result.filter((session) => {
-          const endMs = new Date(session.date_end).getTime();
-          return endMs <= now;
-        });
+        const filtered = filterReplayableSessions(result, now);
         setSessions(filtered);
       })
       .catch((err: Error) => {
@@ -196,6 +221,7 @@ export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): R
     if (!session) {
       setLoading(false);
       setData(null);
+      setIsPrimarySessionSettled(true);
       return;
     }
     const cached = sessionCacheRef.current.get(session.session_key);
@@ -203,6 +229,7 @@ export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): R
       setData(cached);
       setAvailableEndMs(getLatestTelemetryTimestamp(cached.telemetryByDriver));
       setLoading(false);
+      setIsPrimarySessionSettled(true);
       return;
     }
     const controller = new AbortController();
@@ -225,12 +252,13 @@ export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): R
         return cached.payload;
       }
 
-      const drivers = await fetchOpenF1<OpenF1Driver[]>(
+      const driversResponse = await fetchOpenF1<OpenF1Driver[]>(
         "drivers",
         { session_key: session.session_key },
         controller.signal,
         "persist",
       );
+      const drivers = dedupeDrivers(driversResponse);
       const telemetryByDriver = createTelemetryMap(drivers);
 
       const sessionStartMs = new Date(session.date_start).getTime();
@@ -418,6 +446,7 @@ export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): R
       .finally(() => {
         if (!controller.signal.aborted) {
           setLoading(false);
+          setIsPrimarySessionSettled(true);
         }
       });
 

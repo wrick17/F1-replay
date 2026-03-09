@@ -6,6 +6,15 @@ const WORKER_BASE_URL =
   import.meta.env.RSBUILD_WORKER_URL ??
   import.meta.env.VITE_WORKER_URL ??
   "https://openf1-proxy.wrick17worker.workers.dev";
+const MAX_TRANSIENT_ERROR_ATTEMPTS = 5;
+
+const getRetryDelayMs = (response: Response, attempt: number) => {
+  const retryAfter = Number(response.headers.get("retry-after"));
+  if (!Number.isNaN(retryAfter) && retryAfter >= 0) {
+    return retryAfter * 1000;
+  }
+  return Math.min(1000 * 2 ** attempt, 8000);
+};
 
 export type QueryParams = Record<string, string | number | boolean | null | undefined>;
 
@@ -53,20 +62,22 @@ export const fetchOpenF1 = <T>(
       }
     }
     let attempt = 0;
-    while (attempt < 3) {
+    while (true) {
       await rateLimit();
       const response = await fetch(`${API_BASE_URL}/${key}`, { signal });
       if (!response.ok) {
-        if (response.status === 429 && attempt < 2) {
-          const retryAfter = Number(response.headers.get("retry-after"));
-          const waitMs = Number.isNaN(retryAfter) ? 1000 * (attempt + 1) : retryAfter * 1000;
-          await sleep(waitMs);
+        if (response.status === 429) {
+          await sleep(getRetryDelayMs(response, attempt), signal);
           attempt += 1;
           continue;
         }
         // OpenF1 occasionally returns transient 5xxs; retry a couple times to avoid failing large chunk builds.
-        if (response.status >= 500 && response.status < 600 && attempt < 2) {
-          await sleep(500 * (attempt + 1));
+        if (
+          response.status >= 500 &&
+          response.status < 600 &&
+          attempt < MAX_TRANSIENT_ERROR_ATTEMPTS - 1
+        ) {
+          await sleep(Math.min(500 * 2 ** attempt, 4000), signal);
           attempt += 1;
           continue;
         }
@@ -81,7 +92,6 @@ export const fetchOpenF1 = <T>(
       }
       return payload;
     }
-    throw new Error("OpenF1 request failed after retries");
   })().finally(() => {
     inFlight.delete(key);
   });
@@ -152,7 +162,16 @@ export const fetchReplayFromWorker = async (
   signal?: AbortSignal,
 ): Promise<WorkerReplayHit | WorkerReplayMiss> => {
   const url = `${WORKER_BASE_URL}/replay${buildQuery({ session_key: sessionKey })}`;
-  const response = await fetch(url, { signal });
+  let response: Response;
+  try {
+    response = await fetch(url, { signal });
+  } catch {
+    return {
+      status: "miss",
+      uploadToken: "",
+      expiresAt: "",
+    };
+  }
   if (response.status === 200) {
     const payload = (await response.json()) as ReplaySessionData;
     return { status: "hit", payload };
@@ -170,6 +189,9 @@ export const uploadReplayToWorker = async (
   uploadToken: string,
   signal?: AbortSignal,
 ): Promise<void> => {
+  if (!uploadToken) {
+    return;
+  }
   const url = `${WORKER_BASE_URL}/replay${buildQuery({ session_key: sessionKey })}`;
   const response = await fetch(url, {
     method: "POST",
