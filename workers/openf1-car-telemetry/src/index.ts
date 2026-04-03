@@ -120,12 +120,27 @@ const jsonResponse = (body: unknown, status = 200, options?: { cacheControl?: st
 const handleGetCarTelemetry = async (request: Request, env: Env) => {
   const url = new URL(request.url);
   const rawSessionKey = url.searchParams.get("session_key");
+  const statusOnly = url.searchParams.get("status") === "1";
   if (!rawSessionKey) {
     return jsonResponse({ error: "session_key is required" }, 400);
   }
   const sessionKey = Number(rawSessionKey);
   if (!Number.isFinite(sessionKey)) {
     return jsonResponse({ error: "session_key must be a number" }, 400);
+  }
+
+  if (statusOnly) {
+    const canonicalUrl = new URL(request.url);
+    canonicalUrl.searchParams.delete("status");
+    const edgeHit = await caches.default.match(new Request(canonicalUrl.toString(), { method: "GET" }));
+    if (edgeHit?.status === 200) {
+      const headers = new Headers({
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+        "X-Cache": "EDGE",
+      });
+      return new Response(JSON.stringify({ status: "hit" }), { status: 200, headers });
+    }
   }
 
   const cached = await env.DB.prepare(
@@ -137,6 +152,14 @@ const handleGetCarTelemetry = async (request: Request, env: Env) => {
   if (cached?.r2_key) {
     const object = await env.CAR_TELEMETRY_BUCKET.get(cached.r2_key);
     if (object) {
+      if (statusOnly) {
+        const headers = new Headers({
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+          "X-Cache": "HIT",
+        });
+        return new Response(JSON.stringify({ status: "hit" }), { status: 200, headers });
+      }
       const headers = new Headers({
         "Content-Type": "application/json; charset=utf-8",
         "Cache-Control": CACHE_CONTROL_IMMUTABLE,
@@ -144,6 +167,10 @@ const handleGetCarTelemetry = async (request: Request, env: Env) => {
       });
       return new Response(object.body, { status: 200, headers });
     }
+  }
+
+  if (statusOnly) {
+    return jsonResponse({ status: "miss" }, 202, { cacheControl: "no-store" });
   }
 
   const exp = Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS;

@@ -1,0 +1,27 @@
+name = "openf1-cache-warmer"
+main = "src/index.ts"
+compatibility_date = "2026-04-03"
+
+# Required vars/secrets:
+# OPENF1_BASE_URL = "https://api.openf1.org/v1"
+# REPLAY_WORKER_BASE_URL = "https://openf1-proxy.wrick17worker.workers.dev"
+# CAR_TELEMETRY_WORKER_BASE_URL = "https://openf1-car-telemetry.wrick17worker.workers.dev"
+# SHOO_BASE_URL = "https://shoo.dev"
+# ADMIN_TOKEN = "<set via wrangler secret put ADMIN_TOKEN>"
+# OPS_ALLOWED_EMAILS = "<set via wrangler secret put OPS_ALLOWED_EMAILS>"
+# SESSION_SECRET = "<set via wrangler secret put SESSION_SECRET>"
+
+[triggers]
+crons = ["0 * * * *", "15 3 * * *"]
+
+[vars]
+OPENF1_BASE_URL = "https://api.openf1.org/v1"
+REPLAY_WORKER_BASE_URL = "https://openf1-proxy.wrick17worker.workers.dev"
+CAR_TELEMETRY_WORKER_BASE_URL = "https://openf1-car-telemetry.wrick17worker.workers.dev"
+SHOO_BASE_URL = "https://shoo.dev"
+DASHBOARD_ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:3001"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "openf1-cache-warmer"
+database_id = "3339da7f-333b-4a12-92ee-03a031c881be"

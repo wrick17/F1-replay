@@ -5,7 +5,9 @@
     "": {
       "name": "f1-replay",
       "dependencies": {
+        "@shoojs/react": "^0.2.2",
         "framer-motion": "^12.33.0",
+        "jose": "^6.2.2",
         "lucide-react": "^0.563.0",
         "popper.js": "^1.16.1",
         "react": "^19.2.4",
@@ -113,6 +115,12 @@
 
     "@rspack/plugin-react-refresh": ["@rspack/plugin-react-refresh@1.6.0", "", { "dependencies": { "error-stack-parser": "^2.1.4", "html-entities": "^2.6.0" }, "peerDependencies": { "react-refresh": ">=0.10.0 <1.0.0", "webpack-hot-middleware": "2.x" }, "optionalPeers": ["webpack-hot-middleware"] }, "sha512-OO53gkrte/Ty4iRXxxM6lkwPGxsSsupFKdrPFnjwFIYrPvFLjeolAl5cTx+FzO5hYygJiGnw7iEKTmD+ptxqDA=="],
 
+    "@shoojs/auth": ["@shoojs/auth@0.2.2", "", { "dependencies": { "@shoojs/types": "^0.2.2" } }, "sha512-9QRduq9jx8lplmMV5ZNnvZu3f4wrTSDKBcrFNPsj7iMW6W9dH0jjulKwo0vCSd8Tfpbq56vN1pyWnN6bCkWf9Q=="],
+
+    "@shoojs/react": ["@shoojs/react@0.2.2", "", { "dependencies": { "@shoojs/auth": "^0.2.2", "@shoojs/types": "^0.2.2" }, "peerDependencies": { "react": ">=18" } }, "sha512-RUyjOi12B7CQaaXugPW7QY8Q2KyZqiTFAZV7EjYVYWcjvrO9Kg+TwDjr+Ym94P8mA/FpPRbHOd0uMROdQ5nlmw=="],
+
+    "@shoojs/types": ["@shoojs/types@0.2.2", "", {}, "sha512-/3WxccmCRMy0HC03zvCCrQqUaAeDmArSCabQzveX2VHM0+S53tgDpp37z/YTHKuVsZN2rLggyuL11BjXD22WDg=="],
+
     "@swc/helpers": ["@swc/helpers@0.5.18", "", { "dependencies": { "tslib": "^2.8.0" } }, "sha512-TXTnIcNJQEKwThMMqBXsZ4VGAza6bvN4pa41Rkqoio6QBKMvo+5lexeTMScGCIxtzgQJzElcvIltani+adC5PQ=="],
 
     "@tailwindcss/node": ["@tailwindcss/node@4.1.18", "", { "dependencies": { "@jridgewell/remapping": "^2.3.4", "enhanced-resolve": "^5.18.3", "jiti": "^2.6.1", "lightningcss": "1.30.2", "magic-string": "^0.30.21", "source-map-js": "^1.2.1", "tailwindcss": "4.1.18" } }, "sha512-DoR7U1P7iYhw16qJ49fgXUlry1t4CpXeErJHnQ44JgTSKMaZUdf17cfn5mHchfJ4KRBZRFA/Coo+MUF5+gOaCQ=="],
@@ -172,6 +180,8 @@
     "html-entities": ["html-entities@2.6.0", "", {}, "sha512-kig+rMn/QOVRvr7c86gQ8lWXq+Hkv6CbAH1hLu+RG338StTpE8Z0b44SDVaqVu7HGKf27frdmUYEs9hTUX/cLQ=="],
 
     "jiti": ["jiti@2.6.1", "", { "bin": { "jiti": "lib/jiti-cli.mjs" } }, "sha512-ekilCSN1jwRvIbgeg/57YFh8qQDNbwDb9xT/qu2DAHbFFZUicIl4ygVaAvzveMhMVr3LnpSKTNnwt8PoOfmKhQ=="],
+
+    "jose": ["jose@6.2.2", "", {}, "sha512-d7kPDd34KO/YnzaDOlikGpOurfF0ByC2sEV4cANCtdqLlTfBlw2p14O/5d/zv40gJPbIQxfES3nSx1/oYNyuZQ=="],
 
     "lightningcss": ["lightningcss@1.30.2", "", { "dependencies": { "detect-libc": "^2.0.3" }, "optionalDependencies": { "lightningcss-android-arm64": "1.30.2", "lightningcss-darwin-arm64": "1.30.2", "lightningcss-darwin-x64": "1.30.2", "lightningcss-freebsd-x64": "1.30.2", "lightningcss-linux-arm-gnueabihf": "1.30.2", "lightningcss-linux-arm64-gnu": "1.30.2", "lightningcss-linux-arm64-musl": "1.30.2", "lightningcss-linux-x64-gnu": "1.30.2", "lightningcss-linux-x64-musl": "1.30.2", "lightningcss-win32-arm64-msvc": "1.30.2", "lightningcss-win32-x64-msvc": "1.30.2" } }, "sha512-utfs7Pr5uJyyvDETitgsaqSyjCb2qNRAtuqUeWIAKztsOYdcACf2KtARYXg2pSvhkt+9NfoaNY7fxjl6nuMjIQ=="],
 

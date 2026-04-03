@@ -1,6 +1,9 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { ReplayPage } from "./modules/replay";
+import { resolveAppRoute } from "./app/routing";
+import { EventDetailsPage, HomePage } from "./modules/home";
+import { OpsCacheDashboardPage } from "./modules/ops";
+import { ReplayLegacyRedirectPage, ReplayRoutePage } from "./modules/replay";
 import "react-tippy/dist/tippy.css";
 import "./index.css";
 
@@ -10,12 +13,20 @@ if (!container) {
   throw new Error("Root element not found");
 }
 
-if (window.location.pathname === "/replay") {
-  window.history.replaceState({}, "", `/${window.location.search}${window.location.hash}`);
-}
+const route = resolveAppRoute(window.location.pathname, window.location.search);
 
 createRoot(container).render(
   <React.StrictMode>
-    <ReplayPage />
+    {route === "replay" ? (
+      <ReplayRoutePage />
+    ) : route === "legacy-replay-redirect" ? (
+      <ReplayLegacyRedirectPage />
+    ) : route === "event-details" ? (
+      <EventDetailsPage />
+    ) : route === "ops-cache" ? (
+      <OpsCacheDashboardPage />
+    ) : (
+      <HomePage />
+    )}
   </React.StrictMode>,
 );

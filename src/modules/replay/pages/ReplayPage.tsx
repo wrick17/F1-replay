@@ -1,5 +1,6 @@
 import { ChevronRight, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { HOME_PATH } from "../../../app/routing";
 import { ControlsBar } from "../components/ControlsBar";
 import { EventsPanel } from "../components/EventsPanel";
 import { SessionPicker } from "../components/SessionPicker";
@@ -257,10 +258,10 @@ export const ReplayPage = () => {
       />
       <header className="relative z-10 mx-4 mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/20 bg-white/5 px-4 py-3 backdrop-blur-xl md:absolute md:left-4 md:right-80 md:top-4 md:mx-0 md:mt-0">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="flex items-center">
+          <a href={HOME_PATH} className="flex items-center" aria-label="Go to home page">
             <img src="/logo.png" alt="" className="h-6 w-auto" />
             <span className="sr-only">F1 Replay</span>
-          </h1>
+          </a>
           <span
             className={`inline-flex min-w-[220px] max-w-[220px] items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium whitespace-nowrap ${statusClass} ${
               hasStatus ? "" : "invisible"

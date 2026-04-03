@@ -1,11 +1,6 @@
+import { buildCarTelemetryPayload } from "../../src/modules/replay/warm/buildCarTelemetryPayload";
 import type { OpenF1Meeting, OpenF1Session } from "../../src/modules/replay/types/openf1.types";
-import type { OpenF1CarData } from "../../src/modules/replay/types/openf1.types";
 import type { CarTelemetryPayload } from "../../src/modules/replay/types/carTelemetry.types";
-import {
-  createDownsampleState,
-  finalizeCarTelemetryPayload,
-  ingestCarDataChunk,
-} from "../../src/modules/replay/services/carTelemetry.service";
 import { CAR_DATA_WINDOW_MS } from "./config";
 
 type WarmSessionDeps = {
@@ -32,23 +27,17 @@ export const warmSession = async (
   deps: WarmSessionDeps,
 ) => {
   const { appendLog, fetchChunked, uploadCarTelemetryToWorker } = deps;
-  const sessionStartMs = Date.parse(session.date_start);
-  const sessionEndMs = Date.parse(session.date_end);
-  appendLog(`[Warm] Building car telemetry payload session_key=${session.session_key}`);
-
-  const state = createDownsampleState(session.session_key, 500);
-  const total = await fetchChunked<OpenF1CarData>(
-    "car_data",
-    { session_key: session.session_key },
-    sessionStartMs,
-    sessionEndMs,
-    CAR_DATA_WINDOW_MS,
-    (chunk) => ingestCarDataChunk(state, chunk),
+  const payload = await buildCarTelemetryPayload(
+    session,
+    {
+      appendLog,
+      fetchChunked,
+    },
+    {
+      carDataWindowMs: CAR_DATA_WINDOW_MS,
+    },
   );
-  appendLog(`[Warm] car_data samples=${total} session_key=${session.session_key}`);
 
-  const payload = finalizeCarTelemetryPayload(state);
   await uploadCarTelemetryToWorker(session.session_key, payload, uploadToken);
   appendLog(`[Warm] Upload complete session_key=${session.session_key}`);
 };
-

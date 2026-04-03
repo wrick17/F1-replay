@@ -11,6 +11,23 @@ export const CAR_TELEMETRY_WORKER_BASE_URL =
   process.env.RSBUILD_CAR_TELEMETRY_WORKER_URL ??
   "https://openf1-car-telemetry.wrick17worker.workers.dev";
 
+const isWorkersDevUrl = (value: string) => {
+  try {
+    return new URL(value).hostname.endsWith(".workers.dev");
+  } catch {
+    return value.includes("workers.dev");
+  }
+};
+
+if (
+  process.env.CF_REMOTE !== "1" &&
+  (isWorkersDevUrl(REPLAY_WORKER_BASE_URL) || isWorkersDevUrl(CAR_TELEMETRY_WORKER_BASE_URL))
+) {
+  throw new Error(
+    "Refusing to hit deployed Cloudflare workers from local warm script. Set CF_REMOTE=1 to opt in.",
+  );
+}
+
 export const DASHBOARD_PORT = Number(process.env.DASHBOARD_PORT ?? "3002");
 
 export const LOG_FILE = "./warm-caches.log";

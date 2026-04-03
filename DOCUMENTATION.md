@@ -16,7 +16,7 @@
 
 ## Overview
 
-F1 Replay is a replay viewer for Formula 1 telemetry data. Built with React and powered by the OpenF1 API, this application uses a Cloudflare Worker to cache replay payloads so users can visualize and replay F1 race sessions with telemetry data, driver positions, team radio communications, and weather conditions.
+F1 Replay is a replay-first Formula 1 web app with a home dashboard at `/`, a race details route at `/:year/:round/:session`, and a telemetry replay route at `/:year/:round/:session/replay`. Built with React, it combines Jolpica (schedule/standings), OpenF1 (replay telemetry + replay availability), and a non-blocking Formula1 RSS feed for editorial context.
 
 ## Features
 
@@ -34,6 +34,16 @@ F1 Replay is a replay viewer for Formula 1 telemetry data. Built with React and 
 - **Team Radio**: Listen to team radio communications with timestamp markers when OpenF1 provides radio clips for the selected session
 
 ### 🎯 User Experience
+- **Replay-First Home (`/`)**: Dashboard with latest replay CTA, next session highlight, completed replay cards, upcoming race details, standings, and newsroom feed
+- **Cross-Year Replay Library**: Replay sessions are listed across all replayable years and grouped by year in descending order
+- **Race Details Route (`/:year/:round/:session`)**: Event details page with metadata, sessions analysis/stints/lap metrics, driver headshots, team logos, and a dedicated `Watch Replay` CTA
+- **Standings Media**: Driver standings render driver headshots + team logos; constructor standings render team logos
+- **Live Countdown**: Next-session timer on home updates continuously (no manual refresh required)
+- **Replay Experience (`/:year/:round/:session/replay`)**: Full telemetry timeline, track map, events, and controls
+- **Ops Cache Dashboard (`/ops/cache`)**: Private cache-ops page with session cache status, manual refresh, and per-session warm actions
+- **Logo Navigation**: F1 Replay logo is shown on both `/` and replay pages; clicking it on replay returns to home
+- **Replay Route Bootstrap**: Opening `/replay` without params auto-selects the latest replayable session (`Race` -> `Sprint` -> `Qualifying`) and redirects to clean replay paths
+- **Legacy Replay Redirect**: `/replay?year=...&round=...&session=...` redirects to `/:year/:round/:session/replay`
 - **Session Picker**: Select from any year, round, and session type
 - **Keyboard Shortcuts**: Quick controls for playback and navigation
 - **Responsive Design**: Works across different screen sizes
@@ -55,7 +65,12 @@ F1 Replay is a replay viewer for Formula 1 telemetry data. Built with React and 
 - **Rspack**: High-performance bundler
 
 ### URL State
-- **History API + URLSearchParams**: Query-param based session state (`year`, `round`, `session`) on a single-page mount at `/`
+- **Path + Query State**:
+  - `/` renders `HomePage`
+  - `/:year/:round/:session` renders `EventDetailsPage`
+  - `/:year/:round/:session/replay` renders replay and keeps route state in path params
+  - `/replay` is reserved for bootstrap/legacy redirects
+  - `/ops/cache` renders `OpsCacheDashboardPage`
 
 ### Styling
 - **Tailwind CSS 4.1.18**: Utility-first CSS framework
@@ -76,11 +91,27 @@ f1-replay/
 ├── src/
 │   ├── index.tsx              # Application entry point
 │   ├── index.css              # Global styles
+│   ├── app/
+│   │   └── routing.ts         # Route parsing/building helpers for home, event, replay, ops
 │   └── modules/
-│       └── replay/            # Main replay module
+│       ├── home/              # Home dashboard module
+│       │   ├── hooks/
+│       │   │   └── useHomeDashboard.ts
+│       │   │   └── useReplayEventDetails.ts
+│       │   ├── pages/
+│       │   │   └── EventDetailsPage.tsx
+│       │   │   └── HomePage.tsx
+│       │   ├── services/
+│       │   │   └── eventDetails.service.ts
+│       │   │   └── homeData.service.ts
+│       │   └── types/
+│       │       └── home.types.ts
+│       └── replay/            # Replay module
 │           ├── index.ts
 │           ├── pages/         # Page components
+│           │   └── ReplayLegacyRedirectPage.tsx
 │           │   └── ReplayPage.tsx
+│           │   └── ReplayRoutePage.tsx
 │           ├── components/    # UI components
 │           │   ├── ControlsBar.tsx
 │           │   ├── EventMarkerPopup.tsx
@@ -193,6 +224,54 @@ Notes:
 - The warmer attempts to cache all ended sessions across the dataset (falls back to year-by-year queries if OpenF1's `meetings` endpoint doesn't return multiple years).
 - While the warmer is running, a live dashboard is served at `http://localhost:3002` (override via `DASHBOARD_PORT`).
 
+### Remote Cloudflare cache warmer
+
+For production cache prewarming (without relying on a local machine), use `workers/openf1-cache-warmer`.
+
+- Hourly run: `0 * * * *`
+- Daily deep scan: `15 3 * * *` (rotates one historical season per day using a persisted cursor)
+- Supports `Qualifying`, `Sprint`, and `Race` only
+- Retries worker/transient failures hourly for up to 12 hours after session end
+- OpenF1 no-data failures (`OPENF1_NO_DATA`) retry every 24 hours with an extended retry window to avoid repeated near-term calls
+
+Admin endpoints (auth required):
+
+- `POST /admin/run` (optionally `?deep=1`) to trigger a manual run
+- `GET /admin/status` to inspect recent `warm_session_attempts` state
+
+Dashboard endpoints (cookie auth):
+
+- `POST /auth/shoo/login`
+- `POST /auth/logout`
+- `GET /auth/session`
+- `GET /dashboard/sessions`
+- `POST /dashboard/warm-all`
+- `POST /dashboard/probe`
+- `POST /dashboard/sessions/:sessionKey/warm`
+
+Dashboard data behavior:
+
+- Returns tracked D1 rows from `warm_session_attempts` (no full historical rediscovery on each dashboard read)
+- `GET /dashboard/sessions` also returns persisted warm-all batch state from `warm_worker_state`
+- Rows with missing cache state are prioritized first in the UI sort order
+- Uses `missing` cache status (legacy `expired` rows are normalized to `missing`)
+- Optional cache presence checks use `POST /dashboard/probe` with a bounded key list (max 20 per request)
+- Dashboard includes `Warm All Missing` for backend batch warmup
+- Batch warmup continues in background via `ctx.waitUntil(...)` even if the page refreshes/closes
+- `Warm All Missing` progress (`done/total/active/failed`) persists in D1 state and survives reloads; UI labels this as processed count
+- Running batches are resumable: stale in-flight state is recovered and the next step resumes from persisted cursor
+- Stale per-session `warm_in_progress` markers are cleared automatically during recovery
+- Individual row actions show `Warming...` while that row's warm request is in flight
+- Warm orchestration stores in-flight state in D1 (`warm_in_progress`, `warm_started_at`) so row loaders survive page reloads and track remote work accurately
+- Status column shows a single result per row: `Error` when present, otherwise `Completed`
+- `Error` is rendered only while cache is still missing; once replay+telemetry are warm, stale legacy errors are cleared/suppressed
+- Session identity is split into `Session Name` (year/round/type + meeting name) and `Session Key`
+- `/ops/cache/auth/callback` is the Shoo callback path and resolves to the ops dashboard route
+
+Auth:
+
+- `Authorization: Bearer <ADMIN_TOKEN>`
+
 ### Worker Configuration
 
 The Cloudflare Worker requires:
@@ -201,6 +280,34 @@ The Cloudflare Worker requires:
 - R2 bucket for replay payload storage
 - A secret used to sign short-lived upload tokens (e.g., `REPLAY_UPLOAD_SECRET`)
 - A public worker URL that the frontend can call
+- A replay worker edge cache (`caches.default`) for `GET /replay` hot reads
+
+The remote warmer worker (`workers/openf1-cache-warmer`) requires:
+
+- D1 binding for orchestration state (table `warm_session_attempts`)
+- D1 state table `warm_worker_state` for deep-scan cursor bookkeeping
+- `OPENF1_BASE_URL` var
+- `REPLAY_WORKER_BASE_URL` var
+- `CAR_TELEMETRY_WORKER_BASE_URL` var
+- `DASHBOARD_ALLOWED_ORIGINS` var for browser allowlist checks
+- `ADMIN_TOKEN` secret for admin routes
+- `OPS_ALLOWED_EMAILS` secret for dashboard access allowlist (comma-separated)
+- `SESSION_SECRET` secret for dashboard cookie signing
+- `SHOO_BASE_URL` var (`https://shoo.dev` by default)
+
+`warm_session_attempts` schema notes:
+
+- `warm_in_progress` (`0/1`) marks active warm orchestration for a session
+- `warm_started_at` records when the active warm attempt began
+- `meeting_name` and `session_name` persist labels for dashboard reads without extra OpenF1 fetches
+
+Ops auth flow:
+
+- Frontend starts Shoo Google sign-in and requests PII (`requestPii: true`) so email is available in token claims
+- Frontend posts Shoo `id_token` to `POST /auth/shoo/login`
+- Worker verifies JWT signature + issuer + audience (`origin:{request_origin}`) + expiration
+- Worker checks normalized email claim against normalized `OPS_ALLOWED_EMAILS`
+- Worker issues `ops_session` HttpOnly cookie only for allowlisted identities
 
 Note: If you delete/recreate the D1 database, Cloudflare will issue a new `database_id`. Update `workers/openf1-proxy/wrangler.toml` with the new `database_id` and redeploy the worker.
 
@@ -208,11 +315,19 @@ Frontend configuration:
 
 - `RSBUILD_WORKER_URL` env var pointing to the worker base URL (for example: `http://127.0.0.1:8787` in local dev)
 - `RSBUILD_CAR_TELEMETRY_WORKER_URL` env var pointing to the car telemetry cache worker base URL (separate D1/R2 storage from replay cache)
+- `RSBUILD_CACHE_WARMER_URL` env var pointing to `openf1-cache-warmer` for `/ops/cache`
+- `RSBUILD_ENABLE_REMOTE_CACHE_OPS` to allow remote ops actions from the browser (defaults to `true`)
+- `RSBUILD_ENABLE_REMOTE_CACHE_PROBES` to allow bounded `/dashboard/probe` refresh probes (defaults to `true`)
+
+Local script quota guard:
+
+- `scripts/warm-caches/config.ts` blocks deployed `workers.dev` warm runs unless `CF_REMOTE=1` is set
 
 Database setup:
 
 - Apply D1 migrations from `workers/openf1-proxy/migrations`
 - Example: `wrangler d1 migrations apply openf1-replay --local`
+- Apply D1 migrations from `workers/openf1-cache-warmer/migrations` for remote orchestration state
 
 ## Architecture
 
@@ -226,7 +341,13 @@ Database setup:
 
 ### API Integration
 
-The app calls the [OpenF1 API](https://openf1.org/) directly for live data and uses a Cloudflare Worker for replay caching at `GET /replay` and `POST /replay`.
+The app uses free public APIs:
+
+- [OpenF1](https://openf1.org/) for replay telemetry and replay availability/session resolution
+- [Jolpica Ergast mirror](https://api.jolpi.ca/ergast/f1) for season calendar and standings on the home dashboard
+- Formula1 RSS feed (via a CORS-safe endpoint) for homepage newsroom content
+
+Replay payloads are cached via Cloudflare Worker endpoints at `GET /replay` and `POST /replay`.
 To reduce first-load failures on current-season sessions, the client prioritizes the selected replay session before background year discovery and retries transient OpenF1 `429` responses more aggressively.
 When OpenF1 rate-limits the client, those retries stay in the background and do not surface a user-facing error while partial replay data is already available.
 
@@ -246,6 +367,8 @@ The application uses a write-once, read-forever caching system using Cloudflare 
 1. **Worker Cache (D1 + R2)**: Replay payload stored in R2 with metadata in D1 by `session_key`
 2. **Client Backfill**: On cache miss, the browser fetches OpenF1 data and uploads the payload to the worker
 3. **Optional Client Cache**: In-memory and IndexedDB caches remain as a secondary layer
+4. **Remote Warming**: Scheduled worker proactively fills missing replay + car telemetry cache entries after session end
+5. **Edge Cache**: Worker `GET` responses are cached in Cloudflare edge cache (`X-Cache: EDGE`) for repeated reads
 
 ### Rate Limiting
 

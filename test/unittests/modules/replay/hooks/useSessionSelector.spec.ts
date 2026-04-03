@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  buildReplayRouteUrl,
   getAvailableSessionTypes,
   getCorrectedYear,
   getFallbackSessionType,
@@ -67,5 +68,10 @@ describe("useSessionSelector helpers", () => {
 
   it("defaults to the latest replayable year when the url does not specify one", () => {
     expect(getCorrectedYear([2026, 2025, 2024], null, false)).toBe(2026);
+  });
+
+  it("writes replay session state onto clean replay routes", () => {
+    const url = buildReplayRouteUrl({ year: 2026, round: 2, session: "Race" }, "");
+    expect(url).toBe("/2026/2/race/replay");
   });
 });

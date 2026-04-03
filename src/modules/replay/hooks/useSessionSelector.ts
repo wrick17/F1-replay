@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { buildReplayHref, getReplayRouteParams, readLegacyReplayRoute } from "../../../app/routing";
 import { ALLOWED_SESSION_TYPES } from "../constants/replay.constants";
 import type { OpenF1Meeting, OpenF1Session } from "../types/openf1.types";
 import type { SessionType } from "../types/replay.types";
@@ -117,6 +118,17 @@ type SessionSearchState = {
   session?: string;
 };
 
+export const buildReplayRouteUrl = (nextState: SessionSearchState, hash: string): string => {
+  if (
+    typeof nextState.year === "number" &&
+    typeof nextState.round === "number" &&
+    isValidSessionType(nextState.session)
+  ) {
+    return `${buildReplayHref(nextState.year, nextState.round, nextState.session)}${hash}`;
+  }
+  return `/replay${hash}`;
+};
+
 const parseNumberParam = (value: string | null): number | undefined => {
   if (!value) {
     return undefined;
@@ -126,6 +138,24 @@ const parseNumberParam = (value: string | null): number | undefined => {
 };
 
 const readSearchState = (): SessionSearchState => {
+  const pathParams = getReplayRouteParams(window.location.pathname);
+  if (pathParams) {
+    return {
+      year: pathParams.year,
+      round: pathParams.round,
+      session: pathParams.sessionType,
+    };
+  }
+
+  const legacy = readLegacyReplayRoute(window.location.search);
+  if (legacy) {
+    return {
+      year: legacy.year,
+      round: legacy.round,
+      session: legacy.sessionType,
+    };
+  }
+
   const params = new URLSearchParams(window.location.search);
   return {
     year: parseNumberParam(params.get("year")),
@@ -135,24 +165,7 @@ const readSearchState = (): SessionSearchState => {
 };
 
 const writeSearchState = (nextState: SessionSearchState): void => {
-  const params = new URLSearchParams(window.location.search);
-  if (typeof nextState.year === "number") {
-    params.set("year", String(nextState.year));
-  } else {
-    params.delete("year");
-  }
-  if (typeof nextState.round === "number") {
-    params.set("round", String(nextState.round));
-  } else {
-    params.delete("round");
-  }
-  if (typeof nextState.session === "string") {
-    params.set("session", nextState.session);
-  } else {
-    params.delete("session");
-  }
-  const query = params.toString();
-  const nextUrl = query ? `/?${query}${window.location.hash}` : `/${window.location.hash}`;
+  const nextUrl = buildReplayRouteUrl(nextState, window.location.hash);
   window.history.replaceState({}, "", nextUrl);
 };
 

@@ -199,8 +199,23 @@ const parseLegacyUploadBody = (bodyText: string) => {
 const handleGetReplay = async (request: Request, env: Env) => {
   const url = new URL(request.url);
   const sessionKey = Number(url.searchParams.get("session_key"));
+  const statusOnly = url.searchParams.get("status") === "1";
   if (!Number.isFinite(sessionKey)) {
     return jsonResponse({ error: "session_key is required" }, 400);
+  }
+
+  if (statusOnly) {
+    const canonicalUrl = new URL(request.url);
+    canonicalUrl.searchParams.delete("status");
+    const edgeHit = await caches.default.match(new Request(canonicalUrl.toString(), { method: "GET" }));
+    if (edgeHit?.status === 200) {
+      const headers = new Headers({
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+        "X-Cache": "EDGE",
+      });
+      return new Response(JSON.stringify({ status: "hit" }), { status: 200, headers });
+    }
   }
 
   const cached = await env.DB.prepare(
@@ -212,6 +227,14 @@ const handleGetReplay = async (request: Request, env: Env) => {
   if (cached?.r2_key) {
     const object = await env.REPLAY_BUCKET.get(cached.r2_key);
     if (object) {
+      if (statusOnly) {
+        const headers = new Headers({
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+          "X-Cache": "HIT",
+        });
+        return new Response(JSON.stringify({ status: "hit" }), { status: 200, headers });
+      }
       const headers = new Headers({
         "Content-Type": "application/json; charset=utf-8",
         "Cache-Control": CACHE_CONTROL_IMMUTABLE,
@@ -222,12 +245,24 @@ const handleGetReplay = async (request: Request, env: Env) => {
   }
 
   if (cached?.payload) {
+    if (statusOnly) {
+      const headers = new Headers({
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+        "X-Cache": "HIT",
+      });
+      return new Response(JSON.stringify({ status: "hit" }), { status: 200, headers });
+    }
     const headers = new Headers({
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": CACHE_CONTROL_IMMUTABLE,
       "X-Cache": "HIT",
     });
     return new Response(cached.payload, { status: 200, headers });
+  }
+
+  if (statusOnly) {
+    return jsonResponse({ status: "miss" }, 202, { cacheControl: "no-store" });
   }
 
   const exp = Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS;
@@ -296,7 +331,7 @@ const handlePostReplay = async (request: Request, env: Env) => {
 };
 
 export default {
-  async fetch(request: Request, env: Env) {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
     const origin = request.headers.get("Origin");
     if (request.method === "OPTIONS") {
@@ -316,7 +351,26 @@ export default {
     try {
       let response: Response;
       if (request.method === "GET") {
-        response = await handleGetReplay(request, env);
+        // Cloudflare edge cache (separate from D1/R2) to reduce read pressure.
+        const cacheKey = new Request(request.url, { method: "GET" });
+        const edgeHit = await caches.default.match(cacheKey);
+        if (edgeHit) {
+          const headers = withCors(new Headers(edgeHit.headers), origin);
+          headers.set("X-Cache", "EDGE");
+          return new Response(edgeHit.body, { status: edgeHit.status, headers });
+        }
+
+        const originResponse = await handleGetReplay(request, env);
+        const headers = withCors(new Headers(originResponse.headers), origin);
+        if (originResponse.status === 200) {
+          response = new Response(originResponse.body, {
+            status: originResponse.status,
+            headers,
+          });
+          ctx.waitUntil(caches.default.put(cacheKey, response.clone()));
+          return response;
+        }
+        return new Response(originResponse.body, { status: originResponse.status, headers });
       } else if (request.method === "POST") {
         response = await handlePostReplay(request, env);
       } else {
