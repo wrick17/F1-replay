@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   TelemetryPanel,
   hasCarTelemetryPayload,
+  shouldShowTelemetryLoadingNotice,
 } from "modules/replay/components/TelemetryPanel";
 
 describe("TelemetryPanel", () => {
@@ -45,5 +46,38 @@ describe("TelemetryPanel", () => {
         },
       }),
     ).toBe(true);
+  });
+
+  it("shows loading notice while telemetry is fetching before first payload sample", () => {
+    expect(
+      shouldShowTelemetryLoadingNotice({
+        hasTelemetryData: false,
+        telemetryEnabled: false,
+        telemetryLoading: true,
+        telemetryError: null,
+      }),
+    ).toBe(true);
+  });
+
+  it("hides loading notice when telemetry is disabled and data is already available", () => {
+    expect(
+      shouldShowTelemetryLoadingNotice({
+        hasTelemetryData: true,
+        telemetryEnabled: false,
+        telemetryLoading: true,
+        telemetryError: null,
+      }),
+    ).toBe(false);
+  });
+
+  it("hides loading notice when telemetry has an error", () => {
+    expect(
+      shouldShowTelemetryLoadingNotice({
+        hasTelemetryData: false,
+        telemetryEnabled: true,
+        telemetryLoading: true,
+        telemetryError: "network failed",
+      }),
+    ).toBe(false);
   });
 });

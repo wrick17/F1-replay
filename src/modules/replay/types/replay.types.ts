@@ -122,6 +122,7 @@ export type TelemetryPanelProps = {
   sessionKey?: number | null;
   sessionStartMs?: number;
   sessionEndMs?: number;
+  onTelemetryLoadingChange?: (isLoading: boolean) => void;
 };
 
 export type MarkerLegendProps = {

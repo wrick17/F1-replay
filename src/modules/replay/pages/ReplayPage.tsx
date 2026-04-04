@@ -24,6 +24,11 @@ import { preloadRadioAudios } from "../services/radioAudio.service";
 import { computeTelemetryRows, computeTelemetrySummary } from "../services/telemetry.service";
 import { getWeatherAtTime } from "../services/weather.service";
 
+export const isReplayHeaderLoading = (
+  isBlockingReplayLoad: boolean,
+  isCarTelemetryLoading: boolean,
+) => isBlockingReplayLoad || isCarTelemetryLoading;
+
 export const ReplayPage = () => {
   const session = useSessionState();
   const prefs = useUserPreferences();
@@ -141,6 +146,7 @@ export const ReplayPage = () => {
   const [shortcutsCollapsed, setShortcutsCollapsed] = useState(true);
   const [telemetryCollapsed, setTelemetryCollapsed] = useState(false);
   const [eventsCollapsed, setEventsCollapsed] = useState(false);
+  const [isCarTelemetryLoading, setIsCarTelemetryLoading] = useState(false);
 
   const toggleLegendCollapsed = useCallback(() => setLegendCollapsed((prev) => !prev), []);
   const toggleShortcutsCollapsed = useCallback(() => setShortcutsCollapsed((prev) => !prev), []);
@@ -236,11 +242,12 @@ export const ReplayPage = () => {
   const drivers = useMemo(() => data?.drivers ?? [], [data]);
   const selectedDrivers = useMemo(() => [], []);
   const isBlockingLoad = loading && !data;
-  const hasStatus = isBlockingLoad || Boolean(error);
-  const statusText = isBlockingLoad
+  const isHeaderLoading = isReplayHeaderLoading(isBlockingLoad, isCarTelemetryLoading);
+  const hasStatus = isHeaderLoading || Boolean(error);
+  const statusText = isHeaderLoading
     ? "Loading telemetry data…"
     : (error ?? "Loading telemetry data…");
-  const statusClass = isBlockingLoad
+  const statusClass = isHeaderLoading
     ? "border-amber-500/30 bg-amber-500/20 text-amber-300"
     : "border-red-500/30 bg-red-500/15 text-red-200";
 
@@ -268,7 +275,7 @@ export const ReplayPage = () => {
             }`}
             aria-hidden={!hasStatus}
           >
-            {isBlockingLoad && <Loader2 size={14} className="animate-spin" />}
+            {isHeaderLoading && <Loader2 size={14} className="animate-spin" />}
             <span className="truncate">{statusText}</span>
           </span>
         </div>
@@ -370,6 +377,7 @@ export const ReplayPage = () => {
               sessionKey={data?.session.session_key ?? null}
               sessionStartMs={data?.sessionStartMs ?? 0}
               sessionEndMs={data?.sessionEndMs ?? 0}
+              onTelemetryLoadingChange={setIsCarTelemetryLoading}
             />
           </div>
         </div>

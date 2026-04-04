@@ -77,6 +77,18 @@ export const hasCarTelemetryPayload = (
 ): payload is CarTelemetryPayload =>
   Boolean(payload && Object.values(payload.byDriver).some((samples) => samples.length > 0));
 
+export const shouldShowTelemetryLoadingNotice = ({
+  hasTelemetryData,
+  telemetryEnabled,
+  telemetryLoading,
+  telemetryError,
+}: {
+  hasTelemetryData: boolean;
+  telemetryEnabled: boolean;
+  telemetryLoading: boolean;
+  telemetryError: string | null;
+}) => telemetryLoading && !telemetryError && (!hasTelemetryData || telemetryEnabled);
+
 const TwoRowPill = ({ item }: { item: TwoRowValue }) => {
   return (
     <div
@@ -250,6 +262,7 @@ export const TelemetryPanel = ({
   sessionKey = null,
   sessionStartMs = 0,
   sessionEndMs = 0,
+  onTelemetryLoadingChange,
 }: TelemetryPanelProps) => {
   const showSkeleton = isLoading && rows.length === 0;
   const overtakeRoleMap = useMemo(() => {
@@ -306,6 +319,12 @@ export const TelemetryPanel = ({
     sessionStartMs,
     sessionEndMs,
   });
+
+  useEffect(() => {
+    onTelemetryLoadingChange?.(telemetry.loading);
+    return () => onTelemetryLoadingChange?.(false);
+  }, [telemetry.loading, onTelemetryLoadingChange]);
+
   const hasTelemetryData = useMemo(
     () => hasCarTelemetryPayload(telemetry.payload),
     [telemetry.payload],
@@ -425,9 +444,12 @@ export const TelemetryPanel = ({
         {hasTelemetryData && telemetryEnabled && telemetry.error && (
           <div className="mt-1 text-[10px] text-red-200/80">Telemetry error: {telemetry.error}</div>
         )}
-        {hasTelemetryData && telemetryEnabled && !telemetry.error && telemetry.loading && (
-          <div className="mt-1 text-[10px] text-white/50">Loading telemetry…</div>
-        )}
+        {shouldShowTelemetryLoadingNotice({
+          hasTelemetryData,
+          telemetryEnabled,
+          telemetryLoading: telemetry.loading,
+          telemetryError: telemetry.error,
+        }) && <div className="mt-1 text-[10px] text-white/50">Loading telemetry…</div>}
       </div>
       <div className="grid grid-cols-2 gap-2 text-[11px] text-white/70">
         <div>

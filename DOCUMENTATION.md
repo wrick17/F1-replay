@@ -42,6 +42,7 @@ F1 Replay is a replay-first Formula 1 web app with a home dashboard at `/`, a ra
 - **Replay Experience (`/:year/:round/:session/replay`)**: Full telemetry timeline, track map, events, and controls
 - **Ops Cache Dashboard (`/ops/cache`)**: Private cache-ops page with session cache status, manual refresh, and per-session warm actions
 - **Logo Navigation**: F1 Replay logo is shown on both `/` and replay pages; clicking it on replay returns to home
+- **Replay Header Loading Indicator**: The loading indicator next to the replay logo stays visible while either core replay data or car telemetry data is still loading (including worker cache reads and OpenF1 backfill)
 - **Replay Route Bootstrap**: Opening `/replay` without params auto-selects the latest replayable session (`Race` -> `Sprint` -> `Qualifying`) and redirects to clean replay paths
 - **Legacy Replay Redirect**: `/replay?year=...&round=...&session=...` redirects to `/:year/:round/:session/replay`
 - **Session Picker**: Select from any year, round, and session type
@@ -436,6 +437,7 @@ Displays detailed telemetry for selected driver:
 - Brake status
 - DRS status
 - The telemetry toggle and driver pills are only rendered after car telemetry data is available for the current session, and they appear as soon as the first usable telemetry chunk is ingested rather than waiting for the full session backfill
+- The leaderboard shows a `Loading telemetry…` hint while car telemetry is still being fetched, including the initial pre-payload window before the first telemetry sample arrives
 
 #### `WeatherBadge`
 Shows current weather conditions:
