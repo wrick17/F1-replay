@@ -9,6 +9,7 @@ import { retry } from "../../../scripts/warm-caches/retry";
 import { createCarTelemetryWorkerClient, createReplayWorkerClient } from "../../../scripts/warm-caches/workers";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import { buildShooAudience, isAllowedEmailClaim, parseEmailAllowlist } from "./auth";
+import { isAllowedOrigin, parseAllowedOrigins } from "./cors";
 import {
   OPENF1_NO_DATA_ERROR_PREFIX,
   OPENF1_NO_DATA_RETRY_INTERVAL_MS,
@@ -175,20 +176,6 @@ const requireSessionSecret = (env: Env) => {
 const getShooBaseUrl = (env: Env) => {
   const baseUrl = env.SHOO_BASE_URL ?? DEFAULT_SHOO_BASE_URL;
   return baseUrl.replace(/\/+$/, "");
-};
-
-const parseAllowedOrigins = (env: Env) => {
-  if (env.DASHBOARD_ALLOWED_ORIGINS) {
-    return env.DASHBOARD_ALLOWED_ORIGINS.split(",")
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
-  return ["http://localhost:3000", "http://localhost:3001"];
-};
-
-const isAllowedOrigin = (origin: string | null, allowlist: string[]) => {
-  if (!origin) return false;
-  return allowlist.includes(origin);
 };
 
 const withCors = (
@@ -1309,7 +1296,7 @@ const isDashboardPath = (pathname: string) =>
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
-    const allowlist = parseAllowedOrigins(env);
+    const allowlist = parseAllowedOrigins(env.DASHBOARD_ALLOWED_ORIGINS);
     const isDashboardRequest = isDashboardPath(url.pathname);
 
     if (request.method === "OPTIONS") {

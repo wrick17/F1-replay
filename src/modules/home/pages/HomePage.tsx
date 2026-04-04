@@ -132,7 +132,7 @@ export const HomePage = () => {
 
   return (
     <div className="home-shell min-h-screen px-4 pb-16 pt-5 text-white md:px-8">
-      <header className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 rounded-2xl border border-white/15 bg-black/35 px-4 py-4 backdrop-blur md:flex-row md:items-center md:justify-between">
+      <header className="mx-auto flex w-full max-w-350 flex-col gap-4 rounded-2xl border border-white/15 bg-black/35 px-4 py-4 backdrop-blur md:flex-row md:items-center md:justify-between">
         <div>
           <a href={HOME_PATH} className="inline-flex items-center">
             <img src="/logo.png" alt="F1 Replay" className="h-6 w-auto" />
@@ -184,8 +184,8 @@ export const HomePage = () => {
         </div>
       </header>
 
-      <main className="mx-auto mt-6 grid w-full max-w-[1200px] gap-5 lg:grid-cols-[1.4fr_1fr]">
-        <section className="rounded-2xl border border-red-300/20 bg-gradient-to-br from-red-950/50 via-black/70 to-black/80 p-4">
+      <main className="mx-auto mt-6 grid w-full max-w-350 gap-5 lg:grid-cols-[1.4fr_1fr]">
+        <section className="rounded-2xl border border-red-300/20 bg-linear-to-br from-red-950/50 via-black/70 to-black/80 p-4">
           {loading && <p className="text-sm text-zinc-300">Loading season dashboard...</p>}
           {error && <p className="text-sm text-red-200">{error}</p>}
           {!loading && !error && data && (

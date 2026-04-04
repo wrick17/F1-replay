@@ -100,6 +100,7 @@ Required worker secrets:
 Shoo auth settings:
 
 - `SHOO_BASE_URL` (defaults to `https://shoo.dev`)
+- `DASHBOARD_ALLOWED_ORIGINS` must include all dashboard origins (for example: `http://localhost:3000,http://localhost:3001,https://f1.wrick17.com,https://www.f1.wrick17.com`)
 - The frontend requests Shoo PII (`requestPii: true`) so email is present for allowlist checks
 - Worker verifies Shoo `id_token` signature/issuer/audience and only issues session cookies for allowlisted emails
 

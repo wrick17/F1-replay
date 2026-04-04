@@ -19,7 +19,7 @@ OPENF1_BASE_URL = "https://api.openf1.org/v1"
 REPLAY_WORKER_BASE_URL = "https://openf1-proxy.wrick17worker.workers.dev"
 CAR_TELEMETRY_WORKER_BASE_URL = "https://openf1-car-telemetry.wrick17worker.workers.dev"
 SHOO_BASE_URL = "https://shoo.dev"
-DASHBOARD_ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:3001"
+DASHBOARD_ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:3001,https://f1.wrick17.com,https://www.f1.wrick17.com"
 
 [[d1_databases]]
 binding = "DB"

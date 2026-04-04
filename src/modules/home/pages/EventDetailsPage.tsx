@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { getEventRouteParams, HOME_PATH, toSessionSlug } from "../../../app/routing";
+import { getEventRouteParams, HOME_PATH } from "../../../app/routing";
 import { useReplayEventDetails } from "../hooks/useReplayEventDetails";
 import type { ReplayEventResultRow } from "../types/home.types";
 
@@ -132,7 +132,7 @@ export const EventDetailsPage = () => {
 
   return (
     <main className="home-shell min-h-screen px-4 pb-16 pt-6 text-white md:px-8">
-      <div className="mx-auto w-full max-w-[1200px] rounded-2xl border border-white/15 bg-black/35 p-5 backdrop-blur">
+      <div className="mx-auto w-full max-w-350 rounded-2xl border border-white/15 bg-black/35 p-5 backdrop-blur">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <a
             href={HOME_PATH}
@@ -163,11 +163,25 @@ export const EventDetailsPage = () => {
         {!loading && !error && data && (
           <div className="mt-6 space-y-5">
             <section className="rounded-xl border border-red-300/20 bg-gradient-to-br from-red-950/50 via-black/70 to-black/80 p-5">
-              <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-300">Event Details</p>
-              <h1 className="mt-2 text-3xl font-bold text-white">{data.meetingName}</h1>
-              {data.officialMeetingName && (
-                <p className="mt-1 text-sm text-zinc-300">{data.officialMeetingName}</p>
-              )}
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-300">
+                    Event Details
+                  </p>
+                  <h1 className="mt-2 text-3xl font-bold text-white">{data.meetingName}</h1>
+                  {data.officialMeetingName && (
+                    <p className="mt-1 text-sm text-zinc-300">{data.officialMeetingName}</p>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <a
+                    href={data.replayHref}
+                    className="inline-flex items-center rounded-md border border-red-300/50 bg-red-500/20 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-red-100 transition hover:bg-red-500/30"
+                  >
+                    Watch Replay
+                  </a>
+                </div>
+              </div>
 
               <dl className="mt-5 grid gap-3 text-sm text-zinc-200 md:grid-cols-4">
                 <div className="rounded-lg border border-white/10 bg-black/35 px-3 py-2">
@@ -193,18 +207,6 @@ export const EventDetailsPage = () => {
                   </dd>
                 </div>
               </dl>
-
-              <div className="mt-6 flex flex-wrap items-center gap-3">
-                <a
-                  href={data.replayHref}
-                  className="inline-flex items-center rounded-md border border-red-300/50 bg-red-500/20 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-red-100 transition hover:bg-red-500/30"
-                >
-                  Watch Replay
-                </a>
-                <code className="rounded bg-black/40 px-2 py-1 text-xs text-zinc-300">
-                  /{data.year}/{data.round}/{toSessionSlug(data.sessionType)}
-                </code>
-              </div>
             </section>
 
             <section className="rounded-xl border border-white/15 bg-black/30 p-4">

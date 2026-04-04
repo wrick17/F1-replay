@@ -290,6 +290,7 @@ The remote warmer worker (`workers/openf1-cache-warmer`) requires:
 - `REPLAY_WORKER_BASE_URL` var
 - `CAR_TELEMETRY_WORKER_BASE_URL` var
 - `DASHBOARD_ALLOWED_ORIGINS` var for browser allowlist checks
+- Include both local and production dashboard origins (for example: `http://localhost:3000,http://localhost:3001,https://f1.wrick17.com,https://www.f1.wrick17.com`)
 - `ADMIN_TOKEN` secret for admin routes
 - `OPS_ALLOWED_EMAILS` secret for dashboard access allowlist (comma-separated)
 - `SESSION_SECRET` secret for dashboard cookie signing
