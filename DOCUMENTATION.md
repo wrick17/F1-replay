@@ -9,6 +9,8 @@ F1 Replay has four production parts:
 3. `.github/workflows/archive.yml` runs the trusted publisher on schedule or through authenticated manual dispatch.
 4. The old replay and car telemetry Workers remain read-only during migration and rollback acceptance.
 
+The legacy cache warmer has no active cron triggers. Scheduled publishing runs in GitHub Actions.
+
 The browser reads published data. It has no archive upload path, publishing token, D1 orchestration loop, or cache-warming controls.
 
 ### Application routes

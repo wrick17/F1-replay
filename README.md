@@ -4,6 +4,8 @@ F1 Replay is a React and Rsbuild app for browsing completed Formula 1 sessions a
 
 Production replay data is a static schema v2 archive at `https://data.f1.wrick17.com/catalog.json`. The browser does not build or upload archives.
 
+GitHub Actions handles scheduled publishing. The legacy Cloudflare warmer's cron triggers are disabled; its read-only data remains available for rollback.
+
 ## Routes
 
 - `/` lists archived replays and season context.

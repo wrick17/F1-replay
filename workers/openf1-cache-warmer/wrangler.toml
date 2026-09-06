@@ -12,7 +12,7 @@ compatibility_date = "2026-04-03"
 # SESSION_SECRET = "<set via wrangler secret put SESSION_SECRET>"
 
 [triggers]
-crons = ["0 * * * *", "15 3 * * *"]
+crons = []
 
 [vars]
 OPENF1_BASE_URL = "https://api.openf1.org/v1"
