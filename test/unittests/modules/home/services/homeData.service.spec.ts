@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  buildLatestReplayCard,
   buildReplaySessionGroupsFromCatalog,
   buildReplaySessionGroupsByYear,
   buildStandingsContextLabel,
@@ -10,6 +11,7 @@ import {
   selectReplaySessionType,
 } from "modules/home/services/homeData.service";
 import type { ArchiveCatalog } from "modules/archive/types";
+import type { HomeRaceCard } from "modules/home/types/home.types";
 import type { OpenF1Meeting, OpenF1Session } from "modules/replay/types/openf1.types";
 
 const createSession = (
@@ -228,5 +230,42 @@ describe("home data service helpers", () => {
     const rounds = new Map([[archivedMeeting.meeting_key, 24]]);
     expect(findArchivedMeetingForRound([archivedMeeting], rounds, 1)).toBeNull();
     expect(findArchivedMeetingForRound([archivedMeeting], rounds, 24)).toBe(archivedMeeting);
+  });
+
+  it("keeps the exact archived session route and time on the latest replay card", () => {
+    const sprint = {
+      year: 2026,
+      round: 10,
+      meetingKey: 1120,
+      type: "Sprint",
+      meeting: createMeeting(1120, 2026, "2026-05-22T00:00:00Z"),
+      session: {
+        ...createSession("Race", "2026-05-23T18:30:00Z", 1120),
+        session_name: "Sprint",
+        date_start: "2026-05-23T17:00:00Z",
+      },
+    } as unknown as ArchiveCatalog["sessions"][number];
+    const raceWeekendCard = {
+      id: "2026-10",
+      year: 2026,
+      round: 10,
+      meetingName: "Canadian Grand Prix",
+      circuitName: "Circuit Gilles Villeneuve",
+      locality: "Montreal",
+      country: "Canada",
+      startTime: "2026-05-24T20:00:00Z",
+      status: "completed",
+      replay: {
+        available: true,
+        sessionType: "Sprint",
+        detailsHref: "/2026/10/sprint",
+        replayHref: "/2026/10/sprint/replay",
+      },
+    } satisfies HomeRaceCard;
+
+    const latest = buildLatestReplayCard([sprint], [raceWeekendCard]);
+    expect(latest?.startTime).toBe("2026-05-23T17:00:00Z");
+    expect(latest?.replay.detailsHref).toBe("/2026/10/sprint");
+    expect(latest?.meetingName).toBe("Canadian Grand Prix");
   });
 });

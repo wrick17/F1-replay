@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  createOpenF1,
   decodeLegacyCar,
   decodeLegacyReplay,
   loadExistingCatalog,
@@ -48,6 +49,27 @@ const session = (sessionKey: number) => ({
 });
 
 describe("archive publisher", () => {
+  it("treats OpenF1 collection no-results responses as empty without masking other 404s", async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        const path = new URL(request.url).pathname;
+        return Response.json(
+          { detail: path === "/v1/bad" ? "Not Found" : "No results found." },
+          { status: 404 },
+        );
+      },
+    });
+    const openf1 = createOpenF1(`${server.url}v1`, 0);
+    try {
+      expect(await openf1.fetchOpenF1("position", { session_key: 11361 })).toEqual([]);
+      expect(await openf1.fetchOpenF1("overtakes", { session_key: 11357 })).toEqual([]);
+      await expect(openf1.fetchOpenF1("bad", {})).rejects.toThrow("Request failed 404");
+    } finally {
+      server.stop(true);
+    }
+  });
+
   it("replaces a stable route without dropping other catalog sessions", () => {
     const existing: ArchiveCatalog = {
       schemaVersion: ARCHIVE_SCHEMA_VERSION,
@@ -57,6 +79,7 @@ describe("archive publisher", () => {
     const merged = mergeCatalog(existing, [session(3)], "new");
     expect(merged.sessions.map((item) => item.sessionKey)).toEqual([2, 3]);
     expect(merged.updatedAt).toBe("new");
+    expect(mergeCatalog(existing, [], "unused")).toBe(existing);
   });
 
   it("publishes immutable objects before the mutable catalog", async () => {
@@ -166,8 +189,12 @@ describe("archive publisher", () => {
     expect(() => parsePublisherArgs(["--all-years", "--years", "2025"])).toThrow(
       "--all-years cannot be combined with --years",
     );
+    expect(parsePublisherArgs(["--max-sessions", "100"]).maxSessions).toBe(100);
     expect(() => parsePublisherArgs(["--max-sessions", "0"])).toThrow(
-      "--max-sessions must be an integer from 1 to 10",
+      "--max-sessions must be an integer from 1 to 100",
+    );
+    expect(() => parsePublisherArgs(["--max-sessions", "101"])).toThrow(
+      "--max-sessions must be an integer from 1 to 100",
     );
   });
 

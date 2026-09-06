@@ -562,6 +562,29 @@ const homeCardFromArchive = (entry: ArchiveCatalogSession): HomeRaceCard => {
   };
 };
 
+export const buildLatestReplayCard = (
+  sessions: ArchiveCatalogSession[],
+  scheduleCards: HomeRaceCard[] = [],
+): HomeRaceCard | null => {
+  const latest = [...sessions]
+    .filter((entry) => isReplaySessionType(entry.type))
+    .sort((a, b) => Date.parse(b.session.date_end) - Date.parse(a.session.date_end))[0];
+  if (!latest) return null;
+  const archiveCard = homeCardFromArchive(latest);
+  const scheduleCard = scheduleCards.find(
+    (card) => card.year === latest.year && card.round === latest.round,
+  );
+  return scheduleCard
+    ? {
+        ...archiveCard,
+        meetingName: scheduleCard.meetingName,
+        circuitName: scheduleCard.circuitName,
+        locality: scheduleCard.locality,
+        country: scheduleCard.country,
+      }
+    : archiveCard;
+};
+
 const preferredArchiveSessions = (sessions: ArchiveCatalogSession[]) => {
   const byMeeting = new Map<number, ArchiveCatalogSession>();
   for (const entry of sessions) {
@@ -586,17 +609,13 @@ export const buildArchiveDashboardData = (
   const completedCards = preferredArchiveSessions(
     catalog.sessions.filter((entry) => entry.year === year),
   ).map(homeCardFromArchive);
-  const latestArchive = [...catalog.sessions]
-    .filter((entry) => isReplaySessionType(entry.type))
-    .sort((a, b) => Date.parse(b.session.date_end) - Date.parse(a.session.date_end))[0];
   return {
     year,
     cards: completedCards,
     completedCards,
     upcomingCards: [],
     nextRace: null,
-    latestReplayRace:
-      completedCards.at(-1) ?? (latestArchive ? homeCardFromArchive(latestArchive) : null),
+    latestReplayRace: buildLatestReplayCard(catalog.sessions),
     replaySessionsByYear,
     totalReplaySessions: replaySessionsByYear.reduce(
       (total, group) => total + group.sessions.length,
@@ -686,8 +705,7 @@ export const loadDashboardSupplement = async (
     completedCards: cards.length ? completedCards : base.completedCards,
     upcomingCards,
     nextRace: upcomingCards[0] ?? null,
-    latestReplayRace:
-      [...completedCards].reverse().find((card) => card.replay.available) ?? base.latestReplayRace,
+    latestReplayRace: buildLatestReplayCard(yearSessions, cards) ?? base.latestReplayRace,
     standingsContextLabel: buildStandingsContextLabel(
       cards.length ? completedCards : base.completedCards,
     ),

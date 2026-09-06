@@ -30,6 +30,21 @@ const OPENF1_URL = "https://api.openf1.org/v1";
 const JOLPICA_URL = "https://api.jolpi.ca/ergast/f1";
 const DATA_URL = "https://data.f1.wrick17.com/";
 const encoder = new TextEncoder();
+const OPENF1_COLLECTIONS = new Set([
+  "car_data",
+  "drivers",
+  "laps",
+  "location",
+  "meetings",
+  "overtakes",
+  "pit",
+  "position",
+  "race_control",
+  "sessions",
+  "stints",
+  "team_radio",
+  "weather",
+]);
 
 type PublisherArgs = {
   catalog?: string;
@@ -88,24 +103,42 @@ const retryAfterMs = (response: Response, attempt: number) => {
 
 const fetchWithRetry = async (
   url: string,
-  options: { pace?: () => Promise<void>; attempts?: number } = {},
+  options: {
+    pace?: () => Promise<void>;
+    attempts?: number;
+    emptyOpenF1Collection?: boolean;
+    signal?: AbortSignal;
+  } = {},
 ) => {
   const attempts = options.attempts ?? 4;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
+    options.signal?.throwIfAborted();
     await options.pace?.();
+    options.signal?.throwIfAborted();
     let response: Response;
     try {
       response = await fetch(url, {
         headers: { accept: "application/json" },
-        signal: fetchSignal(),
+        signal: options.signal
+          ? AbortSignal.any([options.signal, fetchSignal()])
+          : fetchSignal(),
       });
     } catch (error) {
+      if (options.signal?.aborted) throw error;
       if (attempt === attempts - 1) throw error;
       await sleep(Math.min(30_000, 2_000 * 2 ** attempt));
       continue;
     }
     if (response.status === 401) throw new OpenF1AuthError(`OpenF1 denied ${url}`);
     if (response.ok) return response;
+    if (response.status === 404 && options.emptyOpenF1Collection) {
+      const payload = (await response.clone().json().catch(() => undefined)) as
+        | { detail?: unknown }
+        | undefined;
+      if (payload?.detail === "No results found.") {
+        return new Response("[]", { headers: { "content-type": "application/json" } });
+      }
+    }
     if ((response.status !== 429 && response.status < 500) || attempt === attempts - 1) {
       throw new Error(`Request failed ${response.status}: ${url}`);
     }
@@ -135,11 +168,20 @@ const query = (params: Record<string, string | number>) =>
     )
     .join("&");
 
-const createOpenF1 = (baseUrl = OPENF1_URL) => {
-  const pace = createPace(2_000);
+export const createOpenF1 = (
+  baseUrl = OPENF1_URL,
+  intervalMs = 2_000,
+  signal?: AbortSignal,
+  sharedPace?: () => Promise<void>,
+) => {
+  const pace = sharedPace ?? createPace(intervalMs);
   const fetchOpenF1 = async <T>(path: string, params: Record<string, string | number>) => {
     const suffix = query(params);
-    const response = await fetchWithRetry(`${baseUrl}/${path}${suffix ? `?${suffix}` : ""}`, { pace });
+    const response = await fetchWithRetry(`${baseUrl}/${path}${suffix ? `?${suffix}` : ""}`, {
+      pace,
+      emptyOpenF1Collection: OPENF1_COLLECTIONS.has(path),
+      signal,
+    });
     return (await response.json()) as T;
   };
   const fetchChunked = async <T extends { date?: string }>(
@@ -163,7 +205,7 @@ const createOpenF1 = (baseUrl = OPENF1_URL) => {
     }
     return total;
   };
-  return { fetchOpenF1, fetchChunked };
+  return { fetchOpenF1, fetchChunked, pace };
 };
 
 export const parsePublisherArgs = (argv: string[]): PublisherArgs => {
@@ -182,8 +224,8 @@ export const parsePublisherArgs = (argv: string[]): PublisherArgs => {
         .filter((year) => Number.isInteger(year) && year >= 2018);
   if (!years.length) throw new Error("--years must contain a year from 2018 onward");
   const maxSessions = Number(value("--max-sessions") ?? 2);
-  if (!Number.isInteger(maxSessions) || maxSessions < 1 || maxSessions > 10) {
-    throw new Error("--max-sessions must be an integer from 1 to 10");
+  if (!Number.isInteger(maxSessions) || maxSessions < 1 || maxSessions > 100) {
+    throw new Error("--max-sessions must be an integer from 1 to 100");
   }
   return {
     catalog: value("--catalog"),
@@ -324,6 +366,7 @@ export const mergeCatalog = (
   additions: ArchiveCatalogSession[],
   updatedAt: string,
 ): ArchiveCatalog => {
+  if (!additions.length) return existing;
   const sessions = new Map(existing.sessions.map((session) => [sessionId(session), session]));
   for (const session of additions) sessions.set(sessionId(session), session);
   const rank = (type: string) => (type === "Qualifying" ? 0 : type === "Sprint" ? 1 : 2);
@@ -728,9 +771,13 @@ const discover = async (
 ) => {
   const openf1 = createOpenF1();
   const now = Date.now();
+  let attempted = 0;
+  let failed = 0;
+  type Meeting = OpenF1Meeting & { is_cancelled?: boolean };
+  type Session = OpenF1Session & { is_cancelled?: boolean };
   const candidates: Array<{
-    meeting: OpenF1Meeting;
-    session: OpenF1Session;
+    meeting: Meeting;
+    session: Session;
     round: number;
     identity: string;
     previous?: ArchiveCatalogSession;
@@ -738,17 +785,23 @@ const discover = async (
   const candidateIdentities = new Set<string>();
   for (const year of years) {
     const [meetings, sessions, races] = await Promise.all([
-      openf1.fetchOpenF1<OpenF1Meeting[]>("meetings", { year }),
-      openf1.fetchOpenF1<OpenF1Session[]>("sessions", { year }),
+      openf1.fetchOpenF1<Meeting[]>("meetings", { year }),
+      openf1.fetchOpenF1<Session[]>("sessions", { year }),
       loadCalendar(year),
     ]);
     for (const meeting of meetings) {
+      if (meeting.is_cancelled) continue;
       if (/pre[- ]season/i.test(`${meeting.meeting_name} ${meeting.meeting_official_name}`)) continue;
       const meetingSessions = sessions
         .filter((session) => session.meeting_key === meeting.meeting_key)
         .filter((session) => {
           const end = Date.parse(session.date_end);
-          return archiveSessionType(session) !== undefined && Number.isFinite(end) && end <= now;
+          return (
+            !session.is_cancelled &&
+            archiveSessionType(session) !== undefined &&
+            Number.isFinite(end) &&
+            end <= now
+          );
         })
         .sort((a, b) => Date.parse(a.date_start) - Date.parse(b.date_start));
       if (!meetingSessions.length) continue;
@@ -785,11 +838,13 @@ const discover = async (
   );
 
   for (const { meeting, session, round, identity, previous } of candidates.slice(0, maxSessions)) {
+    const controller = new AbortController();
+    const sessionOpenF1 = createOpenF1(OPENF1_URL, 2_000, controller.signal, openf1.pace);
     if (previous) {
       try {
         const car = await buildCarTelemetryPayload(
           session,
-          { appendLog: console.log, fetchChunked: openf1.fetchChunked },
+          { appendLog: console.log, fetchChunked: sessionOpenF1.fetchChunked },
           { carDataWindowMs: 600_000 },
         );
         const replay = (
@@ -803,15 +858,18 @@ const discover = async (
       } catch (error) {
         if (error instanceof OpenF1AuthError) throw error;
         console.error(`Car telemetry remains unavailable for ${identity}: ${String(error)}`);
+      } finally {
+        controller.abort();
       }
       continue;
     }
 
+    attempted += 1;
     try {
       const replay = await buildReplayPayload(
         meeting,
         session,
-        { appendLog: console.log, ...openf1 },
+        { appendLog: console.log, ...sessionOpenF1 },
         { locationWindowMs: 180_000, positionWindowMs: 600_000, positionOffsetMs: 3_600_000 },
       );
       let car: CarTelemetryPayload | undefined;
@@ -819,7 +877,7 @@ const discover = async (
       try {
         car = await buildCarTelemetryPayload(
           session,
-          { appendLog: console.log, fetchChunked: openf1.fetchChunked },
+          { appendLog: console.log, fetchChunked: sessionOpenF1.fetchChunked },
           { carDataWindowMs: 600_000 },
         );
       } catch (error) {
@@ -831,9 +889,13 @@ const discover = async (
       if (carError instanceof OpenF1AuthError) throw carError;
     } catch (error) {
       if (error instanceof OpenF1AuthError) throw error;
+      failed += 1;
       console.error(`Skipped ${identity}: ${String(error)}`);
+    } finally {
+      controller.abort();
     }
   }
+  return { attempted, failed };
 };
 
 const verifyPublicCatalog = async (catalog: ArchiveCatalog) => {
@@ -903,9 +965,16 @@ const main = async () => {
     }
   }
   let denied = false;
+  let attempted = 0;
+  let failedAttempts = 0;
   if (!failure && !args.importOnly) {
     try {
-      await discover(args.years, existing, upload, additions, args.maxSessions);
+      const result = await discover(args.years, existing, upload, additions, args.maxSessions);
+      attempted = result.attempted;
+      failedAttempts = result.failed;
+      if (attempted > 0 && failedAttempts === attempted && additions.length === 0) {
+        failure = new Error(`All ${attempted} replay build attempts failed`);
+      }
     } catch (error) {
       if (error instanceof OpenF1AuthError) {
         denied = true;
@@ -919,7 +988,7 @@ const main = async () => {
     : mergeCatalog(existing, additions, new Date().toISOString());
   await mkdir(dirname(args.snapshot), { recursive: true });
   await Bun.write(args.snapshot, `${JSON.stringify(catalog, null, 2)}\n`);
-  if ((!denied && !failure) || additions.length) {
+  if (additions.length) {
     await publishCatalog(catalog, upload);
     if (!args.dryRun) await verifyPublicCatalog(catalog);
   }
@@ -927,6 +996,8 @@ const main = async () => {
     JSON.stringify({
       dryRun: args.dryRun,
       added: additions.length,
+      attempted,
+      failedAttempts,
       sessions: catalog.sessions.length,
       denied,
       failed: Boolean(failure),
