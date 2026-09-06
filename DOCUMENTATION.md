@@ -117,6 +117,8 @@ Fast race-window runs attempt at most two current-year sessions. The daily 03:17
 
 The workflow installs Bun 1.4.0 from the frozen lockfile, commits `public/archive/catalog.json` only when it changes (including verified partial progress after a publishing failure), and uses no Cloudflare compute for scheduling. GitHub scheduled workflows are best effort and may be delayed; the calendar thresholds are not an availability guarantee. GitHub permissions protect manual publishing, and the frontend only links to the workflow.
 
+A separate 02:47 UTC maintenance job prevents GitHub's 60-day public-repository inactivity shutdown. It creates an empty commit only after 30 days without a repository commit. The `[CF-Pages-Skip]` prefix prevents a Pages build. This job has no R2 credentials and does not run the publisher.
+
 ## Build, test, and deploy
 
 Install and start the app:
@@ -132,6 +134,7 @@ Run the release checks:
 bun run typecheck
 bun run lint
 bun run test
+bash test/keep-schedules-active.sh
 bun run build
 ```
 

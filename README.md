@@ -31,6 +31,7 @@ Run the checks before a release:
 bun run typecheck
 bun run lint
 bun run test
+bash test/keep-schedules-active.sh
 bun run build
 ```
 
@@ -78,6 +79,8 @@ The workflow at `.github/workflows/archive.yml` checks the Jolpica calendar at 7
 The half-hour gate fails closed when the calendar or a required time is missing or malformed. A missing or malformed checked-in catalog snapshot triggers a publishing attempt for an eligible session, but does not count as a health result. These fast race-window runs attempt at most two current-year sessions.
 
 A daily 03:17 UTC run bypasses the gate and attempts up to ten sessions across every year from 2023 through the current UTC year. Authenticated manual dispatch accepts a 1–10 attempt limit or a 100-session bulk run, plus an optional comma-separated year list; a blank year input selects every available year from 2023 onward. The explicit bulk option has a six-hour job limit; regular jobs retain a two-hour limit. Repeated bounded runs fill remaining history. The workflow commits `public/archive/catalog.json` only when the snapshot changes. GitHub schedules are best effort and may run late; these times are not an availability guarantee.
+
+A separate daily 02:47 UTC check makes one empty `[CF-Pages-Skip]` commit after 30 days without a repository commit. This keeps GitHub's scheduled workflow enabled through the winter without running the publisher, writing to R2, or starting a Pages build.
 
 The publisher uploads content-addressed core and chunk objects first, then the manifest, then `catalog.json`. A catalog cannot point to an object that has not passed upload readback. Bounded retries cover transient network, HTTP 429, and server errors, and OpenF1 calls are paced to at most 30 per minute.
 
