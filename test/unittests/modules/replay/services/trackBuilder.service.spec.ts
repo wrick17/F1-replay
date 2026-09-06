@@ -102,3 +102,51 @@ it("extracts a continuous measured pit traversal and rejects a gap or a route th
   expect(buildPitLaneGeometry(data)).toEqual([]); // a normal racing-line deviation without a stop
 
 });
+
+it("corrects only a small translated coordinate origin and keeps rejecting changed layouts", async () => {
+  const { alignTrackReference } = await import("modules/replay/services/trackBuilder.service");
+  const circuit: Array<[number, number]> = [[0, 0], [1000, 0], [1000, 1000], [0, 1000]];
+  const anchors: Array<[number, number]> = circuit.map(([x, y]) => [x - 20, y - 20]);
+  const shift = alignTrackReference(anchors, circuit);
+  expect(shift?.x).toBeCloseTo(20, 2);
+  expect(shift?.y).toBeCloseTo(20, 2);
+  expect(alignTrackReference(circuit, circuit)).toEqual({ x: 0, y: 0 });
+  expect(alignTrackReference(anchors.map(([x, y]) => [x - 200, y]), circuit)).toBeNull();
+  expect(alignTrackReference([[0, 0], [1000, 0], [800, 800], [0, 1000]], circuit)).toBeNull();
+  expect(alignTrackReference([], circuit)).toBeNull();
+});
+
+it("confines a prior-year translation to that reference's pit lane, leaving current cars and archived pits in their own frame", async () => {
+  const { default: references } = await import("modules/replay/data/pitLanes.json");
+  const { alignTrackReference } = await import("modules/replay/services/trackBuilder.service");
+  const { normalizePositions } = await import("modules/replay/utils/telemetry.util");
+  const reference = references["2025:149"];
+  const anchors = reference.anchors as Array<[number, number]>;
+  const extent = 1 / normalizePositions(anchors.map(([x, y]) => ({ x, y, z: 0 }))).scale;
+  const points: Array<[number, number]> = anchors.map(([x, y]) => [x + extent * 0.02, y + extent * 0.02]);
+  const shift = alignTrackReference(anchors, points)!;
+  expect(Math.hypot(shift.x, shift.y)).toBeGreaterThan(extent * 0.015);
+  const data = fixture();
+  data.meeting = { ...data.meeting, circuit_key: 149, year: 2026 };
+  data.trackGeometry = { points, pitLane: points.slice(0, 3), source: "circuit", rotation: 0 };
+  const baseline = normalizePositions(points.map(([x, y]) => ({ x, y, z: 0 })));
+  data.telemetryByDriver[1].locations = [{ ...sample(1)[0], x: points[0][0], y: points[0][1], z: 0 }];
+  const track = buildTrack(data);
+  expect(track.normalization.offset).toEqual(baseline.offset);
+  expect(track.pitLanePath).toEqual(baseline.normalized.slice(0, 3).map((point) => ({ ...point, z: 0 })));
+  expect(computeDriverStates(data, 1000, track.normalization)[1].position).toEqual(baseline.normalized[0]);
+  delete data.trackGeometry.pitLane;
+  const withPriorPit = buildTrack(data);
+  expect(withPriorPit.normalization.offset).toEqual(baseline.offset);
+  expect(withPriorPit.pitLanePath[0]).toEqual({
+    x: (reference.points[0][0] + shift.x - baseline.offset.x) * baseline.scale,
+    y: (reference.points[0][1] + shift.y - baseline.offset.y) * baseline.scale,
+    z: 0,
+  });
+  data.meeting.year = 2025;
+  data.trackGeometry.pitLane = reference.points.slice(0, 3) as Array<[number, number]>;
+  const sameYear = buildTrack(data);
+  expect(sameYear.normalization.offset.x).toBeCloseTo(baseline.offset.x - shift.x, 8);
+  expect(sameYear.normalization.offset.y).toBeCloseTo(baseline.offset.y - shift.y, 8);
+  expect(sameYear.pitLanePath[0]).toEqual(withPriorPit.pitLanePath[0]);
+});

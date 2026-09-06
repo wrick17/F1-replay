@@ -126,29 +126,37 @@ export const buildTrack = (data: ReplaySessionData) => {
       anchors: Array<[number, number]>;
     }
   >;
-  const reference = Object.values(references)
+  let reference: { item: (typeof references)[string]; shift: { x: number; y: number } } | undefined;
+  for (const item of Object.values(references)
     .filter(
       (item) => item.circuitKey === data.meeting.circuit_key && item.year <= data.meeting.year,
     )
-    .sort((a, b) => b.year - a.year)
-    .find(
-      (item) =>
-        geometry &&
-        item.anchors.every(
-          (anchor) =>
-            projectToTrack(anchor, geometry.points).distance * normalization.scale < 0.015,
-        ),
-    );
-  const pitLanePath = (geometry?.pitLane ?? reference?.points ?? []).map(([x, y]) =>
+    .sort((a, b) => b.year - a.year)) {
+    const shift = geometry ? alignTrackReference(item.anchors, geometry.points) : null;
+    if (shift) {
+      reference = { item, shift };
+      break;
+    }
+  }
+  // Only a reference measured in this year establishes the current telemetry's origin.
+  // Older references can align their own pit lane without moving current cars or archived pits.
+  const telemetryShift =
+    reference && reference.item.year === data.meeting.year ? reference.shift : undefined;
+  const pitShift = geometry?.pitLane ? telemetryShift : reference?.shift;
+  const pitLanePath = (geometry?.pitLane ?? reference?.item.points ?? []).map(([x, y]) =>
     rotateTrackPoint(
       {
-        x: (x - normalization.offset.x) * normalization.scale,
-        y: (y - normalization.offset.y) * normalization.scale,
+        x: (x + (pitShift?.x ?? 0) - normalization.offset.x) * normalization.scale,
+        y: (y + (pitShift?.y ?? 0) - normalization.offset.y) * normalization.scale,
         z: 0,
       },
       rotation,
     ),
   );
+  if (telemetryShift) {
+    normalization.offset.x -= telemetryShift.x;
+    normalization.offset.y -= telemetryShift.y;
+  }
   return { normalization, rotation, trackPath, pitLanePath };
 };
 
@@ -173,6 +181,38 @@ const projectToTrack = (point: XY, track: XY[]) => {
     }
   }
   return { distance, point: nearest };
+};
+
+// Most references share the circuit's coordinates. A small translation is allowed only
+// when every anchor then fits much more tightly; changed layouts and scales still fail.
+export const alignTrackReference = (
+  anchors: XY[],
+  track: XY[],
+): { x: number; y: number } | null => {
+  if (anchors.length < 3 || track.length < 3) return null;
+  const extent = 1 / normalizePositions(track.map(([x, y]) => ({ x, y, z: 0 }))).scale;
+  if (anchors.every((anchor) => projectToTrack(anchor, track).distance < extent * 0.015))
+    return { x: 0, y: 0 };
+  let shift = { x: 0, y: 0 };
+  for (let iteration = 0; iteration < 40; iteration++) {
+    const projections = anchors.map(
+      ([x, y]) => projectToTrack([x + shift.x, y + shift.y], track).point,
+    );
+    shift = {
+      x:
+        projections.reduce((sum, point, index) => sum + point[0] - anchors[index][0], 0) /
+        anchors.length,
+      y:
+        projections.reduce((sum, point, index) => sum + point[1] - anchors[index][1], 0) /
+        anchors.length,
+    };
+  }
+  return Math.hypot(shift.x, shift.y) <= extent * 0.03 &&
+    anchors.every(
+      ([x, y]) => projectToTrack([x + shift.x, y + shift.y], track).distance < extent * 0.003,
+    )
+    ? shift
+    : null;
 };
 
 // Pit timestamps can mark the end of a traversal. Find the measured off-circuit segment
