@@ -8,16 +8,18 @@
     "build": "rsbuild build",
     "preview": "rsbuild preview",
     "test": "bun test test/unittests",
+    "typecheck": "tsc --noEmit",
     "test:visual": "RUN_VISUAL_TESTS=1 bun test test/visual/trackmap.visual.spec.ts",
-    "warm:caches": "bun scripts/warm-caches/index.ts",
-    "warm:cache": "bun scripts/warm-caches/index.ts",
-    "warm:telemetry-cache": "bun scripts/warm-caches/index.ts",
+    "warm:caches": "bun scripts/archive/publish.ts",
+    "warm:cache": "bun scripts/archive/publish.ts",
+    "warm:telemetry-cache": "bun scripts/archive/publish.ts",
     "lint": "biome check src/",
     "lint:fix": "biome check --write src/",
-    "format": "biome format --write src/"
+    "format": "biome format --write src/",
+    "archive:publish": "bun scripts/archive/publish.ts",
+    "archive:build": "bun scripts/archive/build.ts"
   },
   "dependencies": {
-    "@shoojs/react": "^0.2.2",
     "framer-motion": "^12.33.0",
     "jose": "^6.2.2",
     "lucide-react": "^0.563.0",

@@ -16,8 +16,12 @@ export const ReplayRoutePage = () => {
     const bootstrap = async () => {
       try {
         const selection = await resolveLatestReplaySelection();
-        if (!cancelled && selection) {
-          window.history.replaceState({}, "", selection.href);
+        if (!cancelled) {
+          if (!selection) {
+            setBootstrapError("No archived replays are available yet.");
+          } else {
+            window.history.replaceState({}, "", selection.href);
+          }
         }
       } catch (error) {
         if (!cancelled) {
@@ -39,9 +43,9 @@ export const ReplayRoutePage = () => {
   if (!ready) {
     return (
       <main className="flex min-h-screen items-center justify-center px-4 text-white">
-        <div className="rounded-xl border border-white/20 bg-black/45 px-5 py-3 text-sm tracking-wide backdrop-blur">
+        <output className="rounded-xl border border-white/20 bg-black/45 px-5 py-3 text-sm tracking-wide backdrop-blur">
           Finding the latest replay...
-        </div>
+        </output>
       </main>
     );
   }
@@ -49,7 +53,10 @@ export const ReplayRoutePage = () => {
   if (bootstrapError) {
     return (
       <main className="flex min-h-screen items-center justify-center px-4 text-white">
-        <div className="rounded-xl border border-red-400/30 bg-red-900/25 px-5 py-3 text-sm tracking-wide backdrop-blur">
+        <div
+          role="alert"
+          className="rounded-xl border border-red-400/30 bg-red-900/25 px-5 py-3 text-sm tracking-wide backdrop-blur"
+        >
           {bootstrapError}
         </div>
       </main>

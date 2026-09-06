@@ -19,7 +19,7 @@ export const SessionPicker = ({
       ? availableYears
       : buildYearOptions(new Date().getFullYear());
   const rounds = meetings.map((meeting, index) => ({
-    round: index + 1,
+    round: "round" in meeting && typeof meeting.round === "number" ? meeting.round : index + 1,
     label: meeting.meeting_name,
   }));
   const availableSessionTypes = getAvailableSessionTypes(sessions);
@@ -27,7 +27,9 @@ export const SessionPicker = ({
   return (
     <div className="flex w-full flex-nowrap items-end gap-2 overflow-visible text-xs md:flex-wrap md:items-center md:gap-3">
       <div className="flex w-20 flex-col gap-1 sm:w-24 md:w-auto">
-        <span className="text-[10px] uppercase text-white/60">Year</span>
+        <label htmlFor="replay-year" className="text-[10px] uppercase text-white/60">
+          Year
+        </label>
         <select
           id="replay-year"
           name="replay-year"
@@ -44,7 +46,9 @@ export const SessionPicker = ({
         </select>
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="text-[10px] uppercase text-white/60">Round</span>
+        <label htmlFor="replay-round" className="text-[10px] uppercase text-white/60">
+          Round
+        </label>
         <select
           id="replay-round"
           name="replay-round"
@@ -61,7 +65,9 @@ export const SessionPicker = ({
         </select>
       </div>
       <div className="flex w-24 flex-col gap-1 sm:w-28 md:w-auto">
-        <span className="text-[10px] uppercase text-white/60">Session</span>
+        <label htmlFor="replay-session" className="text-[10px] uppercase text-white/60">
+          Session
+        </label>
         <select
           id="replay-session"
           name="replay-session"

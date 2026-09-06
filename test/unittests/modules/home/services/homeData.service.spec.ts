@@ -1,12 +1,15 @@
 import { describe, expect, it } from "bun:test";
 import {
+  buildReplaySessionGroupsFromCatalog,
   buildReplaySessionGroupsByYear,
   buildStandingsContextLabel,
   enrichConstructorStandings,
   enrichDriverStandings,
+  findArchivedMeetingForRound,
   getRaceStatus,
   selectReplaySessionType,
 } from "modules/home/services/homeData.service";
+import type { ArchiveCatalog } from "modules/archive/types";
 import type { OpenF1Meeting, OpenF1Session } from "modules/replay/types/openf1.types";
 
 const createSession = (
@@ -198,5 +201,32 @@ describe("home data service helpers", () => {
     ]);
     expect(enrichedConstructors[0]?.name).toBe("Mercedes");
     expect(enrichedConstructors[0]?.logoUrl).toContain("mercedes-logo");
+  });
+
+  it("uses official rounds from the archive catalog", () => {
+    const catalog = {
+      sessions: [
+        {
+          year: 2025,
+          round: 24,
+          meetingKey: 7,
+          type: "Race",
+          meeting: createMeeting(7, 2025, "2025-12-07T00:00:00Z"),
+          session: { ...createSession("Race", "2025-12-07T15:00:00Z", 7), year: 2025 },
+        },
+      ],
+    } as unknown as ArchiveCatalog;
+
+    expect(buildReplaySessionGroupsFromCatalog(catalog)[0]?.sessions[0]?.round).toBe(24);
+    expect(buildReplaySessionGroupsFromCatalog(catalog)[0]?.sessions[0]?.replayHref).toBe(
+      "/2025/24/race/replay",
+    );
+  });
+
+  it("does not attach a sparse archived round to a different scheduled race", () => {
+    const archivedMeeting = createMeeting(24, 2025, "2025-12-07T00:00:00Z");
+    const rounds = new Map([[archivedMeeting.meeting_key, 24]]);
+    expect(findArchivedMeetingForRound([archivedMeeting], rounds, 1)).toBeNull();
+    expect(findArchivedMeetingForRound([archivedMeeting], rounds, 24)).toBe(archivedMeeting);
   });
 });

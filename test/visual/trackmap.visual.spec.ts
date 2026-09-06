@@ -1,419 +1,386 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { chromium, type Browser, type Page } from "@playwright/test";
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import http from "node:http";
+import { buildSessionArchive } from "../../src/modules/archive";
+import type { CarTelemetryPayload } from "../../src/modules/replay/types/carTelemetry.types";
+import type { ReplaySessionData } from "../../src/modules/replay/types/openf1.types";
 
-const APP_URL = "http://localhost:3001/";
 const YEAR = 2025;
-const ROUNDS = [3, 4, 5];
+const ROUND = 24;
+const ROUTE = `/${YEAR}/${ROUND}/race/replay`;
 const VIEWPORTS = [
   { name: "desktop", width: 1440, height: 900 },
-  { name: "tablet", width: 1024, height: 768 },
   { name: "mobile", width: 390, height: 844 },
 ] as const;
-const MAX_PARALLEL_CASES = 2;
-const VISUAL_CASE_RETRIES = 2;
+const START_MS = Date.parse("2025-03-16T05:00:00Z");
+const END_MS = START_MS + 420_000;
+const TRACK_POINTS = Array.from({ length: 24 }, (_, index) => {
+  const angle = (index / 24) * Math.PI * 2;
+  return [Math.cos(angle) * 120, Math.sin(angle) * 80] as [number, number];
+});
+const SAMPLE_OFFSETS = [
+  0,
+  1_000,
+  2_000,
+  60_000,
+  61_000,
+  62_000,
+  240_000,
+  241_000,
+  242_000,
+  419_000,
+];
+const CAR_OFFSETS = [0, 500, 180_000, 180_500, 419_500];
 const runVisualSuite = process.env.RUN_VISUAL_TESTS === "1";
+const DRIVER_NUMBERS = [1, 2] as const;
 
-type DOMRectLike = {
-  left: number;
-  right: number;
-  top: number;
-  bottom: number;
-  width: number;
-  height: number;
-  centerX: number;
-  centerY: number;
-};
+const withTimestamp = <T extends object>(offset: number, value: T) => ({
+  date: new Date(START_MS + offset).toISOString(),
+  timestampMs: START_MS + offset,
+  meeting_key: 7,
+  session_key: 9,
+  ...value,
+});
 
-const overlapArea = (a: DOMRectLike, b: DOMRectLike) => {
-  const width = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
-  const height = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
-  return width * height;
-};
+const makeLocations = (driverNumber: number) =>
+  SAMPLE_OFFSETS.map((offset, index) => {
+    const [x, y] = TRACK_POINTS[(index + driverNumber * 3) % TRACK_POINTS.length] ?? [0, 0];
+    const timestampMs = START_MS + offset;
+    return {
+      date: new Date(timestampMs).toISOString(),
+      timestampMs,
+      meeting_key: 7,
+      session_key: 9,
+      driver_number: driverNumber,
+      x,
+      y,
+      z: 0,
+    };
+  });
+
+const makeCarSamples = (driverNumber: number) =>
+  CAR_OFFSETS.map((offset) => ({
+    timestampMs: START_MS + offset,
+    speed: 180 + driverNumber * 10,
+    gear: 6,
+    rpm: 10_000,
+    throttle: 80,
+    brake: 0,
+    drs: 8,
+  }));
+
+const drivers = DRIVER_NUMBERS.map((driverNumber) => ({
+  driver_number: driverNumber,
+  full_name: driverNumber === 1 ? "Alex Example" : "Casey Example",
+  name_acronym: driverNumber === 1 ? "AEX" : "CEX",
+  team_name: "Example Racing",
+  team_colour: driverNumber === 1 ? "e10600" : "00aaff",
+  headshot_url: null,
+})) satisfies ReplaySessionData["drivers"];
+
+const telemetryByDriver = Object.fromEntries(
+  DRIVER_NUMBERS.map((driverNumber) => [
+    driverNumber,
+    {
+      locations: makeLocations(driverNumber),
+      positions: SAMPLE_OFFSETS.map((offset) =>
+        withTimestamp(offset, { driver_number: driverNumber, position: driverNumber }),
+      ),
+      stints: [{ driver_number: driverNumber, compound: driverNumber === 1 ? "MEDIUM" : "SOFT", lap_start: 1, lap_end: 20 }],
+      laps: [],
+    },
+  ]),
+) as ReplaySessionData["telemetryByDriver"];
+
+const replayFixture = {
+  trackGeometry: { points: TRACK_POINTS, rotation: 0, source: "circuit" as const },
+  meeting: {
+    meeting_key: 7,
+    meeting_name: "Australian Grand Prix",
+    meeting_official_name: "FORMULA 1 AUSTRALIAN GRAND PRIX 2025",
+    year: YEAR,
+    country_name: "Australia",
+    circuit_short_name: "Melbourne",
+    date_start: "2025-03-14T01:30:00Z",
+    date_end: "2025-03-16T06:00:00Z",
+  },
+  session: {
+    session_key: 9,
+    meeting_key: 7,
+    session_name: "Race",
+    session_type: "Race",
+    date_start: new Date(START_MS).toISOString(),
+    date_end: new Date(END_MS).toISOString(),
+    year: YEAR,
+  },
+  drivers,
+  telemetryByDriver,
+  sessionStartMs: START_MS,
+  sessionEndMs: END_MS,
+  teamRadios: [],
+  overtakes: [
+    withTimestamp(30_000, {
+      overtaking_driver_number: 1,
+      overtaken_driver_number: 2,
+      position: 1,
+    }),
+  ],
+  weather: [],
+  raceControl: [
+    withTimestamp(90_000, {
+      category: "Flag",
+      flag: "YELLOW",
+      driver_number: null,
+      lap_number: 4,
+      message: "Yellow flag in sector 1",
+      scope: "Sector",
+      sector: 1,
+    }),
+  ],
+  pits: [
+    withTimestamp(200_000, {
+      driver_number: 2,
+      lap_number: 9,
+      pit_duration: 22.4,
+    }),
+  ],
+} satisfies ReplaySessionData;
+
+const carFixture = {
+  sessionKey: 9,
+  sampleIntervalMs: 500,
+  createdAt: "2025-03-16T06:00:00Z",
+  byDriver: Object.fromEntries(
+    DRIVER_NUMBERS.map((driverNumber) => [driverNumber, makeCarSamples(driverNumber)]),
+  ) as CarTelemetryPayload["byDriver"],
+} satisfies CarTelemetryPayload;
 
 const isServerLive = (url: string) =>
   new Promise<boolean>((resolve) => {
-    const req = http.get(url, (res) => {
-      res.resume();
-      resolve(res.statusCode !== undefined && res.statusCode < 500);
+    const request = http.get(url, (response) => {
+      response.resume();
+      resolve(Boolean(response.statusCode && response.statusCode < 500));
     });
-    req.on("error", () => resolve(false));
-    req.setTimeout(1500, () => {
-      req.destroy();
+    request.on("error", () => resolve(false));
+    request.setTimeout(1_000, () => {
+      request.destroy();
       resolve(false);
     });
   });
 
-const waitForServer = async (url: string, timeoutMs = 30_000) => {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
+const waitForServer = async (url: string) => {
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
     if (await isServerLive(url)) return;
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((resolve) => setTimeout(resolve, 250));
   }
   throw new Error(`Server not ready at ${url}`);
 };
 
-const launchServerIfNeeded = async () => {
-  if (await isServerLive(APP_URL)) {
-    return { process: null };
+const getFreePort = async () => {
+  const probe = http.createServer();
+  await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
+  const address = probe.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  await new Promise<void>((resolve, reject) =>
+    probe.close((error) => (error ? reject(error) : resolve())),
+  );
+  if (!port) throw new Error("Could not allocate a port");
+  return port;
+};
+
+const waitFor = async (check: () => Promise<boolean>, timeoutMs = 30_000) => {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await check()) return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  const proc = spawn("bun", ["run", "dev"], {
-    stdio: "inherit",
-    env: { ...process.env, PORT: "3001" },
+  throw new Error("Timed out waiting for the replay state");
+};
+
+const getFiniteRect = async (page: Page, selector: string) =>
+  page.locator(selector).evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { width: rect.width, height: rect.height, left: rect.left, top: rect.top };
   });
-  await waitForServer(APP_URL);
-  return { process: proc };
-};
 
-let browserInstallAttempted = false;
-
-const isMissingBrowserError = (err: unknown) => {
-  if (!(err instanceof Error)) return false;
-  return (
-    err.message.includes("Executable doesn't exist") ||
-    err.message.includes("playwright install")
-  );
-};
-
-const installChromium = () =>
-  new Promise<void>((resolve, reject) => {
-    const proc = spawn("bunx", ["playwright", "install", "chromium"], {
-      stdio: "inherit",
-      env: { ...process.env },
+describe("replay visual fixture", () => {
+  it("builds and serves the selected archive locally", async () => {
+    const archive = await buildSessionArchive(replayFixture, {
+      round: ROUND,
+      car: carFixture,
+      chunkMs: 180_000,
+      updatedAt: "2025-03-16T07:00:00Z",
     });
-    proc.on("exit", (code) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        reject(new Error(`Failed to install Playwright browsers (code ${code ?? "unknown"})`));
-      }
+    const server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        const path = new URL(request.url).pathname.slice(1);
+        const content = archive.files.get(path);
+        return content === undefined
+          ? new Response("missing", { status: 404 })
+          : new Response(content, { headers: { "content-type": "application/json" } });
+      },
     });
-  });
-
-const launchBrowser = async () => {
-  try {
-    return await chromium.launch();
-  } catch (err) {
-    if (!browserInstallAttempted && isMissingBrowserError(err)) {
-      browserInstallAttempted = true;
-      await installChromium();
-      return chromium.launch();
-    }
-    throw err;
-  }
-};
-
-const getRect = async (page: Page, selector: string) => {
-  return page.locator(selector).evaluate((el) => {
-    const rect = (el as HTMLElement).getBoundingClientRect();
-    return {
-      left: rect.left,
-      right: rect.right,
-      top: rect.top,
-      bottom: rect.bottom,
-      width: rect.width,
-      height: rect.height,
-      centerX: rect.left + rect.width / 2,
-      centerY: rect.top + rect.height / 2,
-    };
-  });
-};
-
-const getRects = async (page: Page, selector: string) => {
-  return page.$$eval(selector, (elements) =>
-    elements.map((el) => {
-      const rect = (el as HTMLElement).getBoundingClientRect();
-      return {
-        left: rect.left,
-        right: rect.right,
-        top: rect.top,
-        bottom: rect.bottom,
-        width: rect.width,
-        height: rect.height,
-        centerX: rect.left + rect.width / 2,
-        centerY: rect.top + rect.height / 2,
-      };
-    }),
-  );
-};
-
-const getLeaderLineMetrics = async (page: Page) => {
-  return page.$$eval("svg[aria-label='F1 track replay'] line", (elements) =>
-    elements.map((el) => {
-      const line = el as SVGLineElement;
-      const x1 = Number(line.getAttribute("x1") ?? "0");
-      const y1 = Number(line.getAttribute("y1") ?? "0");
-      const x2 = Number(line.getAttribute("x2") ?? "0");
-      const y2 = Number(line.getAttribute("y2") ?? "0");
-      const root = line.ownerSVGElement;
-      if (!root) {
-        return { startX: x1, startY: y1, endX: x2, endY: y2, length: Math.hypot(x2 - x1, y2 - y1) };
-      }
-      const toPoint = (x: number, y: number) => {
-        const point = root.createSVGPoint();
-        point.x = x;
-        point.y = y;
-        const transformed = point.matrixTransform(line.getScreenCTM() ?? root.getScreenCTM());
-        return { x: transformed.x, y: transformed.y };
-      };
-      const start = toPoint(x1, y1);
-      const end = toPoint(x2, y2);
-      return {
-        startX: start.x,
-        startY: start.y,
-        endX: end.x,
-        endY: end.y,
-        length: Math.hypot(end.x - start.x, end.y - start.y),
-      };
-    }),
-  );
-};
-
-const getTrackPathRect = async (page: Page) => {
-  return page.evaluate(() => {
-    const paths = Array.from(
-      document.querySelectorAll("svg[aria-label='F1 track replay'] path"),
-    );
-    if (paths.length === 0) return null;
-    const rects = paths.map((el) => (el as SVGGraphicsElement).getBoundingClientRect());
-    const left = Math.min(...rects.map((rect) => rect.left));
-    const right = Math.max(...rects.map((rect) => rect.right));
-    const top = Math.min(...rects.map((rect) => rect.top));
-    const bottom = Math.max(...rects.map((rect) => rect.bottom));
-    return {
-      left,
-      right,
-      top,
-      bottom,
-      width: right - left,
-      height: bottom - top,
-      centerX: left + (right - left) / 2,
-      centerY: top + (bottom - top) / 2,
-    };
-  });
-};
-
-const getWeatherMetrics = async (page: Page) => {
-  return page.evaluate(() => {
-    const weather = document.querySelector("header > div:nth-child(2)") as HTMLElement | null;
-    if (!weather) return null;
-    return {
-      clientWidth: weather.clientWidth,
-      scrollWidth: weather.scrollWidth,
-      flexWrap: getComputedStyle(weather).flexWrap,
-    };
-  });
-};
-
-const waitForTrackData = async (page: Page) => {
-  await page.waitForSelector("svg[aria-label='F1 track replay']");
-  await page.waitForFunction(
-    () =>
-      document.querySelectorAll("svg[aria-label='F1 track replay'] circle[stroke]").length > 10 ||
-      document.querySelectorAll(
-        "svg[aria-label='F1 track replay'] rect[stroke='rgba(255,255,255,0.2)']",
-      ).length > 10,
-    undefined,
-    { timeout: 60_000 },
-  );
-};
-
-const prewarmRounds = async (browser: Browser) => {
-  for (const round of ROUNDS) {
-    const context = await browser.newContext({
-      viewport: { width: VIEWPORTS[0].width, height: VIEWPORTS[0].height },
-    });
-    const page = await context.newPage();
     try {
-      page.setDefaultTimeout(90_000);
-      const url = `${APP_URL}?year=${YEAR}&round=${round}&session=Race`;
-      await page.goto(url, { waitUntil: "domcontentloaded" });
-      await waitForTrackData(page);
+      const response = await fetch(`${server.url}catalog.json`);
+      expect(response.ok).toBe(true);
+      expect(await response.json()).toMatchObject({
+        sessions: [{ year: YEAR, round: ROUND, type: "Race" }],
+      });
     } finally {
-      await context.close();
+      server.stop(true);
     }
-  }
-};
+  });
+});
 
-(runVisualSuite ? describe : describe.skip)("trackmap visual layout", () => {
-  let server: ChildProcessWithoutNullStreams | null = null;
+const runVisualSuiteIfEnabled = runVisualSuite ? describe : describe.skip;
+
+runVisualSuiteIfEnabled("replay visual smoke", () => {
+  let archive: Awaited<ReturnType<typeof buildSessionArchive>>;
+  let archiveServer: ReturnType<typeof Bun.serve> | null = null;
+  let devServer: ChildProcess | null = null;
   let browser: Browser | null = null;
+  let appOrigin = "";
+  const archiveRequests: string[] = [];
 
-  const runVisualCase = async (viewport: (typeof VIEWPORTS)[number], round: number) => {
-    if (!browser) {
-      throw new Error("Browser not available");
-    }
-    const context = await browser.newContext({
-      viewport: { width: viewport.width, height: viewport.height },
+  beforeAll(async () => {
+    archive = await buildSessionArchive(replayFixture, {
+      round: ROUND,
+      car: carFixture,
+      chunkMs: 180_000,
+      updatedAt: "2025-03-16T07:00:00Z",
     });
-    const page = await context.newPage();
-    try {
-      const url = `${APP_URL}?year=${YEAR}&round=${round}&session=Race`;
-      page.setDefaultTimeout(40_000);
-      await page.goto(url, { waitUntil: "domcontentloaded" });
-      await waitForTrackData(page);
-      await page.waitForTimeout(500);
-
-      const trackPathBox = await getTrackPathRect(page);
-      const telemetryBox = await getRect(page, "[data-testid='telemetry-panel']");
-      const eventsPanel = page.locator("[data-testid='events-panel']");
-      const hasEventsPanel = (await eventsPanel.count()) > 0;
-      const eventsBox = hasEventsPanel ? await getRect(page, "[data-testid='events-panel']") : null;
-      const headerBox = await getRect(page, "header");
-      const footerBox = await getRect(page, "footer");
-
-      if (!trackPathBox) {
-        throw new Error("Track path not found");
-      }
-      expect(trackPathBox.width).toBeGreaterThan(100);
-      expect(trackPathBox.height).toBeGreaterThan(100);
-      const trackArea = trackPathBox.width * trackPathBox.height;
-      const maxTrackOverlapRatio = 0.02;
-      expect(overlapArea(trackPathBox, telemetryBox) / trackArea).toBeLessThan(maxTrackOverlapRatio);
-      expect(overlapArea(trackPathBox, headerBox) / trackArea).toBeLessThan(maxTrackOverlapRatio);
-      expect(overlapArea(trackPathBox, footerBox) / trackArea).toBeLessThan(maxTrackOverlapRatio);
-      if (eventsBox) {
-        expect(overlapArea(trackPathBox, eventsBox) / trackArea).toBeLessThan(maxTrackOverlapRatio);
-      }
-
-      const labelRects = await getRects(
-        page,
-        "svg[aria-label='F1 track replay'] rect[stroke='rgba(255,255,255,0.2)']",
-      );
-      const dotRects = await getRects(page, "svg[aria-label='F1 track replay'] circle[stroke]");
-      const leaderLines = await getLeaderLineMetrics(page);
-      expect(labelRects.length).toBeGreaterThan(10);
-      expect(dotRects.length).toBeGreaterThan(10);
-      expect(leaderLines.length).toBeGreaterThan(10);
-
-      for (const label of labelRects) {
-        expect(overlapArea(label, telemetryBox)).toBeLessThan(2);
-        expect(overlapArea(label, headerBox)).toBeLessThan(2);
-        expect(overlapArea(label, footerBox)).toBeLessThan(2);
-        if (eventsBox) {
-          expect(overlapArea(label, eventsBox)).toBeLessThan(2);
-        }
-      }
-
-      const firstLineLength = leaderLines[0].length;
-      for (const line of leaderLines) {
-        expect(Math.abs(line.length - firstLineLength)).toBeLessThan(2);
-      }
-
-      for (const line of leaderLines) {
-        const closestDot = dotRects.reduce((best, dot) => {
-          const dx = line.startX - dot.centerX;
-          const dy = line.startY - dot.centerY;
-          const dist = Math.hypot(dx, dy);
-          return dist < best ? dist : best;
-        }, Number.POSITIVE_INFINITY);
-        expect(closestDot).toBeLessThan(2.5);
-        const reachesSomeLabel = labelRects.some(
-          (label) =>
-            line.endX >= label.left &&
-            line.endX <= label.right &&
-            line.endY >= label.top &&
-            line.endY <= label.bottom,
-        );
-        if (!reachesSomeLabel) {
-          const distanceToClosestLabel = labelRects.reduce((best, label) => {
-            const clampedX = Math.max(label.left, Math.min(line.endX, label.right));
-            const clampedY = Math.max(label.top, Math.min(line.endY, label.bottom));
-            const dx = line.endX - clampedX;
-            const dy = line.endY - clampedY;
-            const dist = Math.hypot(dx, dy);
-            return dist < best ? dist : best;
-          }, Number.POSITIVE_INFINITY);
-          expect(distanceToClosestLabel).toBeLessThan(3);
-        }
-      }
-
-      const distanceScale = 0.5;
-      const maxDistance = Math.max(trackPathBox.width, trackPathBox.height) * distanceScale;
-      for (const label of labelRects) {
-        const closest = dotRects.reduce((best, dot) => {
-          const dx = label.centerX - dot.centerX;
-          const dy = label.centerY - dot.centerY;
-          const dist = Math.hypot(dx, dy);
-          return dist < best ? dist : best;
-        }, Number.POSITIVE_INFINITY);
-        expect(closest).toBeLessThan(maxDistance);
-      }
-
-      if (viewport.name === "mobile") {
-        const weather = await getWeatherMetrics(page);
-        expect(weather).not.toBeNull();
-        expect(weather?.flexWrap).toBe("nowrap");
-        expect(weather?.scrollWidth).toBeLessThanOrEqual((weather?.clientWidth ?? 0) + 1);
-      }
-    } finally {
-      await context.close();
-    }
-  };
-
-  const shouldRetry = (error: unknown) => {
-    if (!(error instanceof Error)) return false;
-    return error.name === "TimeoutError" || error.message.includes("Timeout");
-  };
-
-  const runCaseWithRetry = async (
-    viewport: (typeof VIEWPORTS)[number],
-    round: number,
-    retries = VISUAL_CASE_RETRIES,
-  ) => {
-    try {
-      await runVisualCase(viewport, round);
-    } catch (error) {
-      if (retries > 0 && shouldRetry(error)) {
-        await runCaseWithRetry(viewport, round, retries - 1);
-        return;
-      }
-      throw error;
-    }
-  };
-
-  beforeAll(
-    async () => {
-      const result = await launchServerIfNeeded();
-      server = result.process;
-      browser = await launchBrowser();
-      await prewarmRounds(browser);
-    },
-    180_000,
-  );
+    archiveServer = Bun.serve({
+      port: 0,
+      fetch(request) {
+        const path = new URL(request.url).pathname.slice(1);
+        archiveRequests.push(`/${path}`);
+        const content = archive.files.get(path);
+        return content === undefined
+          ? new Response("missing", { status: 404 })
+          : new Response(content, { headers: { "content-type": "application/json" } });
+      },
+    });
+    const port = await getFreePort();
+    appOrigin = `http://127.0.0.1:${port}`;
+    devServer = spawn("bun", ["run", "dev"], {
+      env: {
+        ...process.env,
+        PORT: String(port),
+        RSBUILD_ARCHIVE_URL: archiveServer.url.toString(),
+      },
+      stdio: "ignore",
+    });
+    await waitForServer(`${appOrigin}/`);
+    browser = await chromium.launch();
+  }, 120_000);
 
   afterAll(async () => {
-    if (browser) {
-      await browser.close();
-    }
-    if (server) {
-      server.kill("SIGTERM");
-    }
+    await browser?.close();
+    devServer?.kill("SIGTERM");
+    archiveServer?.stop(true);
   });
 
   it(
-    "all rounds and viewports have safe labels (parallel batches)",
+    "keeps the replay route usable on desktop and mobile",
     async () => {
-      const cases = ROUNDS.flatMap((round) =>
-        VIEWPORTS.map((viewport) => ({
-          viewport,
-          round,
-          label: `round ${round} (${viewport.name})`,
-        })),
+      if (!browser || !archiveServer) throw new Error("Visual suite was not initialized");
+      const archiveOrigin = archiveServer.url.origin;
+      const archivePaths = new Set([...archive.files.keys()].map((path) => `/${path}`));
+      const carChunkPaths = new Set(
+        (archive.manifest.car?.chunks ?? []).map((chunk) => `/${chunk.url}`),
       );
 
-      for (let index = 0; index < cases.length; index += MAX_PARALLEL_CASES) {
-        const batch = cases.slice(index, index + MAX_PARALLEL_CASES);
-        await Promise.all(
-          batch.map(async (testCase) => {
-            try {
-              await runCaseWithRetry(testCase.viewport, testCase.round);
-            } catch (error) {
-              throw new Error(`${testCase.label} failed: ${String(error)}`);
-            }
-          }),
-        );
+      for (const viewport of VIEWPORTS) {
+        const context = await browser.newContext({
+          viewport: { width: viewport.width, height: viewport.height },
+          baseURL: appOrigin,
+        });
+        const page = await context.newPage();
+        const browserRequests: string[] = [];
+        page.on("request", (request) => browserRequests.push(request.url()));
+        page.setDefaultTimeout(30_000);
+        try {
+          await page.goto(ROUTE, { waitUntil: "domcontentloaded" });
+          await page.waitForSelector("svg[aria-label='F1 circuit and driver positions']");
+          await page.waitForSelector("input[type='range'][aria-label='Replay timeline']");
+          await page.waitForFunction(
+            () =>
+              document.querySelectorAll(
+                "svg[aria-label='F1 circuit and driver positions'] g[role='button']",
+              ).length >= 2,
+            undefined,
+            { timeout: 60_000 },
+          );
+          expect(page.url()).toContain(ROUTE);
+
+          for (const selector of [
+            "header",
+            "footer",
+            "[data-testid='events-panel']",
+            "[data-testid='telemetry-panel']",
+            "svg[aria-label='F1 circuit and driver positions']",
+            "input[type='range'][aria-label='Replay timeline']",
+          ]) {
+            const rect = await getFiniteRect(page, selector);
+            expect(Number.isFinite(rect.left)).toBe(true);
+            expect(Number.isFinite(rect.top)).toBe(true);
+            expect(rect.width).toBeGreaterThan(0);
+            expect(rect.height).toBeGreaterThan(0);
+          }
+
+          const overflow = await page.evaluate(
+            () =>
+              Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) -
+              window.innerWidth,
+          );
+          expect(overflow).toBeLessThanOrEqual(1);
+
+          const driver = page
+            .locator("svg[aria-label='F1 circuit and driver positions'] g[role='button']")
+            .first();
+          await driver.focus();
+          expect(await driver.evaluate((element) => document.activeElement === element)).toBe(true);
+
+          const slider = page.getByRole("slider", { name: "Replay timeline" });
+          const beforeSeek = Number(await slider.inputValue());
+          await slider.press("ArrowRight");
+          await waitFor(async () => Number(await slider.inputValue()) > beforeSeek);
+
+          await page.getByRole("button", { name: "Play replay" }).click();
+          await waitFor(
+            async () => (await page.getByRole("button", { name: "Pause replay" }).count()) > 0,
+          );
+          await page.getByRole("button", { name: "Pause replay" }).click();
+
+          await slider.press("End");
+          await waitFor(async () => Number(await slider.inputValue()) === END_MS);
+          const lastLocation = archive.manifest.locations.at(-1);
+          if (!lastLocation) throw new Error("Fixture has no final location chunk");
+          await waitFor(async () => archiveRequests.includes(`/${lastLocation.url}`));
+          expect(
+            await page
+              .locator("svg[aria-label='F1 circuit and driver positions'] g[role='button']")
+              .count(),
+          ).toBeGreaterThanOrEqual(2);
+
+          const carRequestsBefore = archiveRequests.filter((path) => carChunkPaths.has(path)).length;
+          await page.getByRole("button", { name: "TELEMETRY" }).click();
+          await waitFor(
+            async () =>
+              archiveRequests.filter((path) => carChunkPaths.has(path)).length > carRequestsBefore,
+          );
+
+          for (const requestUrl of browserRequests) {
+            const origin = new URL(requestUrl).origin;
+            expect([appOrigin, archiveOrigin]).toContain(origin);
+          }
+          expect([...archiveRequests].every((path) => archivePaths.has(path))).toBe(true);
+        } finally {
+          await context.close();
+        }
       }
     },
     180_000,

@@ -1,723 +1,201 @@
-# F1 Replay Documentation
+# F1 Replay architecture and operations
 
-## Table of Contents
-- [Overview](#overview)
-- [Features](#features)
-- [Tech Stack](#tech-stack)
-- [Project Structure](#project-structure)
-- [Getting Started](#getting-started)
-- [Architecture](#architecture)
-- [Components](#components)
-- [Hooks](#hooks)
-- [Services](#services)
-- [API Integration](#api-integration)
-- [Testing](#testing)
-- [Contributing](#contributing)
+## System overview
 
-## Overview
+F1 Replay has four production parts:
 
-F1 Replay is a replay-first Formula 1 web app with a home dashboard at `/`, a race details route at `/:year/:round/:session`, and a telemetry replay route at `/:year/:round/:session/replay`. Built with React, it combines Jolpica (schedule/standings), OpenF1 (replay telemetry + replay availability), and a non-blocking Formula1 RSS feed for editorial context.
+1. Cloudflare Pages serves the Rsbuild single-page app from `dist`.
+2. The public R2 custom domain serves `https://data.f1.wrick17.com/catalog.json` and immutable archive objects.
+3. `.github/workflows/archive.yml` runs the trusted publisher on schedule or through authenticated manual dispatch.
+4. The old replay and car telemetry Workers remain read-only during migration and rollback acceptance.
 
-## Features
+The browser reads published data. It has no archive upload path, publishing token, D1 orchestration loop, or cache-warming controls.
 
-### 🏎️ Race Replay
-- **Time-based Playback**: Scrub through any F1 session with a dynamic timeline
-- **Playback Controls**: Play, pause, and adjust playback speed (0.25x to 4x)
-- **Live Leaderboard**: Real-time driver standings with positions, gaps, and tire information
-- **3D Track View**: Visual representation of driver positions on the track
+### Application routes
 
-### 📊 Telemetry & Data
-- **Event Markers**: Visual indicators for DRS zones, pit stops, safety cars, and overtakes
-- **Events Panel**: Left-side chronological event list with timestamp, click-to-seek, active-event red line, playback auto-scroll, inline radio player controls, plus Legend/Shortcuts sections below the list
-- **Leaderboard Telemetry Toggle**: Optional per-driver car telemetry pills (speed/gear/RPM/throttle/brake/DRS) inside the Leaderboard panel, shown only when car telemetry exists for the selected session
-- **Weather Data**: Live weather conditions including air/track temperature, humidity, and rainfall
-- **Team Radio**: Listen to team radio communications with timestamp markers when OpenF1 provides radio clips for the selected session
+| Route | Purpose |
+| --- | --- |
+| `/` | Archived replay library and season context |
+| `/:year/:round/:session` | Session details |
+| `/:year/:round/:session/replay` | Replay timeline and telemetry |
+| `/replay` | Latest-replay bootstrap and legacy-link redirect |
+| `/ops/cache` | Read-only catalog health and inventory |
 
-### 🎯 User Experience
-- **Replay-First Home (`/`)**: Dashboard with latest replay CTA, next session highlight, completed replay cards, upcoming race details, standings, and newsroom feed
-- **Cross-Year Replay Library**: Replay sessions are listed across all replayable years and grouped by year in descending order
-- **Race Details Route (`/:year/:round/:session`)**: Event details page with metadata, sessions analysis/stints/lap metrics, driver headshots, team logos, and a dedicated `Watch Replay` CTA
-- **Standings Media**: Driver standings render driver headshots + team logos; constructor standings render team logos
-- **Live Countdown**: Next-session timer on home updates continuously (no manual refresh required)
-- **Replay Experience (`/:year/:round/:session/replay`)**: Full telemetry timeline, track map, events, and controls
-- **Ops Cache Dashboard (`/ops/cache`)**: Private cache-ops page with session cache status, manual refresh, and per-session warm actions
-- **Logo Navigation**: F1 Replay logo is shown on both `/` and replay pages; clicking it on replay returns to home
-- **Replay Header Loading Indicator**: The loading indicator next to the replay logo stays visible while either core replay data or car telemetry data is still loading (including worker cache reads and OpenF1 backfill)
-- **Replay Route Bootstrap**: Opening `/replay` without params auto-selects the latest replayable session (`Race` -> `Sprint` -> `Qualifying`) and redirects to clean replay paths
-- **Legacy Replay Redirect**: `/replay?year=...&round=...&session=...` redirects to `/:year/:round/:session/replay`
-- **Session Picker**: Select from any year, round, and session type
-- **Keyboard Shortcuts**: Quick controls for playback and navigation
-- **Responsive Design**: Works across different screen sizes
-- **Mobile Weather Badge**: Weather widget uses a compact single-row layout on mobile without horizontal scrolling
-- **Mobile Collapsible Panels**: Leaderboard and Events panels can be expanded/collapsed on mobile (default expanded)
-- **Collapsed Mobile Headers**: On mobile, collapsed Leaderboard/Events render as header rows only, and expanding restores the full panel body without overlap
-- **Desktop Panel Safe Zones**: Left/right side panels are constrained with bottom clearance above the controls bar to prevent overlap or out-of-bounds rendering
-- **Responsive Side Panels**: On smaller desktop heights, telemetry/events lists remain usable via internal scrolling without clipping outside the viewport
-- **Persistent Preferences**: Remember user settings across sessions
+The supported archive identities are `year/round/type`, where type comes from the exact OpenF1 `session_name` and is `Qualifying`, `Sprint`, or `Race`. OpenF1's generic `session_type` reports Sprint as Race, so it is not used for this identity. Sprint Qualifying and Sprint Shootout are excluded.
 
-## Tech Stack
+## Runtime data flow
 
-### Core Framework
-- **React 19.2.4**: UI library with latest features
-- **TypeScript 5.9.3**: Type-safe development
+The app resolves the archive root through `RSBUILD_ARCHIVE_URL`. The production build defaults it to `https://data.f1.wrick17.com`.
 
-### Build Tools
-- **Rsbuild 1.7.3**: Fast Rspack-powered build tool
-- **Rspack**: High-performance bundler
+1. Home, details, and replay routes load and validate `catalog.json`.
+2. The chosen catalog entry identifies one immutable manifest.
+3. The loader validates the manifest hash, size, schema, session identity, and chunk bounds.
+4. Core session data loads once.
+5. Location chunks load for the active replay window. Adjacent guard samples preserve interpolation across chunk boundaries.
+6. Car telemetry chunks load only when the manifest has a car section and the user opens telemetry.
 
-### URL State
-- **Path + Query State**:
-  - `/` renders `HomePage`
-  - `/:year/:round/:session` renders `EventDetailsPage`
-  - `/:year/:round/:session/replay` renders replay and keeps route state in path params
-  - `/replay` is reserved for bootstrap/legacy redirects
-  - `/ops/cache` renders `OpsCacheDashboardPage`
+The catalog loader keeps a recent last-known catalog in browser storage for ordinary replay resilience. The ops route bypasses that fallback when reporting archive health, so it does not label stale local data as current.
 
-### Styling
-- **Tailwind CSS 4.1.18**: Utility-first CSS framework
-- **PostCSS**: CSS processing with Tailwind plugin
+## Schema v2 archive
 
-### UI & Animation
-- **Framer Motion 12.33.0**: Animation library for smooth transitions
-- **Lucide React 0.563.0**: Modern icon library
+`catalog.json` is the only mutable archive object. Its main fields are:
 
-### Development Tools
-- **Biome 2.3.14**: Fast linter and formatter
-- **Bun**: Fast JavaScript runtime and package manager
+- `schemaVersion: 2`
+- `updatedAt`, set by the publisher when it forms a catalog for publication
+- `sessions`, containing meeting/session metadata, replay and car availability, and the manifest descriptor
 
-## Project Structure
+`updatedAt` belongs to the archive publisher. It is not copied from OpenF1 and does not mean every optional object changed at that time.
 
-```
-f1-replay/
-├── src/
-│   ├── index.tsx              # Application entry point
-│   ├── index.css              # Global styles
-│   ├── app/
-│   │   └── routing.ts         # Route parsing/building helpers for home, event, replay, ops
-│   └── modules/
-│       ├── home/              # Home dashboard module
-│       │   ├── hooks/
-│       │   │   └── useHomeDashboard.ts
-│       │   │   └── useReplayEventDetails.ts
-│       │   ├── pages/
-│       │   │   └── EventDetailsPage.tsx
-│       │   │   └── HomePage.tsx
-│       │   ├── services/
-│       │   │   └── eventDetails.service.ts
-│       │   │   └── homeData.service.ts
-│       │   └── types/
-│       │       └── home.types.ts
-│       └── replay/            # Replay module
-│           ├── index.ts
-│           ├── pages/         # Page components
-│           │   └── ReplayLegacyRedirectPage.tsx
-│           │   └── ReplayPage.tsx
-│           │   └── ReplayRoutePage.tsx
-│           ├── components/    # UI components
-│           │   ├── ControlsBar.tsx
-│           │   ├── EventMarkerPopup.tsx
-│           │   ├── EventsPanel.tsx
-│           │   ├── Leaderboard.tsx
-│           │   ├── MarkerLegend.tsx
-│           │   ├── RadioPopup.tsx
-│           │   ├── SessionPicker.tsx
-│           │   ├── TelemetryPanel.tsx
-│           │   ├── TimelineSlider.tsx
-│           │   ├── TrackView.tsx
-│           │   └── WeatherBadge.tsx
-│           ├── hooks/         # Custom React hooks
-│           │   ├── useKeyboardShortcuts.ts
-│           │   ├── useReplayController.ts
-│           │   ├── useReplayData.ts
-│           │   ├── useSessionSelector.ts
-│           │   ├── useTeamRadio.ts
-│           │   ├── useTrackComputation.ts
-│           │   └── useUserPreferences.ts
-│           ├── services/      # Business logic
-│           │   ├── driverState.service.ts
-│           │   ├── events.service.ts
-│           │   ├── telemetry.service.ts
-│           │   ├── trackBuilder.service.ts
-│           │   └── weather.service.ts
-│           ├── api/           # API client
-│           │   ├── cache.ts
-│           │   ├── openf1.client.ts
-│           │   └── rateLimiter.ts
-│           ├── types/         # TypeScript definitions
-│           ├── utils/         # Utility functions
-│           └── constants/     # Constants and config
-├── public/                    # Static assets
-├── test/                      # Test files
-│   └── unittests/
-├── package.json
-├── rsbuild.config.ts         # Build configuration
-├── tailwind.config.ts        # Tailwind configuration
-├── tsconfig.json             # TypeScript configuration
-└── biome.json                # Biome linter/formatter config
+Each descriptor has `url`, `sha256`, and uncompressed JSON `bytes`. Immutable URLs use `objects/<sha256>.json`, so changing content produces a new path.
+
+A session manifest contains:
+
+- the core replay object
+- ordered location chunk descriptors
+- optional car telemetry metadata and chunk descriptors
+- the session, meeting, round, and time bounds needed to reject mismatched objects
+
+Core data includes session metadata, drivers, timing, race control, weather, pit, overtake, radio, and track geometry data. Driver locations live in compact numeric tuples outside the core object. Car tuples contain timestamp, driver, speed, gear, RPM, throttle, brake, and DRS.
+
+The first location and car window is 60 seconds, followed by four-minute windows. Location chunks include the nearest per-driver sample before and after the owned window as guards. This keeps interpolation stable without duplicating whole sessions.
+
+Car telemetry is optional. `status.car` is `ready` when its chunks were published and `unavailable` otherwise. Replay core and location data remain usable without it.
+
+R2 stores JSON bodies with `Content-Encoding: gzip`. Immutable objects use `Cache-Control: public, max-age=31536000, immutable`; `catalog.json` uses a five-minute public cache. The publisher verifies each content hash locally, reads each R2 upload back, decompresses when needed, and compares the exact JSON before it publishes references to that object.
+
+## Publisher
+
+Run the default current-UTC-year discovery locally without writing to R2:
+
+```sh
+bun run archive:publish -- --dry-run --out /tmp/f1-archive
 ```
 
-## Getting Started
+Select years explicitly when needed:
 
-### Prerequisites
-- [Bun](https://bun.sh/) runtime installed (or Node.js 18+)
+```sh
+bun run archive:publish -- --dry-run --out /tmp/f1-archive --years 2025,2026
+```
 
-### Installation
+Production publishing is:
 
-```bash
-# Clone the repository
-git clone <repository-url>
-cd f1-replay
+```sh
+bun run archive:publish
+```
 
-# Install dependencies
+The required secret names are `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, and `S3_ENDPOINT`. `S3_REGION` is optional and defaults to `auto`. The publisher writes to the fixed `f1-archive` bucket and verifies the public catalog at `https://data.f1.wrick17.com/catalog.json` before it succeeds.
+
+For each ended supported session, the publisher:
+
+1. discovers OpenF1 meetings and sessions and reads the Jolpica calendar
+2. matches the meeting to the official Jolpica round, accounting for Las Vegas's local race date
+3. builds replay data through the existing replay builders
+4. builds optional 500 ms car telemetry buckets
+5. accepts canonical track geometry only from the exact expected `https://api.multiviewer.app/api/v1/circuits/<circuitKey>/<year>` URL and validates its identity and points, otherwise derives geometry from locations
+6. uploads core and chunks, then the session manifest
+7. merges the new stable `year/round/type` entries into the existing catalog and uploads the catalog last
+
+The client paces OpenF1 requests to at most 30 per minute. Transient network failures, HTTP 429, and server errors get bounded retries. An individual session build failure is logged and skipped. An OpenF1 HTTP 401 stops further discovery because retrying an access restriction would waste calls.
+
+On 2026-09-06, during a live F1 session, `GET https://api.openf1.org/v1/sessions?year=2025` returned HTTP 401. The response described a temporary restriction on global API and past-session access until the live session ended. This was one observed year, endpoint, and time condition. It does not prove that all historical endpoints are restricted. If a 401 occurs before additions, the publisher keeps the prior catalog and snapshot byte-for-byte. If verified legacy imports were completed earlier in the run, it may publish those additions.
+
+The GitHub workflow checks the current UTC year's Jolpica calendar at 7 and 37 minutes past every hour. During the first 48 hours of January it also checks the prior year. It considers only the exact `Qualifying`, `Sprint`, and `Race` calendar fields:
+
+- Qualifying and Sprint become eligible 90 minutes after their scheduled start.
+- Race becomes eligible 150 minutes after its scheduled start.
+- An eligible identity remains in the retry window for 48 hours while it is absent from the checked-in catalog snapshot.
+
+This gate estimates when a session should be over. The publisher separately requires an actual OpenF1 `date_end`, so it does not fetch an ongoing session. A missing or malformed calendar, or a required session without a date and time, produces `publish: false`. A missing or malformed snapshot produces a publishing attempt when a session is eligible; it is not reported as current archive health.
+
+Fast race-window runs attempt at most two current-year sessions. The daily 03:17 UTC run forces a backfill across every year from 2023 through the current UTC year and attempts at most ten sessions. Authenticated `workflow_dispatch` accepts a 1–10 attempt limit and an optional comma-separated year list; leaving the year input blank selects the same 2023-to-current range. Repeated bounded runs fill remaining history, with the newest missing replay sessions ahead of car-only repairs.
+
+The workflow installs Bun 1.4.0 from the frozen lockfile, commits `public/archive/catalog.json` only when it changes, and uses no Cloudflare compute for scheduling. GitHub scheduled workflows are best effort and may be delayed; the calendar thresholds are not an availability guarantee. GitHub permissions protect manual publishing, and the frontend only links to the workflow.
+
+## Build, test, and deploy
+
+Install and start the app:
+
+```sh
 bun install
-```
-
-### Development
-
-```bash
-# Start development server
 bun run dev
-
-# Application will be available at http://localhost:3001
 ```
 
-### Building for Production
+Run the release checks:
 
-```bash
-# Build the application
-bun run build
-
-# Preview production build
-bun run preview
-```
-
-### Code Quality
-
-```bash
-# Run linter
+```sh
+bun run typecheck
 bun run lint
-
-# Fix linting issues
-bun run lint:fix
-
-# Format code
-bun run format
-
-# Run tests
 bun run test
-
-# Run visual layout tests
-bun run test:visual
-
-# Warm Cloudflare caches
-#
-# Combined (replay + car telemetry):
-bun run warm:caches
-
-# Aliases:
-# - bun run warm:cache
-# - bun run warm:telemetry-cache
+bun run build
 ```
 
-Notes:
-- Warmers retry failed API requests with exponential backoff (built-in defaults).
-- If any API request returns `401`, the warmer stops immediately (to avoid spamming when credentials are invalid).
-- The warmer attempts to cache all ended sessions across the dataset (falls back to year-by-year queries if OpenF1's `meetings` endpoint doesn't return multiple years).
-- While the warmer is running, a live dashboard is served at `http://localhost:3002` (override via `DASHBOARD_PORT`).
+`bun run test:visual` runs the optional visual suite. `bun run preview` serves the built output locally.
 
-### Remote Cloudflare cache warmer
+The Pages deployment must publish `dist` from a commit that passed these checks. Use the existing Pages project and Git integration rather than adding a second deployment path. After deployment, verify the home route, one details route, one archived replay, `/ops/cache`, and the catalog URL. Check that the replay loads core and location data and that a session marked `car: ready` can load a telemetry chunk.
 
-For production cache prewarming (without relying on a local machine), use `workers/openf1-cache-warmer`.
+The archive workflow is separate from the Pages deploy. A frontend deploy never needs R2 write credentials.
 
-- Hourly run: `0 * * * *`
-- Daily deep scan: `15 3 * * *` (rotates one historical season per day using a persisted cursor)
-- Supports `Qualifying`, `Sprint`, and `Race` only
-- Retries worker/transient failures hourly for up to 12 hours after session end
-- OpenF1 no-data failures (`OPENF1_NO_DATA`) retry every 24 hours with an extended retry window to avoid repeated near-term calls
+## Legacy migration
 
-Admin endpoints (auth required):
+Migration begins with a read-only inventory of the two legacy D1 indexes and R2 buckets:
 
-- `POST /admin/run` (optionally `?deep=1`) to trigger a manual run
-- `GET /admin/status` to inspect recent `warm_session_attempts` state
-
-Dashboard endpoints (cookie auth):
-
-- `POST /auth/shoo/login`
-- `POST /auth/logout`
-- `GET /auth/session`
-- `GET /dashboard/sessions`
-- `POST /dashboard/warm-all`
-- `POST /dashboard/probe`
-- `POST /dashboard/sessions/:sessionKey/warm`
-
-Dashboard data behavior:
-
-- Returns tracked D1 rows from `warm_session_attempts` (no full historical rediscovery on each dashboard read)
-- `GET /dashboard/sessions` also returns persisted warm-all batch state from `warm_worker_state`
-- Rows with missing cache state are prioritized first in the UI sort order
-- Uses `missing` cache status (legacy `expired` rows are normalized to `missing`)
-- Optional cache presence checks use `POST /dashboard/probe` with a bounded key list (max 20 per request)
-- Dashboard includes `Warm All Missing` for backend batch warmup
-- Batch warmup continues in background via `ctx.waitUntil(...)` even if the page refreshes/closes
-- `Warm All Missing` progress (`done/total/active/failed`) persists in D1 state and survives reloads; UI labels this as processed count
-- Running batches are resumable: stale in-flight state is recovered and the next step resumes from persisted cursor
-- Stale per-session `warm_in_progress` markers are cleared automatically during recovery
-- Individual row actions show `Warming...` while that row's warm request is in flight
-- Warm orchestration stores in-flight state in D1 (`warm_in_progress`, `warm_started_at`) so row loaders survive page reloads and track remote work accurately
-- Status column shows a single result per row: `Error` when present, otherwise `Completed`
-- `Error` is rendered only while cache is still missing; once replay+telemetry are warm, stale legacy errors are cleared/suppressed
-- Session identity is split into `Session Name` (year/round/type + meeting name) and `Session Key`
-- `/ops/cache/auth/callback` is the Shoo callback path and resolves to the ops dashboard route
-
-Auth:
-
-- `Authorization: Bearer <ADMIN_TOKEN>`
-
-### Worker Configuration
-
-The Cloudflare Worker requires:
-
-- D1 binding for replay cache metadata (table `replay_cache` keyed by `session_key`)
-- R2 bucket for replay payload storage
-- A secret used to sign short-lived upload tokens (e.g., `REPLAY_UPLOAD_SECRET`)
-- A public worker URL that the frontend can call
-- A replay worker edge cache (`caches.default`) for `GET /replay` hot reads
-
-The remote warmer worker (`workers/openf1-cache-warmer`) requires:
-
-- D1 binding for orchestration state (table `warm_session_attempts`)
-- D1 state table `warm_worker_state` for deep-scan cursor bookkeeping
-- `OPENF1_BASE_URL` var
-- `REPLAY_WORKER_BASE_URL` var
-- `CAR_TELEMETRY_WORKER_BASE_URL` var
-- `DASHBOARD_ALLOWED_ORIGINS` var for browser allowlist checks
-- Include both local and production dashboard origins (for example: `http://localhost:3000,http://localhost:3001,https://f1.wrick17.com,https://www.f1.wrick17.com`)
-- `ADMIN_TOKEN` secret for admin routes
-- `OPS_ALLOWED_EMAILS` secret for dashboard access allowlist (comma-separated)
-- `SESSION_SECRET` secret for dashboard cookie signing
-- `SHOO_BASE_URL` var (`https://shoo.dev` by default)
-
-`warm_session_attempts` schema notes:
-
-- `warm_in_progress` (`0/1`) marks active warm orchestration for a session
-- `warm_started_at` records when the active warm attempt began
-- `meeting_name` and `session_name` persist labels for dashboard reads without extra OpenF1 fetches
-
-Ops auth flow:
-
-- Frontend starts Shoo Google sign-in and requests PII (`requestPii: true`) so email is available in token claims
-- Frontend posts Shoo `id_token` to `POST /auth/shoo/login`
-- Worker verifies JWT signature + issuer + audience (`origin:{request_origin}`) + expiration
-- Worker checks normalized email claim against normalized `OPS_ALLOWED_EMAILS`
-- Worker issues `ops_session` HttpOnly cookie only for allowlisted identities
-
-Note: If you delete/recreate the D1 database, Cloudflare will issue a new `database_id`. Update `workers/openf1-proxy/wrangler.toml` with the new `database_id` and redeploy the worker.
-
-Frontend configuration:
-
-- `RSBUILD_WORKER_URL` env var pointing to the worker base URL (for example: `http://127.0.0.1:8787` in local dev)
-- `RSBUILD_CAR_TELEMETRY_WORKER_URL` env var pointing to the car telemetry cache worker base URL (separate D1/R2 storage from replay cache)
-- `RSBUILD_CACHE_WARMER_URL` env var pointing to `openf1-cache-warmer` for `/ops/cache`
-- `RSBUILD_ENABLE_REMOTE_CACHE_OPS` to allow remote ops actions from the browser (defaults to `true`)
-- `RSBUILD_ENABLE_REMOTE_CACHE_PROBES` to allow bounded `/dashboard/probe` refresh probes (defaults to `true`)
-
-Local script quota guard:
-
-- `scripts/warm-caches/config.ts` blocks deployed `workers.dev` warm runs unless `CF_REMOTE=1` is set
-
-Database setup:
-
-- Apply D1 migrations from `workers/openf1-proxy/migrations`
-- Example: `wrangler d1 migrations apply openf1-replay --local`
-- Apply D1 migrations from `workers/openf1-cache-warmer/migrations` for remote orchestration state
-
-## Architecture
-
-### Data Flow
-
-1. **Session Selection**: User selects year, round, and session type via `SessionPicker`
-2. **Data Fetching**: `useReplayData` requests a replay payload from the worker; on cache miss, the client aggregates OpenF1 data and backfills the cache
-3. **Data Processing**: Services transform raw API data into usable formats
-4. **State Management**: Replay state managed by `useReplayController`
-5. **Rendering**: Components react to state changes and display data
-
-### API Integration
-
-The app uses free public APIs:
-
-- [OpenF1](https://openf1.org/) for replay telemetry and replay availability/session resolution
-- [Jolpica Ergast mirror](https://api.jolpi.ca/ergast/f1) for season calendar and standings on the home dashboard
-- Formula1 RSS feed (via a CORS-safe endpoint) for homepage newsroom content
-
-Replay payloads are cached via Cloudflare Worker endpoints at `GET /replay` and `POST /replay`.
-To reduce first-load failures on current-season sessions, the client prioritizes the selected replay session before background year discovery and retries transient OpenF1 `429` responses more aggressively.
-When OpenF1 rate-limits the client, those retries stay in the background and do not surface a user-facing error while partial replay data is already available.
-
-OpenF1 endpoints used by the client include:
-- Meeting and session information
-- Driver position data
-- Telemetry (speed, gear, RPM, throttle, brake)
-- Team radio communications
-- Weather conditions
-- Pit stop data
-- Race control messages
-
-### Caching Strategy
-
-The application uses a write-once, read-forever caching system using Cloudflare D1 and R2:
-
-1. **Worker Cache (D1 + R2)**: Replay payload stored in R2 with metadata in D1 by `session_key`
-2. **Client Backfill**: On cache miss, the browser fetches OpenF1 data and uploads the payload to the worker
-3. **Optional Client Cache**: In-memory and IndexedDB caches remain as a secondary layer
-4. **Remote Warming**: Scheduled worker proactively fills missing replay + car telemetry cache entries after session end
-5. **Edge Cache**: Worker `GET` responses are cached in Cloudflare edge cache (`X-Cache: EDGE`) for repeated reads
-
-### Rate Limiting
-
-The client performs sequential OpenF1 requests on cache miss to comply with API limits. The worker only handles cache reads and secure backfill writes.
-
-## Components
-
-### Core Components
-
-#### `ReplayPage`
-Main page component that orchestrates the entire replay experience. Manages state, data loading, and coordinates all child components.
-
-#### `SessionPicker`
-Allows users to select:
-- Year (from available F1 seasons)
-- Round (race weekend)
-- Session type (Qualifying, Race)
-
-#### `ControlsBar`
-Playback controls including:
-- Play/Pause button
-- Speed adjustment (0.25x, 0.5x, 1x, 2x, 4x)
-- Current timestamp display
-
-#### `TimelineSlider`
-Interactive timeline with:
-- Draggable slider for time navigation
-- Event markers (DRS, pit stops, safety car, overtakes)
-- Visual indication of current playback position
-
-#### `Leaderboard`
-Shows driver standings with:
-- Current position
-- Driver name and number
-- Team information
-- Gap to leader/car ahead
-- Tire compound and age
-- Pit stop count
-
-#### `TrackView`
-3D visualization showing:
-- Track layout
-- Driver positions in real-time
-- Direction of travel
-- Team colors
-- Deterministic driver labels with fixed-length leader lines
-- Label placement that allows overlaps while keeping labels inside safe track bounds
-
-##### Track Label Placement Logic
-- Labels keep their existing pill content/structure (`position + driver name + team logo/initials`)
-- Every driver has a fixed-length `5px` leader line segment from marker to label edge
-- Labels are constrained to the right side of each driver marker
-- Placement is deterministic (no worker-based collision solver), so labels do not jump between play/pause states
-- Labels follow marker movement each frame with stable per-driver angle hysteresis
-- Label overlap with other labels/markers is allowed by design
-- Labels are constrained to a padded internal viewbox so they are not hidden by surrounding panels
-
-#### `TelemetryPanel`
-Displays detailed telemetry for selected driver:
-- Speed (km/h)
-- Gear
-- RPM
-- Throttle percentage
-- Brake status
-- DRS status
-- The telemetry toggle and driver pills are only rendered after car telemetry data is available for the current session, and they appear as soon as the first usable telemetry chunk is ingested rather than waiting for the full session backfill
-- The leaderboard shows a `Loading telemetry…` hint while car telemetry is still being fetched, including the initial pre-payload window before the first telemetry sample arrives
-
-#### `WeatherBadge`
-Shows current weather conditions:
-- Air temperature
-- Track temperature
-- Humidity
-- Wind speed and direction
-- Rainfall indicator
-
-#### `MarkerLegend`
-Legend explaining timeline event markers
-
-#### `EventMarkerPopup` & `RadioPopup`
-Tooltips displaying event and radio communication details
-
-## Hooks
-
-### `useReplayData`
-Primary data management hook that:
-- Fetches aggregated session data from the worker
-- Manages loading states and errors
-- Provides available years and sessions
-- Exposes a year only when at least one supported replay session (`Qualifying`, `Sprint`, or `Race`) has ended
-- Exposes a meeting only when at least one supported replay session (`Qualifying`, `Sprint`, or `Race`) has ended
-- Limits year discovery to OpenF1-supported replay seasons (`2023` onward) so the client does not probe older unavailable years
-- Prioritizes the selected replay session before background year discovery so current-session pages load first
-- Keeps transient OpenF1 `429` retries in the background so already-loaded replay data remains interactive
-- Uses a native year select that stays interactive during in-flight replay loads so users can switch seasons without waiting for the previous request to finish
-- Returns structured `ReplaySessionData`
-
-**Usage:**
-```typescript
-const { data, loading, error, meetings, sessions, availableYears } = 
-  useReplayData({ year, round, sessionType });
+```sh
+bun scripts/archive/migrate-legacy.ts inventory --root /tmp/f1-archive-backup
 ```
 
-### `useReplayController`
-Manages playback state:
-- Current time tracking
-- Play/pause state
-- Playback speed control
-- Time seeking functionality
+Create the backup before any rewrite:
 
-**Usage:**
-```typescript
-const { currentMs, isPlaying, speed, setPlaying, setSpeed, seekTo } = 
-  useReplayController({ startMs, endMs, dataRevision });
+```sh
+bun scripts/archive/migrate-legacy.ts backup --root /tmp/f1-archive-backup
 ```
 
-### `useSessionSelector`
-Handles session selection logic:
-- Validates year/round/session combinations
-- Auto-selects the first available supported session (`Race` or `Qualifying`)
-- Manages round and session options
+The backup command:
 
-### `useTeamRadio`
-Manages team radio playback:
-- Filters radio messages for current time
-- Handles audio playback
-- Manages popup state
-- Team radio controls are hidden when the selected session has no radio clips
+- refuses an incomplete or unexpected D1-to-R2 inventory
+- downloads each source object without changing it
+- records raw and gzip byte counts and SHA-256 digests
+- verifies every gzip round trip
+- resumes only when the remote inventory still matches its manifest
 
-### `useTrackComputation`
-Computes track visualization data:
-- Builds 3D track geometry
-- Calculates driver positions on track
-- Handles track bounds and scaling
+The guarded in-place gzip command is:
 
-### `useUserPreferences`
-Persists user preferences:
-- Last selected session
-- Playback speed
-- UI preferences
-
-### `useKeyboardShortcuts`
-Keyboard shortcuts for power users:
-- `Space`: Play/Pause
-- `←/→`: Seek backward/forward
-- `↑/↓`: Next/previous round
-- `Shift + ↑/↓`: Next/previous year
-- `Ctrl + Shift + ↑/↓`: Next/previous session
-- `S`: Cycle playback speed
-- `M`: Toggle team radio
-- `I`: Cycle skip interval
-- `E`: Expand/collapse timeline
-- `T`: Toggle leaderboard telemetry
-
-## Services
-
-### `telemetry.service.ts`
-Processes raw telemetry data:
-- `computeTelemetryRows`: Builds telemetry lookup by driver and time
-- `computeTelemetrySummary`: Aggregates telemetry statistics
-- Interpolates missing data points
-
-### `events.service.ts`
-Manages race events:
-- `buildTimelineEvents`: Creates timeline markers
-- `getActiveOvertakes`: Identifies overtaking maneuvers
-- Processes pit stops, safety cars, DRS zones
-
-### `driverState.service.ts`
-Tracks driver state:
-- Computes standings at any given time
-- Calculates gaps between drivers
-- Manages tire information
-
-### `trackBuilder.service.ts`
-Builds track visualization:
-- Converts GPS coordinates to 2D track
-- Smooths track path
-- Calculates track bounds
-
-### `weather.service.ts`
-Weather data management:
-- Retrieves weather at specific timestamps
-- Interpolates between weather updates
-
-## API Integration
-
-### OpenF1 Worker (`workers/openf1-proxy`)
-
-The frontend calls a worker endpoint to read cached replay payloads. On cache miss, the worker returns a short-lived upload token so the browser can backfill the cache after aggregating OpenF1 data.
-
-### Car Telemetry Worker (`workers/openf1-car-telemetry`)
-
-Car telemetry for the Leaderboard panel (speed/gear/RPM/throttle/brake/DRS) is cached via a separate worker and separate storage to avoid polluting the replay cache. The browser fetches `GET /car-telemetry?session_key=...`; on cache miss (`202`), the browser fetches OpenF1 `car_data`, down-samples to 500ms buckets, then uploads via `POST /car-telemetry` using the provided token.
-
-The worker also uses Cloudflare's edge cache (`caches.default`) for `200` responses to reduce repeated D1/R2 reads. You can inspect the `X-Cache` header:
-- `EDGE`: served from edge cache
-- `HIT`: served from the worker's D1/R2 cache
-
-#### `GET /car-telemetry?session_key=<id>`
-Behavior:
-- Checks D1 for a cached payload keyed by `session_key`
-- If present, streams payload from R2
-- If absent, returns `202` with `{ uploadToken, expiresAt }`
-
-#### `POST /car-telemetry`
-Body:
-- `session_key`: number
-- `payload`: `CarTelemetryPayload`
-
-Headers:
-- `Authorization: Bearer <uploadToken>`
-
-Behavior:
-- Validates the signed token (HMAC) and expiry for the given `session_key`
-- Stores payload in R2 and writes metadata to D1, then returns `204`
-
-**Example:**
-```typescript
-const response = await fetch(`/car-telemetry?session_key=${sessionKey}`);
-if (response.status === 202) {
-  const { uploadToken } = await response.json();
-  const payload = await buildCarTelemetryPayload(sessionKey);
-  await fetch("/car-telemetry", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${uploadToken}`,
-    },
-    body: JSON.stringify({ session_key: sessionKey, payload }),
-  });
-}
+```sh
+bun scripts/archive/migrate-legacy.ts apply \
+  --root /tmp/f1-archive-backup \
+  --confirm readonly-workers-deployed-and-backup-verified
 ```
 
-### OpenF1 API Endpoints
+Run it only after the read-only legacy Worker versions are live and the backup has been reviewed. The command revalidates the complete backup and unchanged inventory, checks that both Workers reject `POST` with HTTP 405, rewrites one known R2 object at a time with gzip metadata, and verifies the decoded remote SHA-256. It records progress after each object and does not delete D1 rows, R2 objects, or local backups.
 
-These endpoints are called directly from the client (not via the worker).
+Convert verified legacy backups into the schema v2 archive with a dry run first:
 
-- `meetings`: Race weekend information
-- `sessions`: Session details
-- `drivers`: Driver information
-- `position`: Driver positions over time
-- `location`: GPS coordinates
-- `car_data`: Telemetry data (speed, RPM, gear, etc.)
-- `race_control`: Race director messages
-- `team_radio`: Team radio communications
-- `weather`: Weather conditions
-- `pit`: Pit stop data
-
-## Testing
-
-The project includes unit tests located in the `test/unittests/` directory.
-
-### Running Tests
-
-```bash
-# Run unit tests (default)
-bun run test
-
-# Run visual layout tests
-bun run test:visual
-
-# Run tests in watch mode
-bun test --watch
-
-# Run specific test file
-bun test test/unittests/specific-test.ts
+```sh
+bun run archive:publish -- --dry-run --out /tmp/f1-archive-import \
+  --import-dir /tmp/f1-archive-backup --import-only
 ```
 
-### Testing Approach
-- Unit tests for services and utilities
-- Component testing for UI components
-- Integration tests for API client
-- Manual smoke testing for end-to-end flows
-- Visual tests validate track/label safety against app panels and fixed-length leader-line consistency
+The importer prefers `raw/replay` and `raw/car-telemetry`, then accepts their gzip backup forms. It maps rounds through Jolpica, skips identities already in the catalog, and treats missing car telemetry as optional. Unsupported session names, empty cancelled payloads, and invalid objects are recorded in an explicit quarantine report. The importer never edits the backup input.
 
-### Manual Smoke Test
+After reviewing the dry-run output, the same import without `--dry-run --out` writes new schema v2 objects to R2. The publisher still uploads the manifest and catalog last and verifies public readback.
 
-1. Select the latest replayable year and round, and confirm the session picker only shows `Race` and `Qualifying`
-2. Wait for telemetry data to load
-3. Press Play button
-4. Verify:
-   - Cars animate on track view
-   - Leaderboard updates in real-time
-   - Telemetry panel shows speed/gear data
-   - Timeline markers are visible
-   - Weather badge displays correctly
+## Rollback and retirement
 
-## Contributing
+Keep the legacy Workers, D1 databases, R2 objects, and verified backup read-only until the new Pages build and archive have passed production acceptance.
 
-### Development Workflow
+If the frontend fails, roll Pages back to the previous deployment. That build can still read entries already present through the legacy Worker GET path. Its old upload attempts receive HTTP 405, so it cannot backfill a legacy cache miss. If the archive catalog fails, republish the last good `public/archive/catalog.json` snapshot. Content-addressed objects are immutable and remain addressable, so catalog rollback does not require rewriting them.
 
-1. **Fork & Clone**: Fork the repository and clone locally
-2. **Create Branch**: `git checkout -b feature/your-feature-name`
-3. **Make Changes**: Implement your feature or fix
-4. **Test**: Ensure all tests pass and app works correctly
-5. **Lint & Format**: Run `bun run lint:fix` and `bun run format`
-6. **Commit**: Write clear, descriptive commit messages
-7. **Push**: Push to your fork
-8. **Pull Request**: Open a PR with detailed description
+Do not delete legacy data as part of migration. Retire the warmer schedule only after a successful trusted publish and valid live schema v2 catalog check. Then remove the old warmer cron triggers, verify scheduled events stop, and separately decide the retention period for the warmer Worker, its D1 state, and old cache storage.
 
-### Code Style
+## Cost model
 
-This project uses Biome for linting and formatting:
-- Follow TypeScript best practices
-- Use functional components and hooks
-- Keep components small and focused
-- Write descriptive variable and function names
-- Add comments for complex logic
-- Maintain consistent file structure
+Normal replay traffic reads static gzip content from the R2 custom domain. It does not invoke the old cache warmer or poll D1. Content-addressed objects are uploaded once and reused; routine publisher runs write only new session objects and the small mutable catalog.
 
-### Directory Conventions
+The design aims to fit low-volume operation within available free allowances, but no allowance or traffic pattern is guaranteed. Track R2 storage, Class A and Class B operations, GitHub Actions minutes, Pages usage, and any retained Worker or D1 activity against the providers' current limits.
 
-- **Components**: One component per file, PascalCase naming
-- **Hooks**: Custom hooks start with `use`, camelCase naming
-- **Services**: Business logic in services, `*.service.ts` naming
-- **Types**: TypeScript definitions in `types/` folders
-- **Utils**: Helper functions in `utils/` folders
+## Source ownership
 
-### Performance Considerations
-
-- Use `useMemo` and `useCallback` for expensive computations
-- Implement virtualization for large lists
-- Lazy load heavy components
-- Optimize re-renders with React DevTools
-- Minimize bundle size by code splitting
-
-### Accessibility
-
-- Use semantic HTML elements
-- Provide ARIA labels where needed
-- Ensure keyboard navigation works
-- Test with screen readers
-- Maintain sufficient color contrast
-
-## License
-
-This project is licensed under the terms specified in the repository.
-
-## Data Attribution
-
-Data provided by [OpenF1](https://openf1.org/), an open-source F1 telemetry API.
-
-## Support
-
-For issues, questions, or contributions, please use the GitHub repository issue tracker.
-
----
-
-Built with ❤️ by the F1 Replay team
+- OpenF1 owns session, timing, position, event, radio, weather, and car telemetry source data.
+- Jolpica owns calendar, round, schedule, and standings source data used here.
+- MultiViewer supplies canonical circuit geometry only through the validated URL described above.
+- The archive publisher owns schema conversion, object hashes, chunk boundaries, availability flags, and catalog `updatedAt`.
+- The Pages app owns presentation and local replay state. It does not own or mutate published telemetry.

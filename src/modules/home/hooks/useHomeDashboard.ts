@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getDashboardData } from "../services/homeData.service";
+import { loadArchiveDashboard, loadDashboardSupplement } from "../services/homeData.service";
 import type { HomeDashboardData } from "../types/home.types";
 
 export const useHomeDashboard = (year: number) => {
@@ -8,22 +8,42 @@ export const useHomeDashboard = (year: number) => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     setLoading(true);
     setError(null);
+    setData(null);
 
     const load = async () => {
       try {
-        const result = await getDashboardData(year);
-        if (!cancelled) {
-          setData(result);
+        const result = await loadArchiveDashboard(year, controller.signal);
+        if (controller.signal.aborted) return;
+        setData(result.data);
+        setLoading(false);
+        try {
+          const supplemented = await loadDashboardSupplement(
+            result.catalog,
+            result.data,
+            controller.signal,
+          );
+          if (!controller.signal.aborted) setData(supplemented);
+        } catch (supplementError) {
+          if (!controller.signal.aborted) {
+            setData({
+              ...result.data,
+              warnings: [
+                supplementError instanceof Error
+                  ? supplementError.message
+                  : "Season context unavailable",
+              ],
+            });
+          }
         }
       } catch (fetchError) {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setError(fetchError instanceof Error ? fetchError.message : "Failed to load home data");
         }
       } finally {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setLoading(false);
         }
       }
@@ -31,7 +51,7 @@ export const useHomeDashboard = (year: number) => {
 
     void load();
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [year]);
 

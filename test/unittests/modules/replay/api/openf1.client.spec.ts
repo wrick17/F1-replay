@@ -7,6 +7,7 @@ import {
   fetchReplayFromWorker,
   uploadReplayToWorker,
 } from "modules/replay/api/openf1.client";
+import { inFlight, responseCache } from "modules/replay/api/cache";
 
 describe("openf1.client", () => {
   it("builds a query string with operators", () => {
@@ -38,21 +39,19 @@ describe("openf1.client", () => {
     }
   });
 
-  it("keeps retrying transient 429 responses until a later attempt succeeds", async () => {
+  it("bounds retries for persistent 429 responses", async () => {
     const originalFetch = globalThis.fetch;
     let calls = 0;
     globalThis.fetch = (async () => {
       calls += 1;
-      if (calls < 7) {
-        return new Response(null, { status: 429, headers: { "retry-after": "0" } });
-      }
-      return new Response(JSON.stringify([{ ok: true }]), { status: 200 });
+      return new Response(null, { status: 429, headers: { "retry-after": "0" } });
     }) as typeof fetch;
 
     try {
-      const result = await fetchOpenF1<{ ok: boolean }[]>("sessions", { year: 2026 });
-      expect(result).toEqual([{ ok: true }]);
-      expect(calls).toBe(7);
+      await expect(fetchOpenF1<{ ok: boolean }[]>("sessions", { year: 2026 })).rejects.toThrow(
+        "OpenF1 request failed: 429",
+      );
+      expect(calls).toBe(5);
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -77,6 +76,39 @@ describe("openf1.client", () => {
       });
       expect(calls).toBeGreaterThan(0);
     } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("does not join a cached request when the caller has a signal", async () => {
+    const originalFetch = globalThis.fetch;
+    let calls = 0;
+    const responses: Array<(response: Response) => void> = [];
+    globalThis.fetch = (() => {
+      calls += 1;
+      return new Promise<Response>((resolve) => responses.push(resolve));
+    }) as typeof fetch;
+    responseCache.clear();
+    inFlight.clear();
+
+    try {
+      const first = fetchOpenF1<{ ok: boolean }[]>("drivers", { session_key: 99 }, undefined, "memory");
+      await Promise.resolve();
+      const second = fetchOpenF1<{ ok: boolean }[]>(
+        "drivers",
+        { session_key: 99 },
+        new AbortController().signal,
+        "memory",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      expect(calls).toBe(2);
+      responses.forEach((resolve) => resolve(new Response(JSON.stringify([{ ok: true }]), { status: 200 })));
+      await expect(first).resolves.toEqual([{ ok: true }]);
+      await expect(second).resolves.toEqual([{ ok: true }]);
+      expect(inFlight.has("drivers?session_key=99")).toBe(false);
+    } finally {
+      responseCache.clear();
+      inFlight.clear();
       globalThis.fetch = originalFetch;
     }
   });
@@ -111,19 +143,14 @@ describe("openf1.client", () => {
     }
   });
 
-  it("treats replay worker fetch failures as cache misses", async () => {
+  it("propagates replay worker fetch failures", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async () => {
       throw new TypeError("Failed to fetch");
     }) as typeof fetch;
 
     try {
-      const result = await fetchReplayFromWorker(11230);
-      expect(result).toEqual({
-        status: "miss",
-        uploadToken: "",
-        expiresAt: "",
-      });
+      await expect(fetchReplayFromWorker(11230)).rejects.toThrow("Failed to fetch");
     } finally {
       globalThis.fetch = originalFetch;
     }

@@ -12,6 +12,7 @@ import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useReplayController } from "../hooks/useReplayController";
 import { useReplayData } from "../hooks/useReplayData";
 import {
+  getAdjacentReplayRound,
   getAvailableSessionTypes,
   useSessionAutoCorrect,
   useSessionState,
@@ -20,7 +21,6 @@ import { useTeamRadio } from "../hooks/useTeamRadio";
 import { useTrackComputation } from "../hooks/useTrackComputation";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { buildTimelineEvents, getActiveOvertakes } from "../services/events.service";
-import { preloadRadioAudios } from "../services/radioAudio.service";
 import { computeTelemetryRows, computeTelemetrySummary } from "../services/telemetry.service";
 import { getWeatherAtTime } from "../services/weather.service";
 
@@ -33,12 +33,24 @@ export const ReplayPage = () => {
   const session = useSessionState();
   const prefs = useUserPreferences();
 
-  const { data, loading, error, meetings, sessions, availableYears, availableEndMs, dataRevision } =
-    useReplayData({
-      year: session.year,
-      round: session.round,
-      sessionType: session.sessionType,
-    });
+  const {
+    data,
+    loading,
+    error,
+    meetings,
+    sessions,
+    availableYears,
+    loadedStartMs,
+    loadedEndMs,
+    sessionEndMs: finalSessionEndMs,
+    dataRevision,
+    manifest,
+    requestWindow,
+  } = useReplayData({
+    year: session.year,
+    round: session.round,
+    sessionType: session.sessionType,
+  });
 
   const { hasSupportedSession } = useSessionAutoCorrect({
     meetings,
@@ -55,17 +67,20 @@ export const ReplayPage = () => {
   });
 
   const sessionStartMs = data?.sessionStartMs ?? 0;
-  const sessionEndMs = data?.sessionEndMs ?? 0;
-  const effectiveEndMs =
-    availableEndMs > sessionStartMs ? availableEndMs : Math.max(sessionEndMs, sessionStartMs);
-  const canPlay =
-    Boolean(data) && effectiveEndMs > sessionStartMs && availableEndMs > sessionStartMs;
+  const sessionEndMs = finalSessionEndMs || data?.sessionEndMs || 0;
+  const effectiveEndMs = Math.max(sessionEndMs, sessionStartMs);
+  const canPlay = Boolean(data) && effectiveEndMs > sessionStartMs && loadedEndMs > loadedStartMs;
 
   const replay = useReplayController({
     startTimeMs: sessionStartMs,
     endTimeMs: effectiveEndMs,
-    availableEndMs: availableEndMs || sessionStartMs,
+    loadedStartMs,
+    loadedEndMs,
   });
+
+  useEffect(() => {
+    void requestWindow(replay.currentTimeMs);
+  }, [replay.currentTimeMs, requestWindow]);
 
   // Sync persisted speed to replay controller
   // biome-ignore lint/correctness/useExhaustiveDependencies: only re-run when speed preference changes
@@ -73,15 +88,16 @@ export const ReplayPage = () => {
     replay.setSpeed(prefs.speed);
   }, [prefs.speed]);
 
-  const { trackPath, driverStates, driverNames, driverTeams } = useTrackComputation({
-    data,
-    dataRevision,
-    currentTimeMs: replay.currentTimeMs,
-  });
+  const { trackPath, driverStates, driverNames, driverFullNames, driverTeams } =
+    useTrackComputation({
+      data,
+      dataRevision,
+      currentTimeMs: replay.currentTimeMs,
+    });
 
   const telemetrySummary = useMemo(
-    () => computeTelemetrySummary(data, availableEndMs, effectiveEndMs, sessionStartMs),
-    [data, availableEndMs, effectiveEndMs, sessionStartMs],
+    () => computeTelemetrySummary(data, loadedEndMs, effectiveEndMs, sessionStartMs),
+    [data, loadedEndMs, effectiveEndMs, sessionStartMs],
   );
 
   const telemetryRows = useMemo(
@@ -106,39 +122,44 @@ export const ReplayPage = () => {
 
   const { currentRadio, isAudioPlaying, playRadio, stopRadio, pauseRadio, resumeRadio } =
     useTeamRadio();
-
-  useEffect(() => {
-    if (!data?.teamRadios?.length) {
-      return;
-    }
-    void preloadRadioAudios(data.teamRadios);
-  }, [data?.teamRadios]);
+  const replaySeekTo = replay.seekTo;
+  const replayTogglePlay = replay.togglePlay;
+  const replayIsPlaying = replay.isPlaying;
 
   const handleMarkerClick = useCallback(
     (timestampMs: number) => {
-      replay.seekTo(timestampMs);
-      if (!replay.isPlaying) {
-        replay.togglePlay();
+      void requestWindow(timestampMs);
+      replaySeekTo(timestampMs);
+      if (!replayIsPlaying) {
+        replayTogglePlay();
       }
     },
-    [replay],
+    [replayIsPlaying, replaySeekTo, replayTogglePlay, requestWindow],
+  );
+
+  const handleSeek = useCallback(
+    (timestampMs: number) => {
+      void requestWindow(timestampMs);
+      replaySeekTo(timestampMs);
+    },
+    [replaySeekTo, requestWindow],
   );
 
   const handleSkipBack = useCallback(
-    () => replay.seekTo(replay.currentTimeMs - prefs.skipIntervalMs),
-    [replay, prefs.skipIntervalMs],
+    () => handleSeek(replay.currentTimeMs - prefs.skipIntervalMs),
+    [handleSeek, replay.currentTimeMs, prefs.skipIntervalMs],
   );
 
   const handleSkipForward = useCallback(
-    () => replay.seekTo(replay.currentTimeMs + prefs.skipIntervalMs),
-    [replay, prefs.skipIntervalMs],
+    () => handleSeek(replay.currentTimeMs + prefs.skipIntervalMs),
+    [handleSeek, replay.currentTimeMs, prefs.skipIntervalMs],
   );
 
   const handleEventSelect = useCallback(
     (timestampMs: number) => {
-      replay.seekTo(timestampMs);
+      handleSeek(timestampMs);
     },
-    [replay],
+    [handleSeek],
   );
 
   // Collapsible UI state (lightweight, not persisted)
@@ -161,16 +182,16 @@ export const ReplayPage = () => {
       return;
     }
     session.manualRoundRef.current = true;
-    session.setRound((prev) => Math.min(prev + 1, meetings.length));
-  }, [meetings.length, session]);
+    session.setRound((prev) => getAdjacentReplayRound(meetings, prev, 1));
+  }, [meetings, session]);
 
   const prevRound = useCallback(() => {
     if (!meetings.length) {
       return;
     }
     session.manualRoundRef.current = true;
-    session.setRound((prev) => Math.max(prev - 1, 1));
-  }, [meetings.length, session]);
+    session.setRound((prev) => getAdjacentReplayRound(meetings, prev, -1));
+  }, [meetings, session]);
 
   const nextYear = useCallback(() => {
     if (!availableYears.length) {
@@ -218,7 +239,7 @@ export const ReplayPage = () => {
   // Keyboard shortcuts
   useKeyboardShortcuts({
     togglePlay: replay.togglePlay,
-    seekTo: replay.seekTo,
+    seekTo: handleSeek,
     currentTimeMs: replay.currentTimeMs,
     skipIntervalMs: prefs.skipIntervalMs,
     cycleSpeed: prefs.cycleSpeed,
@@ -274,6 +295,8 @@ export const ReplayPage = () => {
               hasStatus ? "" : "invisible"
             }`}
             aria-hidden={!hasStatus}
+            aria-live={error ? "assertive" : "polite"}
+            aria-atomic="true"
           >
             {isHeaderLoading && <Loader2 size={14} className="animate-spin" />}
             <span className="truncate">{statusText}</span>
@@ -314,6 +337,7 @@ export const ReplayPage = () => {
           trackPath={trackPath}
           driverStates={driverStates}
           driverNames={driverNames}
+          driverFullNames={driverFullNames}
           driverTeams={driverTeams}
           selectedDrivers={selectedDrivers}
           className="h-full w-full"
@@ -342,7 +366,7 @@ export const ReplayPage = () => {
           onCycleSpeed={prefs.cycleSpeed}
           onCycleSkipInterval={prefs.cycleSkipInterval}
           onToggleExpanded={prefs.toggleTimelineExpanded}
-          onSeek={replay.seekTo}
+          onSeek={handleSeek}
           onRadioToggle={prefs.toggleRadio}
           onPlayRadio={playRadio}
           onStopRadio={stopRadio}
@@ -377,6 +401,7 @@ export const ReplayPage = () => {
               sessionKey={data?.session.session_key ?? null}
               sessionStartMs={data?.sessionStartMs ?? 0}
               sessionEndMs={data?.sessionEndMs ?? 0}
+              archiveManifest={manifest}
               onTelemetryLoadingChange={setIsCarTelemetryLoading}
             />
           </div>

@@ -149,13 +149,16 @@ export const EventDetailsPage = () => {
         </div>
 
         {loading && (
-          <div className="mt-6 rounded-xl border border-white/15 bg-black/40 px-4 py-3 text-sm text-zinc-200">
+          <output className="mt-6 rounded-xl border border-white/15 bg-black/40 px-4 py-3 text-sm text-zinc-200">
             Loading event details...
-          </div>
+          </output>
         )}
 
         {error && (
-          <div className="mt-6 rounded-xl border border-red-400/30 bg-red-900/25 px-4 py-3 text-sm text-red-100">
+          <div
+            role="alert"
+            className="mt-6 rounded-xl border border-red-400/30 bg-red-900/25 px-4 py-3 text-sm text-red-100"
+          >
             {error}
           </div>
         )}
@@ -407,6 +410,9 @@ export const EventDetailsPage = () => {
                     ))}
                   </tbody>
                 </table>
+                {data.stints.length === 0 && (
+                  <p className="py-3 text-sm text-zinc-300">No stint data available.</p>
+                )}
               </div>
             </section>
 
@@ -459,6 +465,9 @@ export const EventDetailsPage = () => {
                     ))}
                   </tbody>
                 </table>
+                {data.lapMetrics.length === 0 && (
+                  <p className="py-3 text-sm text-zinc-300">No lap metrics available.</p>
+                )}
               </div>
             </section>
 

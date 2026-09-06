@@ -1,3 +1,4 @@
+import { TRACK_TIME_GAP_MS } from "../constants/replay.constants";
 import type {
   OpenF1Lap,
   OpenF1Location,
@@ -65,8 +66,12 @@ export const interpolateLocation = (
   samples: TimedSample<OpenF1Location>[],
   timestampMs: number,
 ) => {
-  if (!samples.length) {
+  if (!samples.length || !Number.isFinite(timestampMs) || timestampMs < samples[0].timestampMs) {
     return null;
+  }
+  const last = samples[samples.length - 1];
+  if (timestampMs >= last.timestampMs) {
+    return timestampMs - last.timestampMs <= TRACK_TIME_GAP_MS ? last : null;
   }
   let leftIndex = 0;
   let rightIndex = samples.length - 1;
@@ -83,8 +88,11 @@ export const interpolateLocation = (
   if (!left || !right) {
     return null;
   }
-  if (left.timestampMs === right.timestampMs) {
+  if (timestampMs === left.timestampMs || left.timestampMs === right.timestampMs) {
     return left;
+  }
+  if (right.timestampMs - left.timestampMs > TRACK_TIME_GAP_MS) {
+    return timestampMs - left.timestampMs <= TRACK_TIME_GAP_MS ? left : null;
   }
   const ratio = (timestampMs - left.timestampMs) / (right.timestampMs - left.timestampMs);
   return {
@@ -121,7 +129,7 @@ export const normalizePositions = (samples: NormalizedPosition[]) => {
   const rangeX = maxX - minX || 1;
   const rangeY = maxY - minY || 1;
   const rangeZ = maxZ - minZ || 1;
-  const scale = 1 / Math.max(rangeX, rangeY, rangeZ);
+  const scale = 1 / Math.max(rangeX, rangeY);
   const offset = {
     x: minX + rangeX / 2,
     y: minY + rangeY / 2,

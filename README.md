@@ -1,128 +1,116 @@
-# F1 Replay (Frontend)
+# F1 Replay
 
-Frontend-only replay viewer for OpenF1 telemetry data, built with Rsbuild, React, Three.js, and Tailwind v4.
+F1 Replay is a React and Rsbuild app for browsing completed Formula 1 sessions and replaying archived timing, position, event, and optional car telemetry data.
 
-## Local development
+Production replay data is a static schema v2 archive at `https://data.f1.wrick17.com/catalog.json`. The browser does not build or upload archives.
+
+## Routes
+
+- `/` lists archived replays and season context.
+- `/:year/:round/:session` shows session details.
+- `/:year/:round/:session/replay` opens the replay.
+- `/replay` keeps old links working and resolves the latest archived replay.
+- `/ops/cache` shows catalog health and inventory, with a link to the authenticated GitHub publishing workflow.
+
+Supported replay choices are `Qualifying`, `Sprint`, and `Race`. The publisher uses the exact OpenF1 `session_name`: a Sprint also has the generic `session_type` of Race. Sprint Qualifying is outside these three choices. Empty cancelled sessions and invalid legacy payloads are quarantined during import.
+
+## Development
 
 ```sh
 bun install
 bun run dev
-bun run test
 ```
 
-Open `http://localhost:3000` and choose a year, round, and session type.
-The app is a single-page mount with path-based views:
+The development server listens on `http://localhost:3001`.
 
-- `/` is the replay-first home dashboard (season schedule, replay cards, standings, news).
-- `/:year/:round/:session` is the race details page (for example `/2026/3/race`).
-- `/:year/:round/:session/replay` is the telemetry replay experience (for example `/2026/3/race/replay`).
-- `/replay` is a bootstrap/legacy entrypoint: it resolves the latest replay or redirects legacy query links.
-- `/ops/cache` is a private cache-operations dashboard (login required).
+Run the checks before a release:
 
-Navigation behavior:
+```sh
+bun run typecheck
+bun run lint
+bun run test
+bun run build
+```
 
-- The F1 Replay logo in `/replay` links back to `/`.
-- The same logo is shown in the `/` header for consistent app navigation.
-- The "Next Session" countdown on `/` updates live every second without requiring a page refresh.
-- "Replay Races" shows replayable sessions (Race/Sprint/Qualifying) across all available replay years, grouped by year and sorted newest-first.
-- Home replay CTAs open `Details` first, and details pages provide a `Watch Replay` action.
-- Event details data tables render driver headshots and team logos (with inline SVG fallbacks when source media is unavailable).
-- Standings are media-enriched: driver standings include OpenF1 headshots + team logos, and constructor standings include team logos.
+`bun run test:visual` runs the optional Playwright visual checks. `bun run preview` serves the built `dist` directory locally.
 
-Direct visits to `/replay` without params auto-resolve to the latest replayable session (prefers `Race`, then `Sprint`, then `Qualifying`) and redirect to the clean replay path.
-Legacy `/replay?year=...&round=...&session=...` URLs are still supported and redirect to the clean replay path.
-The replay picker only shows ended replayable sessions that actually exist for the selected round: `Qualifying`, `Sprint`, and `Race` are supported, while practice sessions stay hidden. Current-season years appear once at least one supported replay session has finished, and year discovery only probes OpenF1 seasons from `2023` onward. The year picker uses a native select that stays interactive during replay loads so season switches remain reliable while replay data is refreshing.
-The leaderboard telemetry toggle appears as soon as the first usable car telemetry chunk is available for the current session, and the team radio toggle only appears when that session has radio clips.
-The selected replay session is prioritized before background year discovery so race pages are less likely to fail on OpenF1 rate limits.
-Transient OpenF1 `429` responses are retried silently in the background until they succeed or the user leaves the page, so partial replay data can stay usable while the remaining chunks backfill.
-Desktop layout includes an Events panel on the left with click-to-seek, active-event auto-scroll, and inline Legend/Shortcuts sections below the list; on mobile, Leaderboard and Events panels are collapsible and shown after the track view.
+Set `RSBUILD_ARCHIVE_URL` to use another archive root. Production defaults to `https://data.f1.wrick17.com`.
 
-## Manual smoke test
+## Archive format
 
-1. Pick the latest replayable year and round, then verify the session picker only shows replayable sessions that exist for that round.
-2. Wait for telemetry to load, then verify the telemetry toggle appears only if the session has car telemetry and the team radio toggle appears only if the session has radio clips.
-3. Press Play, verify cars animate, leaderboard updates, and telemetry pills show speed/gear once enabled.
+The mutable `catalog.json` contains its schema version, publisher-owned `updatedAt`, and the available sessions. Every session points to an immutable manifest in `objects/<sha256>.json`.
 
-## Test commands
+The manifest points to immutable core data, position chunks, and optional car telemetry chunks. Object URLs contain the SHA-256 of the uncompressed JSON. R2 stores the bodies with gzip content encoding and long-lived immutable cache headers. The publisher reads each upload back and verifies it before publishing the manifest and catalog.
 
-- `bun run test` runs fast unit tests (default CI/local loop).
-- `bun run test:visual` runs the Playwright-based visual layout suite.
+The first telemetry window is 60 seconds. Later windows are four minutes. Location chunks carry the nearest sample on either side for each driver so interpolation works at chunk boundaries. Car telemetry is optional; the catalog marks it `unavailable` when a valid car archive could not be built.
 
-## Remote cache warmer (Cloudflare cron)
+The catalog `updatedAt` records when the publisher formed a catalog for publication. It is not a timestamp from OpenF1 and does not claim that every optional dataset changed.
 
-The project includes a dedicated scheduled worker at `workers/openf1-cache-warmer` that warms both replay and car telemetry caches remotely.
+## Publishing
 
-- Hourly run: `0 * * * *`
-- Daily deep scan: `15 3 * * *`
-- Supported session types: `Qualifying`, `Sprint`, `Race`
-- Default retry window: up to 12 hours after `session.date_end`
-- Default retry cadence: hourly
-- OpenF1 no-data fallback: retries every 24 hours (marked as `OPENF1_NO_DATA`) with an extended retry window to avoid aggressive re-calls
+Use a dry run for local inspection:
 
-State is persisted in D1 table `warm_session_attempts`, and the worker exposes admin endpoints:
+```sh
+bun run archive:publish -- --dry-run --out /tmp/f1-archive
+```
 
-- `POST /admin/run` (optional `?deep=1`) to force an orchestration run
-- `GET /admin/status` to inspect retry state and recent session status
+The default run discovers ended sessions in the current UTC year. Pass `--years 2025,2026` to request explicit years.
 
-Both endpoints require `Authorization: Bearer <ADMIN_TOKEN>`.
+Production publishing uses:
 
-### Private Ops dashboard
+```sh
+bun run archive:publish
+```
 
-`/ops/cache` renders a private operations dashboard in the app and talks to `openf1-cache-warmer` using cookie-authenticated endpoints:
+It requires these environment variables:
 
-- `POST /auth/shoo/login`
-- `POST /auth/logout`
-- `GET /auth/session`
-- `GET /dashboard/sessions`
-- `POST /dashboard/warm-all`
-- `POST /dashboard/probe`
-- `POST /dashboard/sessions/:sessionKey/warm`
+- `S3_ACCESS_KEY_ID`
+- `S3_SECRET_ACCESS_KEY`
+- `S3_ENDPOINT`
+- `S3_REGION`, optional and defaults to `auto`
 
-Dashboard behavior:
+The bucket name is fixed as `f1-archive`. Keep values in GitHub Actions secrets or local environment storage. Do not commit them.
 
-- Shows tracked D1 sessions (`warm_session_attempts`) and sorts missing cache rows to the top
-- Sessions with missing cache are sorted to the top
-- Cache state uses `missing` (not `expired`) for not-yet-cached entries
-- Dashboard reads are D1-only by default (no full-table replay/telemetry probe sweep on every refresh)
-- Optional bounded probes use `POST /dashboard/probe` (max 20 keys per request)
-- Includes a `Warm All Missing` button that starts a backend batch job (`/dashboard/warm-all`)
-- Batch progress (processed/total, failed, succeeded, in-flight) is returned by `GET /dashboard/sessions` and persists across reloads
-- Batch execution is resumable from persisted cursor if an in-flight step is interrupted
-- Per-session action buttons switch to `Warming...` while their specific warm request is running
-- Warm progress is persisted in D1 (`warm_in_progress`, `warm_started_at`) so row loaders survive dashboard reloads and reflect remote batch activity
-- Status column only shows `Error` when a cache side is still missing; stale legacy errors are suppressed when cache is already warm
+The workflow at `.github/workflows/archive.yml` checks the Jolpica calendar at 7 and 37 minutes past each hour. Qualifying and Sprint become eligible 90 minutes after their scheduled start; Race becomes eligible after 150 minutes. The workflow retries a missing exact `year/round/type` identity for 48 hours. It ignores Sprint Qualifying and Sprint Shootout, and the publisher still requires OpenF1 to report an actual `date_end` before it fetches a session.
 
-Required worker secrets:
+The half-hour gate fails closed when the calendar or a required time is missing or malformed. A missing or malformed checked-in catalog snapshot triggers a publishing attempt for an eligible session, but does not count as a health result. These fast race-window runs attempt at most two current-year sessions.
 
-- `OPS_ALLOWED_EMAILS` (comma-separated allowlist, for example `wrick17@gmail.com`)
-- `SESSION_SECRET`
+A daily 03:17 UTC run bypasses the gate and attempts up to ten sessions across every year from 2023 through the current UTC year. Authenticated manual dispatch accepts the same 1–10 attempt limit and an optional comma-separated year list; a blank year input selects every available year from 2023 onward. Repeated bounded runs fill remaining history. The workflow commits `public/archive/catalog.json` only when the snapshot changes. GitHub schedules are best effort and may run late; these times are not an availability guarantee.
 
-Shoo auth settings:
+The publisher uploads content-addressed core and chunk objects first, then the manifest, then `catalog.json`. A catalog cannot point to an object that has not passed upload readback. Bounded retries cover transient network, HTTP 429, and server errors, and OpenF1 calls are paced to at most 30 per minute.
 
-- `SHOO_BASE_URL` (defaults to `https://shoo.dev`)
-- `DASHBOARD_ALLOWED_ORIGINS` must include all dashboard origins (for example: `http://localhost:3000,http://localhost:3001,https://f1.wrick17.com,https://www.f1.wrick17.com`)
-- The frontend requests Shoo PII (`requestPii: true`) so email is present for allowlist checks
-- Worker verifies Shoo `id_token` signature/issuer/audience and only issues session cookies for allowlisted emails
+On 2026-09-06, during a live F1 session, the unauthenticated OpenF1 request `GET /v1/sessions?year=2025` returned HTTP 401 with a temporary restriction on global and past-session access. That observation does not establish the same behavior for every year or endpoint. If OpenF1 returns 401 before a run adds anything, the publisher preserves the exact last good catalog and snapshot. Verified legacy backups remain the path for historical gaps.
 
-Allowlist maintenance:
+## Migration and rollback
 
-- Update with `bunx wrangler secret put OPS_ALLOWED_EMAILS`
-- Re-enter the full comma-separated list each time (secret put replaces the value)
+Legacy replay and car telemetry data must be inventoried and backed up before any in-place gzip rewrite:
 
-Frontend env:
+```sh
+bun scripts/archive/migrate-legacy.ts inventory --root /tmp/f1-archive-backup
+bun scripts/archive/migrate-legacy.ts backup --root /tmp/f1-archive-backup
+```
 
-- `RSBUILD_CACHE_WARMER_URL` (defaults to `https://openf1-cache-warmer.wrick17worker.workers.dev`)
-- `RSBUILD_ENABLE_REMOTE_CACHE_OPS` (default: `true`)
-- `RSBUILD_ENABLE_REMOTE_CACHE_PROBES` (default: `true`)
+The backup records raw and gzip hashes and verifies gzip round trips. The guarded `apply` command refuses to run until the backup is complete, the remote inventory still matches, and the legacy Workers return read-only responses. It rewrites known objects with gzip metadata and verifies decoded remote hashes. It does not delete source data.
 
-Local script guard:
+Import legacy backups into a dry-run archive before production:
 
-- `bun run warm:caches` refuses to hit deployed `workers.dev` URLs unless `CF_REMOTE=1` is set
+```sh
+bun run archive:publish -- --dry-run --out /tmp/f1-archive-import \
+  --import-dir /tmp/f1-archive-backup --import-only
+```
 
-## Data source
+The import reads raw backup files first, accepts verified gzip fallbacks, skips existing `year/round/type` identities, and never modifies the backup directory. Unsupported session names, empty cancelled payloads, and invalid objects are skipped into an explicit quarantine report.
 
-Data is fetched from free public APIs:
+Keep the legacy replay and car telemetry Workers read-only during acceptance. A Pages rollback can restore the previous frontend, and that build can still read entries already present behind the legacy Workers. Its old upload attempts receive HTTP 405, so it cannot backfill a legacy cache miss. Archive rollback republishes the last good catalog snapshot; immutable content-addressed objects remain available. Do not delete the legacy D1 databases, R2 objects, or backups until both paths have passed production checks and the retention decision is explicit.
 
-- `OpenF1` for replay telemetry and replay availability enrichment: https://openf1.org/
-- `Jolpica` (Ergast mirror) for season schedule + standings used by the homepage dashboard: https://api.jolpi.ca/ergast/f1
-- Formula1 RSS (via a CORS-safe proxy endpoint) for homepage news cards
+## Cost model
+
+Normal replay reads go directly to static R2 data through the custom domain. They do not execute the old warmer Worker or issue its repeated D1 probes. The publisher uploads only newly discovered immutable objects plus the small mutable catalog.
+
+This design reduces Worker and D1 activity, but it does not promise zero cost or permanent free-tier operation. R2 storage, reads, writes, GitHub Actions time, and any retained legacy services still count against their current provider limits.
+
+## Data sources
+
+- [OpenF1](https://openf1.org/) supplies replay and car telemetry data.
+- [Jolpica](https://api.jolpi.ca/ergast/f1/) supplies official rounds, schedules, and standings.
+- Validated [MultiViewer circuit data](https://api.multiviewer.app/) supplies canonical geometry when the meeting provides the exact expected circuit URL. The publisher falls back to geometry derived from replay locations.

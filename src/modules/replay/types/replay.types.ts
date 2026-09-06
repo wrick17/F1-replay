@@ -59,6 +59,7 @@ export type TrackViewProps = {
   trackPath: NormalizedPosition[];
   driverStates: Record<number, DriverRenderState>;
   driverNames: Record<number, string>;
+  driverFullNames?: Record<number, string>;
   driverTeams: Record<number, TeamBranding>;
   selectedDrivers: number[];
   className?: string;

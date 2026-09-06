@@ -13,13 +13,21 @@ export type ReplayController = {
 type ReplayControllerOptions = {
   startTimeMs: number;
   endTimeMs: number;
-  availableEndMs: number;
+  loadedStartMs: number;
+  loadedEndMs: number;
 };
+
+export const isReplayTimeLoaded = (
+  timestampMs: number,
+  loadedStartMs: number,
+  loadedEndMs: number,
+) => loadedEndMs > loadedStartMs && timestampMs >= loadedStartMs && timestampMs <= loadedEndMs;
 
 export const useReplayController = ({
   startTimeMs,
   endTimeMs,
-  availableEndMs,
+  loadedStartMs,
+  loadedEndMs,
 }: ReplayControllerOptions): ReplayController => {
   const [currentTimeMs, setCurrentTimeMs] = useState(startTimeMs);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -27,98 +35,121 @@ export const useReplayController = ({
   const [speed, setSpeed] = useState(1);
   const lastFrameRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
+  const resumeWhenLoadedRef = useRef(false);
+  const currentTimeMsRef = useRef(currentTimeMs);
+  currentTimeMsRef.current = currentTimeMs;
 
   const speedRef = useRef(speed);
   speedRef.current = speed;
   const endTimeMsRef = useRef(endTimeMs);
   endTimeMsRef.current = endTimeMs;
-  const availableEndMsRef = useRef(availableEndMs);
-  availableEndMsRef.current = availableEndMs;
+  const loadedStartMsRef = useRef(loadedStartMs);
+  loadedStartMsRef.current = loadedStartMs;
+  const loadedEndMsRef = useRef(loadedEndMs);
+  loadedEndMsRef.current = loadedEndMs;
+
+  const cancelFrame = useCallback(() => {
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+    lastFrameRef.current = null;
+  }, []);
 
   const stop = useCallback(() => {
+    resumeWhenLoadedRef.current = false;
     setIsPlaying(false);
     setIsBuffering(false);
-    if (rafRef.current !== null) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
-  }, []);
+    cancelFrame();
+  }, [cancelFrame]);
 
   const tick = useCallback(
     (timestamp: number) => {
-      if (!lastFrameRef.current) {
+      if (lastFrameRef.current === null) {
         lastFrameRef.current = timestamp;
         rafRef.current = requestAnimationFrame(tick);
         return;
       }
       const delta = timestamp - lastFrameRef.current;
       lastFrameRef.current = timestamp;
-      setCurrentTimeMs((prev) => {
-        const next = prev + delta * speedRef.current;
-        if (next >= endTimeMsRef.current) {
-          stop();
-          return endTimeMsRef.current;
-        }
-        if (next >= availableEndMsRef.current) {
-          setIsBuffering(true);
-          setIsPlaying(false);
-          return availableEndMsRef.current;
-        }
-        return next;
-      });
+      const next = currentTimeMsRef.current + delta * speedRef.current;
+      if (next >= endTimeMsRef.current) {
+        setCurrentTimeMs(endTimeMsRef.current);
+        stop();
+        return;
+      }
+      if (!isReplayTimeLoaded(next, loadedStartMsRef.current, loadedEndMsRef.current)) {
+        setCurrentTimeMs(next);
+        resumeWhenLoadedRef.current = true;
+        setIsBuffering(true);
+        setIsPlaying(false);
+        cancelFrame();
+        return;
+      }
+      setCurrentTimeMs(next);
       rafRef.current = requestAnimationFrame(tick);
     },
-    [stop],
+    [cancelFrame, stop],
   );
 
   useEffect(() => {
     if (!isPlaying) {
-      if (rafRef.current !== null) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
-      lastFrameRef.current = null;
+      cancelFrame();
       return;
     }
     rafRef.current = requestAnimationFrame(tick);
-    return () => {
-      if (rafRef.current !== null) {
-        cancelAnimationFrame(rafRef.current);
-      }
-      rafRef.current = null;
-      lastFrameRef.current = null;
-    };
-  }, [isPlaying, tick]);
+    return cancelFrame;
+  }, [cancelFrame, isPlaying, tick]);
 
   useEffect(() => {
-    if (isBuffering && currentTimeMs < availableEndMs - 1000) {
-      setIsBuffering(false);
+    if (!isBuffering || !isReplayTimeLoaded(currentTimeMs, loadedStartMs, loadedEndMs)) return;
+    setIsBuffering(false);
+    if (resumeWhenLoadedRef.current) {
+      resumeWhenLoadedRef.current = false;
       setIsPlaying(true);
     }
-  }, [availableEndMs, currentTimeMs, isBuffering]);
+  }, [currentTimeMs, isBuffering, loadedEndMs, loadedStartMs]);
 
   useEffect(() => {
     setCurrentTimeMs(startTimeMs);
     stop();
   }, [startTimeMs, stop]);
 
-  const togglePlay = () => {
-    setIsPlaying((prev) => !prev);
+  const togglePlay = useCallback(() => {
+    if (isBuffering) {
+      resumeWhenLoadedRef.current = false;
+      setIsBuffering(false);
+      return;
+    }
+    if (isPlaying) {
+      resumeWhenLoadedRef.current = false;
+      setIsPlaying(false);
+      setIsBuffering(false);
+      return;
+    }
+    if (!isReplayTimeLoaded(currentTimeMs, loadedStartMs, loadedEndMs)) {
+      resumeWhenLoadedRef.current = true;
+      setIsBuffering(true);
+      return;
+    }
     setIsBuffering(false);
-  };
+    setIsPlaying(true);
+  }, [currentTimeMs, isBuffering, isPlaying, loadedEndMs, loadedStartMs]);
 
-  const seekTo = (timestampMs: number) => {
-    const clamped = Math.min(Math.max(timestampMs, startTimeMs), endTimeMs);
-    setCurrentTimeMs(clamped);
-  };
+  const seekTo = useCallback(
+    (timestampMs: number) => {
+      const clamped = Math.min(Math.max(timestampMs, startTimeMs), endTimeMs);
+      const wasPlaying = isPlaying;
+      setCurrentTimeMs(clamped);
+      if (!isReplayTimeLoaded(clamped, loadedStartMs, loadedEndMs)) {
+        resumeWhenLoadedRef.current = wasPlaying;
+        setIsPlaying(false);
+        setIsBuffering(true);
+      } else {
+        resumeWhenLoadedRef.current = false;
+        setIsBuffering(false);
+      }
+    },
+    [endTimeMs, isPlaying, loadedEndMs, loadedStartMs, startTimeMs],
+  );
 
-  return {
-    currentTimeMs,
-    isPlaying,
-    isBuffering,
-    speed,
-    setSpeed,
-    togglePlay,
-    seekTo,
-  };
+  return { currentTimeMs, isPlaying, isBuffering, speed, setSpeed, togglePlay, seekTo };
 };

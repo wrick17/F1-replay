@@ -2,11 +2,14 @@ import { describe, expect, it } from "bun:test";
 import {
   buildReplayRouteUrl,
   getAvailableSessionTypes,
+  getAdjacentReplayRound,
   getCorrectedYear,
+  getCorrectedRound,
   getFallbackSessionType,
   isValidSessionType,
 } from "modules/replay/hooks/useSessionSelector";
 import type { OpenF1Session } from "modules/replay/types/openf1.types";
+import type { OpenF1Meeting } from "modules/replay/types/openf1.types";
 
 const createSession = (
   session_type: string,
@@ -73,5 +76,15 @@ describe("useSessionSelector helpers", () => {
   it("writes replay session state onto clean replay routes", () => {
     const url = buildReplayRouteUrl({ year: 2026, round: 2, session: "Race" }, "");
     expect(url).toBe("/2026/2/race/replay");
+  });
+
+  it("moves through official catalog rounds when archived rounds have gaps", () => {
+    const meetings = [1, 5, 24].map(
+      (round) => ({ round, meeting_key: round }) as unknown as OpenF1Meeting,
+    );
+    expect(getAdjacentReplayRound(meetings, 5, 1)).toBe(24);
+    expect(getAdjacentReplayRound(meetings, 5, -1)).toBe(1);
+    expect(getCorrectedRound(meetings, 1)).toBeNull();
+    expect(getCorrectedRound(meetings, 2)).toBe(1);
   });
 });

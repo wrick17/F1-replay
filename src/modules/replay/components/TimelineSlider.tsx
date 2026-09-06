@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { OpenF1Driver, OpenF1TeamRadio, TimedSample } from "../types/openf1.types";
 import type { TimelineEvent } from "../types/replay.types";
+import { formatTime } from "../utils/format.util";
 import { EventMarkerPopup } from "./EventMarkerPopup";
 import { RadioPopup } from "./RadioPopup";
 
@@ -64,6 +65,9 @@ const MarkerRow = memo(
             onClick={() => onMarkerClick?.(event.timestampMs)}
             onMouseEnter={(e) => onMarkerEnter(event, e.currentTarget)}
             onMouseLeave={onMarkerLeave}
+            onFocus={(e) => onMarkerEnter(event, e.currentTarget)}
+            onBlur={onMarkerLeave}
+            aria-label={`${event.label} event`}
           >
             <span
               className="block h-3 w-[3px] rounded-sm"
@@ -149,6 +153,7 @@ export const TimelineSlider = ({
   onTogglePlayRef.current = onTogglePlay;
 
   const duration = Math.max(1, endTimeMs - startTimeMs);
+  const rangeValue = Math.min(endTimeMs, Math.max(startTimeMs, currentTimeMs));
   const progress = ((currentTimeMs - startTimeMs) / duration) * 100;
 
   // Determine which popup to display (manual hover takes priority)
@@ -164,6 +169,13 @@ export const TimelineSlider = ({
       onSeek(startTimeMs + ratio * duration);
     },
     [startTimeMs, duration, onSeek],
+  );
+
+  const handleRangeChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      onSeek(Number(e.currentTarget.value));
+    },
+    [onSeek],
   );
 
   const clearAutoPopup = useCallback(() => {
@@ -421,18 +433,29 @@ export const TimelineSlider = ({
   const trackBar = (
     <div
       ref={trackRef}
-      className="relative h-2 cursor-pointer rounded-full bg-white/10"
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
+      className="group relative h-2 cursor-pointer rounded-full bg-white/10 focus-within:ring-2 focus-within:ring-[#E10600]/70"
     >
       <div
         className="absolute inset-y-0 left-0 rounded-full bg-[#E10600]"
         style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
       />
       <div
-        className="absolute top-1/2 h-4 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-md transition-[height,width] duration-150 hover:h-5 hover:w-2"
+        className="absolute top-1/2 h-4 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-md transition-[height,width] duration-150 group-hover:h-5 group-hover:w-2"
         style={{ left: `${Math.min(100, Math.max(0, progress))}%` }}
+      />
+      <input
+        type="range"
+        min={startTimeMs}
+        max={endTimeMs}
+        step={1000}
+        value={rangeValue}
+        aria-label="Replay timeline"
+        aria-valuetext={`${formatTime(rangeValue - startTimeMs)} of ${formatTime(endTimeMs - startTimeMs)}`}
+        className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+        onChange={handleRangeChange}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
       />
     </div>
   );

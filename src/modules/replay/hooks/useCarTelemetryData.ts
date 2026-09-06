@@ -1,16 +1,8 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  fetchCarTelemetryFromWorker,
-  uploadCarTelemetryToWorker,
-} from "../api/carTelemetry.client";
-import { fetchChunked } from "../api/openf1.client";
-import {
-  createDownsampleState,
-  finalizeCarTelemetryPayload,
-  ingestCarDataChunk,
-} from "../services/carTelemetry.service";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { findChunkAt, getArchiveCatalogUrl, loadCarChunk } from "../../archive";
+import type { ArchiveManifest } from "../../archive/types";
 import type { CarTelemetryPayload } from "../types/carTelemetry.types";
-import type { OpenF1CarData } from "../types/openf1.types";
+import { getReplayWindowIndexes } from "./useReplayData";
 
 type CarTelemetryState = {
   payload: CarTelemetryPayload | null;
@@ -20,105 +12,140 @@ type CarTelemetryState = {
 
 type Params = {
   enabled: boolean;
-  sessionKey: number | null;
-  sessionStartMs: number;
-  sessionEndMs: number;
+  manifest: ArchiveManifest | null;
+  currentTimeMs: number;
 };
 
-// Car telemetry is high-volume; use larger OpenF1 windows to reduce request count / 429s.
-const CAR_DATA_WINDOW_MS = 600_000;
+const buildPayload = (
+  manifest: ArchiveManifest,
+  chunks: Map<number, CarTelemetryPayload["byDriver"]>,
+  indexes: number[],
+): CarTelemetryPayload => {
+  const byDriver: CarTelemetryPayload["byDriver"] = {};
+  for (const index of indexes) {
+    for (const [driver, samples] of Object.entries(chunks.get(index) ?? {})) {
+      const driverNumber = Number(driver);
+      const existing = byDriver[driverNumber] ?? [];
+      existing.push(...samples);
+      byDriver[driverNumber] = existing;
+    }
+  }
+  for (const [driver, samples] of Object.entries(byDriver)) {
+    const byTimestamp = new Map(samples.map((sample) => [sample.timestampMs, sample]));
+    byDriver[Number(driver)] = [...byTimestamp.values()].sort(
+      (a, b) => a.timestampMs - b.timestampMs,
+    );
+  }
+  return {
+    sessionKey: manifest.sessionKey,
+    sampleIntervalMs: manifest.car?.sampleIntervalMs ?? 500,
+    createdAt: manifest.car?.createdAt ?? "",
+    byDriver,
+  };
+};
 
 export const useCarTelemetryData = ({
   enabled,
-  sessionKey,
-  sessionStartMs,
-  sessionEndMs,
+  manifest,
+  currentTimeMs,
 }: Params): CarTelemetryState => {
   const [payload, setPayload] = useState<CarTelemetryPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const cacheRef = useRef<Map<number, CarTelemetryPayload>>(new Map());
+  const chunksRef = useRef<Map<number, CarTelemetryPayload["byDriver"]>>(new Map());
   const abortRef = useRef<AbortController | null>(null);
+  const requestRef = useRef(0);
+  const sessionKeyRef = useRef<number | null>(null);
+  const selectedIndex = useMemo(() => {
+    if (!enabled || !manifest?.car) return -1;
+    const descriptor = findChunkAt(manifest.car.chunks, currentTimeMs);
+    return descriptor ? manifest.car.chunks.indexOf(descriptor) : -1;
+  }, [currentTimeMs, enabled, manifest]);
 
   useEffect(() => {
-    if (!enabled || !sessionKey || sessionEndMs <= sessionStartMs) {
-      abortRef.current?.abort();
-      setLoading(false);
-      setError(null);
-      setPayload(null);
-      return;
-    }
-
-    const cached = cacheRef.current.get(sessionKey);
-    if (cached) {
-      setPayload(cached);
-      setLoading(false);
-      setError(null);
-      return;
-    }
-
-    const controller = new AbortController();
     abortRef.current?.abort();
-    abortRef.current = controller;
+    if (!enabled || !manifest?.car || selectedIndex < 0) {
+      chunksRef.current.clear();
+      setPayload(null);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+    const car = manifest.car;
 
+    if (sessionKeyRef.current !== manifest.sessionKey) {
+      chunksRef.current.clear();
+      sessionKeyRef.current = manifest.sessionKey;
+      setPayload(null);
+    }
+
+    const desired = getReplayWindowIndexes(selectedIndex, manifest.car.chunks.length);
+    for (const index of [...chunksRef.current.keys()]) {
+      if (!desired.includes(index)) chunksRef.current.delete(index);
+    }
+    const requestId = requestRef.current + 1;
+    requestRef.current = requestId;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setPayload(
+      chunksRef.current.has(selectedIndex)
+        ? buildPayload(manifest, chunksRef.current, desired)
+        : null,
+    );
     setLoading(true);
     setError(null);
-    setPayload(null);
 
+    const commit = () => setPayload(buildPayload(manifest, chunksRef.current, desired));
     const load = async () => {
-      const cached = await fetchCarTelemetryFromWorker(sessionKey, controller.signal);
-      if (cached.status === "hit") {
-        cacheRef.current.set(sessionKey, cached.payload);
-        return cached.payload;
+      if (!chunksRef.current.has(selectedIndex)) {
+        const selectedChunk = await loadCarChunk(
+          getArchiveCatalogUrl(),
+          manifest,
+          car.chunks[selectedIndex],
+          { signal: controller.signal },
+        );
+        if (
+          controller.signal.aborted ||
+          requestRef.current !== requestId ||
+          sessionKeyRef.current !== manifest.sessionKey
+        ) {
+          return;
+        }
+        chunksRef.current.set(selectedIndex, selectedChunk);
       }
-
-      const state = createDownsampleState(sessionKey, 500);
-      await fetchChunked<OpenF1CarData>(
-        "car_data",
-        { session_key: sessionKey },
-        sessionStartMs,
-        sessionEndMs,
-        CAR_DATA_WINDOW_MS,
-        (chunk) => {
-          ingestCarDataChunk(state, chunk);
-          if (!controller.signal.aborted && chunk.length > 0) {
-            setPayload(finalizeCarTelemetryPayload(state));
-          }
-        },
-        controller.signal,
-        "persist",
+      if (controller.signal.aborted || requestRef.current !== requestId) return;
+      commit();
+      await Promise.all(
+        desired
+          .filter((index) => index !== selectedIndex && !chunksRef.current.has(index))
+          .map(async (index) => {
+            const chunk = await loadCarChunk(getArchiveCatalogUrl(), manifest, car.chunks[index], {
+              signal: controller.signal,
+            });
+            if (!controller.signal.aborted && requestRef.current === requestId) {
+              chunksRef.current.set(index, chunk);
+            }
+          }),
       );
-
-      const built = finalizeCarTelemetryPayload(state);
-      cacheRef.current.set(sessionKey, built);
-
-      // Upload even if the hook unmounts after build, to help warm the worker cache.
-      void uploadCarTelemetryToWorker(sessionKey, built, cached.uploadToken).catch(() => undefined);
-
-      return built;
+      if (!controller.signal.aborted && requestRef.current === requestId) commit();
     };
 
-    load()
-      .then((result) => {
-        if (!controller.signal.aborted) {
-          setPayload(result);
-        }
-      })
-      .catch((err: Error) => {
-        if (!controller.signal.aborted) {
-          setError(err.message);
+    void load()
+      .catch((loadError) => {
+        if (!controller.signal.aborted && requestRef.current === requestId) {
+          setError(loadError instanceof Error ? loadError.message : "Failed to load car telemetry");
         }
       })
       .finally(() => {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
+        if (!controller.signal.aborted && requestRef.current === requestId) setLoading(false);
       });
 
-    return () => {
-      controller.abort();
-    };
-  }, [enabled, sessionKey, sessionStartMs, sessionEndMs]);
+    return () => controller.abort();
+  }, [enabled, manifest, selectedIndex]);
 
-  return { payload, loading, error };
+  return {
+    payload: payload?.sessionKey === manifest?.sessionKey ? payload : null,
+    loading,
+    error,
+  };
 };

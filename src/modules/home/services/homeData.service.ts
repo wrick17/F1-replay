@@ -1,5 +1,6 @@
 import { buildEventDetailsHref, buildReplayHref } from "../../../app/routing";
-import { fetchOpenF1 } from "../../replay/api/openf1.client";
+import { getArchiveCatalogUrl, loadCatalog, loadManifest, loadReplayCore } from "../../archive";
+import type { ArchiveCatalog, ArchiveCatalogSession } from "../../archive/types";
 import {
   filterReplayableMeetings,
   filterReplayableSessions,
@@ -24,7 +25,6 @@ const CORS_SAFE_RSS_ENDPOINT = "https://api.allorigins.win/raw";
 const REPLAY_SESSION_PREFERENCE: ReplaySessionType[] = ["Race", "Sprint", "Qualifying"];
 const LIVE_WINDOW_MS = 1000 * 60 * 90;
 const HOME_REQUEST_TIMEOUT_MS = 6000;
-const MIN_REPLAY_YEAR = 2023;
 
 type ReplayYearData = {
   year: number;
@@ -79,9 +79,6 @@ type DriverLookup = {
   byLastName: Map<string, OpenF1Driver[]>;
 };
 
-const normalize = (value: string | null | undefined) =>
-  (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
-
 const toRaceDate = (race: JolpicaRace): string => {
   if (!race.date) {
     return "";
@@ -126,11 +123,15 @@ const createTeamFallbackLogo = (team: string) =>
     </svg>`,
   );
 
-const withTimeout = async <T>(task: (signal: AbortSignal) => Promise<T>, timeoutMs: number) => {
+const withTimeout = async <T>(
+  task: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number,
+  signal?: AbortSignal,
+) => {
   const controller = new AbortController();
   const timerId = globalThis.setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await task(controller.signal);
+    return await task(signal ? AbortSignal.any([controller.signal, signal]) : controller.signal);
   } finally {
     globalThis.clearTimeout(timerId);
   }
@@ -150,7 +151,7 @@ export const getRaceStatus = (startTime: string, now = Date.now()): HomeRaceStat
   return "upcoming";
 };
 
-const fetchJolpica = async <T>(path: string): Promise<T> => {
+const fetchJolpica = async <T>(path: string, signal?: AbortSignal): Promise<T> => {
   const candidates = [
     `${JOLPICA_BASE_URL}/${path}/?format=json`,
     `${JOLPICA_BASE_URL}/${path}?format=json`,
@@ -162,6 +163,7 @@ const fetchJolpica = async <T>(path: string): Promise<T> => {
       const response = await withTimeout(
         (signal) => fetch(url, { signal }),
         HOME_REQUEST_TIMEOUT_MS,
+        signal,
       );
       if (!response.ok) {
         throw new Error(`Jolpica request failed: ${response.status}`);
@@ -186,59 +188,6 @@ export const selectReplaySessionType = (
     }
   }
   return null;
-};
-
-const buildReplayMaps = (meetings: OpenF1Meeting[], sessions: OpenF1Session[], now: number) => {
-  const replayableMeetings = [...filterReplayableMeetings(meetings, sessions, now)].sort(
-    (a, b) => Date.parse(a.date_start) - Date.parse(b.date_start),
-  );
-
-  const replayRoundByMeeting = new Map<number, number>();
-  replayableMeetings.forEach((meeting, index) => {
-    replayRoundByMeeting.set(meeting.meeting_key, index + 1);
-  });
-
-  const replaySessionByMeeting = new Map<number, ReplaySessionType>();
-  for (const meeting of replayableMeetings) {
-    const sessionType = selectReplaySessionType(
-      sessions.filter((session) => session.meeting_key === meeting.meeting_key),
-      now,
-    );
-    if (sessionType) {
-      replaySessionByMeeting.set(meeting.meeting_key, sessionType);
-    }
-  }
-
-  return { replayRoundByMeeting, replaySessionByMeeting, replayableMeetings };
-};
-
-const mapRaceToMeeting = (race: JolpicaRace, meetings: OpenF1Meeting[]): OpenF1Meeting | null => {
-  const raceTime = Date.parse(toRaceDate(race));
-  const raceName = normalize(race.raceName);
-  const country = normalize(race.Circuit?.Location?.country);
-  const locality = normalize(race.Circuit?.Location?.locality);
-
-  const ranked = meetings
-    .map((meeting) => {
-      const meetingStart = Date.parse(meeting.date_start);
-      const dateDiff = Number.isFinite(raceTime)
-        ? Math.abs(raceTime - meetingStart)
-        : Number.MAX_SAFE_INTEGER;
-      const meetingName = normalize(meeting.meeting_name);
-      const meetingCountry = normalize(meeting.country_name);
-      const meetingCircuit = normalize(meeting.circuit_short_name);
-      const nameMatch =
-        raceName.length > 0 && (meetingName.includes(raceName) || raceName.includes(meetingName));
-      const locationMatch =
-        (country.length > 0 && meetingCountry.includes(country)) ||
-        (locality.length > 0 && meetingCircuit.includes(locality));
-      const score = (nameMatch ? 0 : 1) + (locationMatch ? 0 : 1);
-
-      return { meeting, score, dateDiff };
-    })
-    .sort((a, b) => a.score - b.score || a.dateDiff - b.dateDiff);
-
-  return ranked[0]?.meeting ?? null;
 };
 
 const parseDriverStandings = (payload: unknown): StandingsEntry[] => {
@@ -395,11 +344,12 @@ const parseRss = (xmlText: string): NewsItem[] => {
     .filter((item): item is NewsItem => item !== null);
 };
 
-const fetchNews = async (): Promise<NewsItem[]> => {
+const fetchNews = async (signal?: AbortSignal): Promise<NewsItem[]> => {
   const endpoint = `${CORS_SAFE_RSS_ENDPOINT}?url=${encodeURIComponent(FORMULA1_RSS_URL)}`;
   const response = await withTimeout(
     (signal) => fetch(endpoint, { signal }),
     HOME_REQUEST_TIMEOUT_MS,
+    signal,
   );
   if (!response.ok) {
     throw new Error(`News feed request failed: ${response.status}`);
@@ -407,6 +357,12 @@ const fetchNews = async (): Promise<NewsItem[]> => {
   const xmlText = await response.text();
   return parseRss(xmlText);
 };
+
+export const findArchivedMeetingForRound = (
+  meetings: OpenF1Meeting[],
+  replayRoundByMeeting: Map<number, number>,
+  round: number,
+) => meetings.find((meeting) => replayRoundByMeeting.get(meeting.meeting_key) === round) ?? null;
 
 const buildCards = (
   year: number,
@@ -421,7 +377,7 @@ const buildCards = (
     .map((race) => {
       const round = safeNumber(race.round, 0);
       const startTime = toRaceDate(race);
-      const mappedMeeting = mapRaceToMeeting(race, meetings);
+      const mappedMeeting = findArchivedMeetingForRound(meetings, replayRoundByMeeting, round);
       const replayRound = mappedMeeting
         ? (replayRoundByMeeting.get(mappedMeeting.meeting_key) ?? null)
         : null;
@@ -463,12 +419,6 @@ export const buildStandingsContextLabel = (completedCards: HomeRaceCard[]): stri
   }
   return `After Round ${latestCompleted.round}: ${latestCompleted.meetingName}`;
 };
-
-const toReplayYears = (currentYear: number) =>
-  Array.from(
-    { length: Math.max(0, currentYear - MIN_REPLAY_YEAR + 1) },
-    (_, index) => currentYear - index,
-  );
 
 export const buildReplaySessionGroupsByYear = (
   replayYears: ReplayYearData[],
@@ -554,138 +504,208 @@ export const buildReplaySessionGroupsByYear = (
     .sort((a, b) => b.year - a.year);
 };
 
-export const getDashboardData = async (year: number): Promise<HomeDashboardData> => {
-  const warnings: string[] = [];
-  const now = Date.now();
-  const currentYear = new Date().getFullYear();
+const isReplaySessionType = (value: string): value is ReplaySessionType =>
+  REPLAY_SESSION_PREFERENCE.includes(value as ReplaySessionType);
 
-  const [racesPayload, driverStandingsPayload, constructorStandingsPayload] = await Promise.all([
-    fetchJolpica<{ MRData?: { RaceTable?: { Races?: JolpicaRace[] } } }>(`${year}/races`),
-    fetchJolpica(`${year}/driverstandings`),
-    fetchJolpica(`${year}/constructorstandings`),
-  ]);
+export const buildReplaySessionGroupsFromCatalog = (
+  catalog: ArchiveCatalog,
+): ReplaySessionYearGroup[] => {
+  const byYear = new Map<number, ReplaySessionCard[]>();
+  for (const entry of catalog.sessions) {
+    if (!isReplaySessionType(entry.type)) continue;
+    const sessionType = entry.type;
+    const cards = byYear.get(entry.year) ?? [];
+    cards.push({
+      id: `${entry.year}-${entry.meetingKey}-${sessionType}`,
+      year: entry.year,
+      round: entry.round,
+      meetingName: entry.meeting.meeting_name,
+      circuitName: entry.meeting.circuit_short_name,
+      startTime: entry.session.date_start,
+      sessionType,
+      detailsHref: buildEventDetailsHref(entry.year, entry.round, sessionType),
+      replayHref: buildReplayHref(entry.year, entry.round, sessionType),
+    });
+    byYear.set(entry.year, cards);
+  }
+  return [...byYear.entries()]
+    .map(([year, sessions]) => ({
+      year,
+      sessions: sessions.sort(
+        (a, b) =>
+          b.round - a.round ||
+          REPLAY_SESSION_PREFERENCE.indexOf(a.sessionType) -
+            REPLAY_SESSION_PREFERENCE.indexOf(b.sessionType),
+      ),
+    }))
+    .sort((a, b) => b.year - a.year);
+};
 
-  const [meetingsResult, sessionsResult, newsResult] = await Promise.all([
-    withTimeout(
-      (signal) => fetchOpenF1<OpenF1Meeting[]>("meetings", { year }, signal, "persist"),
-      HOME_REQUEST_TIMEOUT_MS,
-    ).catch((error) => {
-      warnings.push(error instanceof Error ? error.message : "OpenF1 meetings unavailable");
-      return [] as OpenF1Meeting[];
-    }),
-    withTimeout(
-      (signal) => fetchOpenF1<OpenF1Session[]>("sessions", { year }, signal, "persist"),
-      HOME_REQUEST_TIMEOUT_MS,
-    ).catch((error) => {
-      warnings.push(error instanceof Error ? error.message : "OpenF1 sessions unavailable");
-      return [] as OpenF1Session[];
-    }),
-    fetchNews().catch((error) => {
-      warnings.push(error instanceof Error ? error.message : "News feed unavailable");
-      return [] as NewsItem[];
-    }),
-  ]);
+const homeCardFromArchive = (entry: ArchiveCatalogSession): HomeRaceCard => {
+  const sessionType = entry.type as ReplaySessionType;
+  return {
+    id: `${entry.year}-${entry.round}`,
+    year: entry.year,
+    round: entry.round,
+    meetingName: entry.meeting.meeting_name,
+    circuitName: entry.meeting.circuit_short_name,
+    locality: "",
+    country: entry.meeting.country_name,
+    startTime: entry.session.date_start,
+    status: "completed",
+    replay: {
+      available: true,
+      sessionType,
+      detailsHref: buildEventDetailsHref(entry.year, entry.round, sessionType),
+      replayHref: buildReplayHref(entry.year, entry.round, sessionType),
+    },
+  };
+};
 
-  const races = racesPayload.MRData?.RaceTable?.Races ?? [];
-  const { replayRoundByMeeting, replaySessionByMeeting } = buildReplayMaps(
-    meetingsResult,
-    sessionsResult,
-    now,
-  );
-  const cards = buildCards(
+const preferredArchiveSessions = (sessions: ArchiveCatalogSession[]) => {
+  const byMeeting = new Map<number, ArchiveCatalogSession>();
+  for (const entry of sessions) {
+    if (!isReplaySessionType(entry.type)) continue;
+    const current = byMeeting.get(entry.meetingKey);
+    if (
+      !current ||
+      REPLAY_SESSION_PREFERENCE.indexOf(entry.type) <
+        REPLAY_SESSION_PREFERENCE.indexOf(current.type as ReplaySessionType)
+    ) {
+      byMeeting.set(entry.meetingKey, entry);
+    }
+  }
+  return [...byMeeting.values()].sort((a, b) => a.round - b.round);
+};
+
+export const buildArchiveDashboardData = (
+  catalog: ArchiveCatalog,
+  year: number,
+): HomeDashboardData => {
+  const replaySessionsByYear = buildReplaySessionGroupsFromCatalog(catalog);
+  const completedCards = preferredArchiveSessions(
+    catalog.sessions.filter((entry) => entry.year === year),
+  ).map(homeCardFromArchive);
+  const latestArchive = [...catalog.sessions]
+    .filter((entry) => isReplaySessionType(entry.type))
+    .sort((a, b) => Date.parse(b.session.date_end) - Date.parse(a.session.date_end))[0];
+  return {
     year,
-    races,
-    meetingsResult,
+    cards: completedCards,
+    completedCards,
+    upcomingCards: [],
+    nextRace: null,
+    latestReplayRace:
+      completedCards.at(-1) ?? (latestArchive ? homeCardFromArchive(latestArchive) : null),
+    replaySessionsByYear,
+    totalReplaySessions: replaySessionsByYear.reduce(
+      (total, group) => total + group.sessions.length,
+      0,
+    ),
+    standingsContextLabel: buildStandingsContextLabel(completedCards),
+    driverStandings: [],
+    constructorStandings: [],
+    news: [],
+    warnings: [],
+  };
+};
+
+const catalogMaps = (sessions: ArchiveCatalogSession[]) => {
+  const replayRoundByMeeting = new Map<number, number>();
+  const replaySessionByMeeting = new Map<number, ReplaySessionType>();
+  for (const entry of preferredArchiveSessions(sessions)) {
+    replayRoundByMeeting.set(entry.meetingKey, entry.round);
+    replaySessionByMeeting.set(entry.meetingKey, entry.type as ReplaySessionType);
+  }
+  return { replayRoundByMeeting, replaySessionByMeeting };
+};
+
+const warningMessage = (error: unknown, fallback: string) =>
+  error instanceof Error ? error.message : fallback;
+
+export const loadDashboardSupplement = async (
+  catalog: ArchiveCatalog,
+  base: HomeDashboardData,
+  signal?: AbortSignal,
+): Promise<HomeDashboardData> => {
+  const warnings: string[] = [];
+  const emptyRaces = { MRData: { RaceTable: { Races: [] as JolpicaRace[] } } };
+  const [racesPayload, driverStandingsPayload, constructorStandingsPayload, news] =
+    await Promise.all([
+      fetchJolpica<{ MRData?: { RaceTable?: { Races?: JolpicaRace[] } } }>(
+        `${base.year}/races`,
+        signal,
+      ).catch((error) => {
+        warnings.push(warningMessage(error, "Season schedule unavailable"));
+        return emptyRaces;
+      }),
+      fetchJolpica(`${base.year}/driverstandings`, signal).catch((error) => {
+        warnings.push(warningMessage(error, "Driver standings unavailable"));
+        return {};
+      }),
+      fetchJolpica(`${base.year}/constructorstandings`, signal).catch((error) => {
+        warnings.push(warningMessage(error, "Constructor standings unavailable"));
+        return {};
+      }),
+      fetchNews(signal).catch((error) => {
+        warnings.push(warningMessage(error, "News feed unavailable"));
+        return [] as NewsItem[];
+      }),
+    ]);
+  if (signal?.aborted) throw new DOMException("The operation was aborted", "AbortError");
+
+  const yearSessions = catalog.sessions.filter((entry) => entry.year === base.year);
+  const { replayRoundByMeeting, replaySessionByMeeting } = catalogMaps(yearSessions);
+  const meetings = preferredArchiveSessions(yearSessions).map((entry) => entry.meeting);
+  const cards = buildCards(
+    base.year,
+    racesPayload.MRData?.RaceTable?.Races ?? [],
+    meetings,
     replayRoundByMeeting,
     replaySessionByMeeting,
   );
   const completedCards = cards.filter((card) => card.status === "completed");
   const upcomingCards = cards.filter((card) => card.status !== "completed");
-
-  const latestReplayRace =
-    [...completedCards].reverse().find((card) => card.replay.available) ?? null;
-  const nextRace = upcomingCards[0] ?? null;
-  const standingsContextLabel = buildStandingsContextLabel(completedCards);
-  const latestReplayableSession =
-    [...filterReplayableSessions(sessionsResult, now)].sort(
-      (a, b) => Date.parse(b.date_end) - Date.parse(a.date_end),
-    )[0] ?? null;
-  const driversResult = latestReplayableSession
-    ? await withTimeout(
-        (signal) =>
-          fetchOpenF1<OpenF1Driver[]>(
-            "drivers",
-            { session_key: latestReplayableSession.session_key },
-            signal,
-            "persist",
-          ),
-        HOME_REQUEST_TIMEOUT_MS,
-      ).catch(() => [] as OpenF1Driver[])
-    : [];
-
-  const replayYears = toReplayYears(currentYear);
-  const replayYearLookups = await Promise.all(
-    replayYears.map(async (replayYear) => {
-      if (replayYear === year) {
-        return {
-          year: replayYear,
-          meetings: meetingsResult,
-          sessions: sessionsResult,
-        } satisfies ReplayYearData;
-      }
-
-      const [yearMeetings, yearSessions] = await Promise.all([
-        withTimeout(
-          (signal) =>
-            fetchOpenF1<OpenF1Meeting[]>("meetings", { year: replayYear }, signal, "persist"),
-          HOME_REQUEST_TIMEOUT_MS,
-        ).catch(() => [] as OpenF1Meeting[]),
-        withTimeout(
-          (signal) =>
-            fetchOpenF1<OpenF1Session[]>("sessions", { year: replayYear }, signal, "persist"),
-          HOME_REQUEST_TIMEOUT_MS,
-        ).catch(() => [] as OpenF1Session[]),
-      ]);
-
-      if (!yearMeetings.length || !yearSessions.length) {
-        return null;
-      }
-
-      return {
-        year: replayYear,
-        meetings: yearMeetings,
-        sessions: yearSessions,
-      } satisfies ReplayYearData;
-    }),
-  );
-
-  const replaySessionsByYear = buildReplaySessionGroupsByYear(
-    replayYearLookups.filter((entry): entry is ReplayYearData => entry !== null),
-    now,
-  );
-  const totalReplaySessions = replaySessionsByYear.reduce(
-    (total, group) => total + group.sessions.length,
-    0,
-  );
+  const latest = [...yearSessions].sort(
+    (a, b) => Date.parse(b.session.date_end) - Date.parse(a.session.date_end),
+  )[0];
+  let drivers: OpenF1Driver[] = [];
+  if (latest) {
+    try {
+      const manifest = await loadManifest(getArchiveCatalogUrl(), latest, { signal });
+      drivers = (await loadReplayCore(getArchiveCatalogUrl(), manifest, { signal })).drivers;
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      warnings.push(warningMessage(error, "Driver profiles unavailable"));
+    }
+  }
 
   return {
-    year,
-    cards,
-    completedCards,
+    ...base,
+    cards: cards.length ? cards : base.cards,
+    completedCards: cards.length ? completedCards : base.completedCards,
     upcomingCards,
-    nextRace,
-    latestReplayRace,
-    replaySessionsByYear,
-    totalReplaySessions,
-    standingsContextLabel,
-    driverStandings: enrichDriverStandings(
-      parseDriverStandings(driverStandingsPayload),
-      driversResult,
+    nextRace: upcomingCards[0] ?? null,
+    latestReplayRace:
+      [...completedCards].reverse().find((card) => card.replay.available) ?? base.latestReplayRace,
+    standingsContextLabel: buildStandingsContextLabel(
+      cards.length ? completedCards : base.completedCards,
     ),
+    driverStandings: enrichDriverStandings(parseDriverStandings(driverStandingsPayload), drivers),
     constructorStandings: enrichConstructorStandings(
       parseConstructorStandings(constructorStandingsPayload),
     ),
-    news: newsResult,
+    news,
     warnings,
   };
+};
+
+export const loadArchiveDashboard = async (year: number, signal?: AbortSignal) => {
+  const catalog = await loadCatalog(getArchiveCatalogUrl(), { signal });
+  return { catalog, data: buildArchiveDashboardData(catalog, year) };
+};
+
+export const getDashboardData = async (year: number): Promise<HomeDashboardData> => {
+  const { catalog, data } = await loadArchiveDashboard(year);
+  return loadDashboardSupplement(catalog, data);
 };

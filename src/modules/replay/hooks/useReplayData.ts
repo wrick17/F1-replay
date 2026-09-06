@@ -1,39 +1,39 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  fetchChunked,
-  fetchOpenF1,
-  fetchOpenF1OrEmpty,
-  fetchReplayFromWorker,
-  uploadReplayToWorker,
-} from "../api/openf1.client";
-import {
-  buildYearOptions,
-  chunkAppend,
-  createTelemetryMap,
-  dedupeDrivers,
-  filterReplayableMeetings,
-  filterReplayableSessions,
-  getLatestTelemetryTimestamp,
-  hasReplayableSessions,
-} from "../services/telemetry.service";
+  findChunkAt,
+  getArchiveCatalogUrl,
+  loadCatalog,
+  loadLocationChunk,
+  loadManifest,
+  loadReplayCore,
+} from "../../archive";
 import type {
-  OpenF1Driver,
-  OpenF1Lap,
+  ArchiveCatalogSession,
+  ArchiveChunk,
+  ArchiveManifest,
+  DecodedLocationChunk,
+} from "../../archive/types";
+import type {
   OpenF1Location,
   OpenF1Meeting,
-  OpenF1Overtake,
-  OpenF1Pit,
-  OpenF1Position,
-  OpenF1RaceControl,
   OpenF1Session,
-  OpenF1Stint,
-  OpenF1TeamRadio,
-  OpenF1Weather,
   ReplaySessionData,
   TimedSample,
 } from "../types/openf1.types";
 import type { SessionType } from "../types/replay.types";
-import { groupByDriverNumber, sortByTimestamp, withTimestamp } from "../utils/telemetry.util";
+
+type LoadedLocationChunk = {
+  index: number;
+  locations: DecodedLocationChunk;
+};
+
+type ReplayWindowContext = {
+  manifest: ArchiveManifest;
+  core: ReplaySessionData;
+  knownDrivers: ReadonlySet<number>;
+  chunks: Map<number, DecodedLocationChunk>;
+  targetIndex: number | null;
+};
 
 type ReplayDataState = {
   data: ReplaySessionData | null;
@@ -42,8 +42,12 @@ type ReplayDataState = {
   meetings: OpenF1Meeting[];
   sessions: OpenF1Session[];
   availableYears: number[];
-  availableEndMs: number;
+  loadedStartMs: number;
+  loadedEndMs: number;
+  sessionEndMs: number;
   dataRevision: number;
+  manifest: ArchiveManifest | null;
+  requestWindow: (timestampMs: number) => Promise<void>;
 };
 
 type ReplayDataParams = {
@@ -52,417 +56,270 @@ type ReplayDataParams = {
   sessionType: SessionType;
 };
 
+const isSessionType = (value: string): value is SessionType =>
+  value === "Race" || value === "Sprint" || value === "Qualifying";
+
+export const getReplayWindowIndexes = (selectedIndex: number, chunkCount: number) =>
+  [selectedIndex - 1, selectedIndex, selectedIndex + 1].filter(
+    (index) => index >= 0 && index < chunkCount,
+  );
+
+export const getReplayChunkIndex = (chunks: ArchiveChunk[], timestampMs: number) => {
+  const exact = findChunkAt(chunks, timestampMs);
+  if (exact) return chunks.indexOf(exact);
+  const next = chunks.findIndex((chunk) => chunk.startMs > timestampMs);
+  return next >= 0 ? next : chunks.length - 1;
+};
+
+const dedupeLocations = (samples: TimedSample<OpenF1Location>[]) => {
+  const byTimestamp = new Map<number, TimedSample<OpenF1Location>>();
+  for (const sample of samples) byTimestamp.set(sample.timestampMs, sample);
+  return [...byTimestamp.values()].sort((a, b) => a.timestampMs - b.timestampMs);
+};
+
+export const buildReplayWindowData = (
+  core: ReplaySessionData,
+  chunks: LoadedLocationChunk[],
+): ReplaySessionData => {
+  const telemetryByDriver = Object.fromEntries(
+    Object.entries(core.telemetryByDriver).map(([driver, telemetry]) => [
+      driver,
+      { ...telemetry, locations: [] as TimedSample<OpenF1Location>[] },
+    ]),
+  );
+  for (const { locations } of chunks.sort((a, b) => a.index - b.index)) {
+    for (const [driver, samples] of Object.entries(locations)) {
+      const telemetry = telemetryByDriver[Number(driver)];
+      if (!telemetry) throw new Error(`location chunk has unknown driver ${driver}`);
+      telemetry.locations.push(...samples);
+    }
+  }
+  for (const telemetry of Object.values(telemetryByDriver)) {
+    telemetry.locations = dedupeLocations(telemetry.locations);
+  }
+  return { ...core, telemetryByDriver };
+};
+
+const sessionsForYear = (catalogSessions: ArchiveCatalogSession[], year: number) =>
+  catalogSessions.filter((entry) => entry.year === year && isSessionType(entry.type));
+
+export const projectCatalogSession = (entry: ArchiveCatalogSession): OpenF1Session => ({
+  ...entry.session,
+  session_type: entry.type,
+});
+
+const meetingsForYear = (catalogSessions: ArchiveCatalogSession[], year: number) => {
+  const byRound = new Map<number, OpenF1Meeting>();
+  for (const entry of sessionsForYear(catalogSessions, year)) {
+    if (!byRound.has(entry.round)) {
+      byRound.set(entry.round, { ...entry.meeting, round: entry.round } as OpenF1Meeting);
+    }
+  }
+  return [...byRound.entries()]
+    .sort(([roundA], [roundB]) => roundA - roundB)
+    .map(([, meeting]) => meeting);
+};
+
 export const useReplayData = ({ year, round, sessionType }: ReplayDataParams): ReplayDataState => {
   const [data, setData] = useState<ReplaySessionData | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(year !== null);
   const [error, setError] = useState<string | null>(null);
   const [meetings, setMeetings] = useState<OpenF1Meeting[]>([]);
   const [sessions, setSessions] = useState<OpenF1Session[]>([]);
   const [availableYears, setAvailableYears] = useState<number[]>([]);
-  const [availableEndMs, setAvailableEndMs] = useState(0);
+  const [loadedStartMs, setLoadedStartMs] = useState(0);
+  const [loadedEndMs, setLoadedEndMs] = useState(0);
+  const [sessionEndMs, setSessionEndMs] = useState(0);
   const [dataRevision, setDataRevision] = useState(0);
-  const [isPrimarySessionSettled, setIsPrimarySessionSettled] = useState(false);
-  const sessionCacheRef = useRef<Map<number, ReplaySessionData>>(new Map());
-  const abortRef = useRef<AbortController | null>(null);
-  const meetingsRequestRef = useRef(0);
-  const sessionsRequestRef = useRef(0);
-  const yearOptions = useMemo(() => buildYearOptions(new Date().getFullYear()), []);
+  const [manifest, setManifest] = useState<ArchiveManifest | null>(null);
+  const contextRef = useRef<ReplayWindowContext | null>(null);
+  const sessionAbortRef = useRef<AbortController | null>(null);
+  const windowAbortRef = useRef<AbortController | null>(null);
+  const windowRequestRef = useRef(0);
 
-  const sortedMeetings = useMemo(() => {
-    return [...meetings].sort(
-      (a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime(),
+  const commitWindow = useCallback((context: ReplayWindowContext, indexes: number[]) => {
+    const loaded = indexes.flatMap((index) => {
+      const locations = context.chunks.get(index);
+      return locations ? [{ index, locations }] : [];
+    });
+    if (!loaded.length) return;
+    const descriptors = loaded.map(({ index }) => context.manifest.locations[index]);
+    const firstIndex = Math.min(...loaded.map(({ index }) => index));
+    const lastIndex = Math.max(...loaded.map(({ index }) => index));
+    setData(buildReplayWindowData(context.core, loaded));
+    setLoadedStartMs(
+      firstIndex === 0
+        ? context.manifest.sessionStartMs
+        : (context.manifest.locations[firstIndex - 1]?.endMs ??
+            Math.min(...descriptors.map((chunk) => chunk.startMs))),
     );
-  }, [meetings]);
+    setLoadedEndMs(
+      lastIndex === context.manifest.locations.length - 1
+        ? context.manifest.sessionEndMs
+        : (context.manifest.locations[lastIndex + 1]?.startMs ??
+            Math.max(...descriptors.map((chunk) => chunk.endMs))),
+    );
+    setDataRevision((revision) => revision + 1);
+  }, []);
 
-  const selectedMeeting = sortedMeetings[round - 1] ?? sortedMeetings[0] ?? null;
-  const selectedMeetingKey = selectedMeeting?.meeting_key ?? null;
-  const selectedMeetingRef = useRef(selectedMeeting);
-  selectedMeetingRef.current = selectedMeeting;
+  const requestWindow = useCallback(
+    async (timestampMs: number) => {
+      const context = contextRef.current;
+      if (!context) return;
+      const selectedIndex = getReplayChunkIndex(context.manifest.locations, timestampMs);
+      if (selectedIndex < 0 || context.targetIndex === selectedIndex) return;
+
+      context.targetIndex = selectedIndex;
+      const desired = getReplayWindowIndexes(selectedIndex, context.manifest.locations.length);
+      for (const index of [...context.chunks.keys()]) {
+        if (!desired.includes(index)) context.chunks.delete(index);
+      }
+
+      const requestId = windowRequestRef.current + 1;
+      windowRequestRef.current = requestId;
+      windowAbortRef.current?.abort();
+      const controller = new AbortController();
+      windowAbortRef.current = controller;
+      setError(null);
+
+      try {
+        if (!context.chunks.has(selectedIndex)) {
+          const selectedChunk = await loadLocationChunk(
+            getArchiveCatalogUrl(),
+            context.manifest,
+            context.manifest.locations[selectedIndex],
+            context.knownDrivers,
+            { signal: controller.signal },
+          );
+          if (controller.signal.aborted || windowRequestRef.current !== requestId) return;
+          context.chunks.set(selectedIndex, selectedChunk);
+        }
+        if (controller.signal.aborted || windowRequestRef.current !== requestId) return;
+        commitWindow(context, desired);
+
+        await Promise.all(
+          desired
+            .filter((index) => index !== selectedIndex && !context.chunks.has(index))
+            .map(async (index) => {
+              const chunk = await loadLocationChunk(
+                getArchiveCatalogUrl(),
+                context.manifest,
+                context.manifest.locations[index],
+                context.knownDrivers,
+                { signal: controller.signal },
+              );
+              if (!controller.signal.aborted && windowRequestRef.current === requestId) {
+                context.chunks.set(index, chunk);
+              }
+            }),
+        );
+        if (controller.signal.aborted || windowRequestRef.current !== requestId) return;
+        commitWindow(context, desired);
+      } catch (loadError) {
+        if (!controller.signal.aborted && windowRequestRef.current === requestId) {
+          context.targetIndex = null;
+          setError(loadError instanceof Error ? loadError.message : "Failed to load replay data");
+        }
+      }
+    },
+    [commitWindow],
+  );
 
   useEffect(() => {
+    sessionAbortRef.current?.abort();
+    windowAbortRef.current?.abort();
+    contextRef.current = null;
+    setData(null);
+    setManifest(null);
+    setLoadedStartMs(0);
+    setLoadedEndMs(0);
+    setSessionEndMs(0);
+    setDataRevision(0);
+    setError(null);
+
     if (year === null) {
       setLoading(false);
-      setError(null);
       setMeetings([]);
       setSessions([]);
-      setData(null);
-      setAvailableEndMs(0);
-      setDataRevision(0);
-      setIsPrimarySessionSettled(false);
       return;
     }
-    const requestId = meetingsRequestRef.current + 1;
-    meetingsRequestRef.current = requestId;
-    setLoading(true);
-    setError(null);
-    setMeetings([]);
-    setSessions([]);
-    setData(null);
-    setAvailableEndMs(0);
-    setDataRevision(0);
-    setIsPrimarySessionSettled(false);
 
-    Promise.all([
-      fetchOpenF1<OpenF1Meeting[]>("meetings", { year }, undefined, "persist"),
-      fetchOpenF1<OpenF1Session[]>("sessions", { year }, undefined, "persist"),
-    ])
-      .then(([meetingResult, sessionResult]) => {
-        if (meetingsRequestRef.current !== requestId) {
-          return;
-        }
-        setMeetings(filterReplayableMeetings(meetingResult, sessionResult, Date.now()));
-      })
-      .catch((err: Error) => {
-        if (meetingsRequestRef.current !== requestId) {
-          return;
-        }
-        setError(err.message);
-      })
-      .finally(() => {
-        if (meetingsRequestRef.current === requestId) {
-          setLoading(false);
-        }
-      });
-  }, [year]);
-
-  useEffect(() => {
-    if (!isPrimarySessionSettled && year !== null) {
-      return;
-    }
-    let cancelled = false;
-    const loadYears = async () => {
-      const now = Date.now();
-      const available: number[] = [];
-      for (const option of yearOptions) {
-        if (cancelled) {
-          return;
-        }
-        try {
-          const result = await fetchOpenF1<OpenF1Session[]>(
-            "sessions",
-            { year: option },
-            undefined,
-            "persist",
-          );
-          if (hasReplayableSessions(result, now)) {
-            available.push(option);
-            if (!cancelled) {
-              setAvailableYears([...available]);
-            }
-          }
-        } catch {
-          // Ignore year-level failures so the current replay remains usable.
-        }
-      }
-      if (!cancelled) {
-        setAvailableYears(available);
-      }
-    };
-    void loadYears();
-    return () => {
-      cancelled = true;
-    };
-  }, [isPrimarySessionSettled, year, yearOptions]);
-
-  useEffect(() => {
-    if (!selectedMeetingKey) {
-      setLoading(false);
-      setError(null);
-      setSessions([]);
-      setData(null);
-      setAvailableEndMs(0);
-      setDataRevision(0);
-      setIsPrimarySessionSettled(true);
-      return;
-    }
-    const requestId = sessionsRequestRef.current + 1;
-    sessionsRequestRef.current = requestId;
-    setLoading(true);
-    setError(null);
-    setSessions([]);
-    setData(null);
-    setAvailableEndMs(0);
-    setDataRevision(0);
-    setIsPrimarySessionSettled(false);
-
-    fetchOpenF1<OpenF1Session[]>(
-      "sessions",
-      { meeting_key: selectedMeetingKey },
-      undefined,
-      "persist",
-    )
-      .then((result) => {
-        if (sessionsRequestRef.current !== requestId) {
-          return;
-        }
-        const now = Date.now();
-        const filtered = filterReplayableSessions(result, now);
-        setSessions(filtered);
-      })
-      .catch((err: Error) => {
-        if (sessionsRequestRef.current !== requestId) {
-          return;
-        }
-        setError(err.message);
-      })
-      .finally(() => {
-        if (sessionsRequestRef.current === requestId) {
-          setLoading(false);
-        }
-      });
-  }, [selectedMeetingKey]);
-
-  useEffect(() => {
-    const meeting = selectedMeetingRef.current;
-    if (!meeting) {
-      return;
-    }
-    const session = sessions.find((entry) => entry.session_type === sessionType) ?? null;
-    if (!session) {
-      setLoading(false);
-      setData(null);
-      setIsPrimarySessionSettled(true);
-      return;
-    }
-    const cached = sessionCacheRef.current.get(session.session_key);
-    if (cached) {
-      setData(cached);
-      setAvailableEndMs(getLatestTelemetryTimestamp(cached.telemetryByDriver));
-      setLoading(false);
-      setIsPrimarySessionSettled(true);
-      return;
-    }
     const controller = new AbortController();
-    abortRef.current?.abort();
-    abortRef.current = controller;
+    sessionAbortRef.current = controller;
     setLoading(true);
-    setError(null);
-    setData(null);
-    setAvailableEndMs(0);
-    setDataRevision(0);
 
     const load = async () => {
-      const cached = await fetchReplayFromWorker(session.session_key, controller.signal);
-      if (cached.status === "hit") {
-        sessionCacheRef.current.set(session.session_key, cached.payload);
-        const latest = getLatestTelemetryTimestamp(cached.payload.telemetryByDriver);
-        if (!controller.signal.aborted) {
-          setAvailableEndMs(latest > 0 ? latest : cached.payload.sessionEndMs);
-        }
-        return cached.payload;
-      }
-
-      const driversResponse = await fetchOpenF1<OpenF1Driver[]>(
-        "drivers",
-        { session_key: session.session_key },
-        controller.signal,
-        "persist",
+      const catalog = await loadCatalog(getArchiveCatalogUrl(), { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      setAvailableYears(
+        [...new Set(catalog.sessions.map((entry) => entry.year))].sort((a, b) => b - a),
       );
-      const drivers = dedupeDrivers(driversResponse);
-      const telemetryByDriver = createTelemetryMap(drivers);
+      const yearSessions = sessionsForYear(catalog.sessions, year);
+      const nextMeetings = meetingsForYear(catalog.sessions, year);
+      const meetingEntry = yearSessions.find((entry) => entry.round === round) ?? null;
+      const nextSessions = meetingEntry
+        ? yearSessions
+            .filter((entry) => entry.meetingKey === meetingEntry.meetingKey)
+            .map(projectCatalogSession)
+        : [];
+      setMeetings(nextMeetings);
+      setSessions(nextSessions);
 
-      const sessionStartMs = new Date(session.date_start).getTime();
-      const sessionEndMs = new Date(session.date_end).getTime();
-
-      const [stints, laps, teamRadios, overtakes, weather, raceControl, pits] = await Promise.all([
-        fetchOpenF1<OpenF1Stint[]>(
-          "stints",
-          { session_key: session.session_key },
-          controller.signal,
-          "persist",
-        ),
-        fetchOpenF1<OpenF1Lap[]>(
-          "laps",
-          { session_key: session.session_key },
-          controller.signal,
-          "persist",
-        ),
-        fetchOpenF1OrEmpty<OpenF1TeamRadio[]>(
-          "team_radio",
-          { session_key: session.session_key },
-          controller.signal,
-          "persist",
-        ),
-        fetchOpenF1OrEmpty<OpenF1Overtake[]>(
-          "overtakes",
-          { session_key: session.session_key },
-          controller.signal,
-          "persist",
-        ),
-        fetchOpenF1<OpenF1Weather[]>(
-          "weather",
-          { session_key: session.session_key },
-          controller.signal,
-          "persist",
-        ),
-        fetchOpenF1<OpenF1RaceControl[]>(
-          "race_control",
-          { session_key: session.session_key },
-          controller.signal,
-          "persist",
-        ),
-        fetchOpenF1<OpenF1Pit[]>(
-          "pit",
-          { session_key: session.session_key },
-          controller.signal,
-          "persist",
-        ),
-      ]);
-      const lapsTimed = withTimestamp(laps);
-      const lapsGrouped = groupByDriverNumber(lapsTimed);
-
-      Object.entries(lapsGrouped).forEach(([driverKey, driverLaps]) => {
-        const driverNumber = Number(driverKey);
-        if (!telemetryByDriver[driverNumber]) {
-          telemetryByDriver[driverNumber] = {
-            locations: [],
-            positions: [],
-            stints: [],
-            laps: [],
-          };
-        }
-        telemetryByDriver[driverNumber].laps = sortByTimestamp(driverLaps);
-      });
-
-      const stintsGrouped = groupByDriverNumber(stints);
-      Object.entries(stintsGrouped).forEach(([driverKey, driverStints]) => {
-        const driverNumber = Number(driverKey);
-        if (!telemetryByDriver[driverNumber]) {
-          telemetryByDriver[driverNumber] = {
-            locations: [],
-            positions: [],
-            stints: [],
-            laps: [],
-          };
-        }
-        telemetryByDriver[driverNumber].stints = driverStints;
-      });
-
-      const baseData = {
-        meeting: meeting,
-        session,
-        drivers,
-        telemetryByDriver,
-        sessionStartMs,
-        sessionEndMs,
-        teamRadios: withTimestamp(teamRadios),
-        overtakes: withTimestamp(overtakes),
-        weather: withTimestamp(weather),
-        raceControl: withTimestamp(raceControl),
-        pits: withTimestamp(pits),
-      } satisfies ReplaySessionData;
-      if (!controller.signal.aborted) {
-        setData(baseData);
-      }
-
-      const handleLocationsChunk = (chunk: OpenF1Location[]) => {
-        const normalized = sortByTimestamp(withTimestamp(chunk)).filter(
-          (sample) =>
-            Number.isFinite(sample.x) &&
-            Number.isFinite(sample.y) &&
-            Number.isFinite(sample.z) &&
-            Number.isFinite(sample.timestampMs),
-        );
-        chunkAppend(
-          Object.fromEntries(
-            Object.keys(telemetryByDriver).map((key) => [
-              Number(key),
-              telemetryByDriver[Number(key)].locations,
-            ]),
-          ),
-          normalized,
-        );
-        const latestTimestamp = normalized[normalized.length - 1]?.timestampMs ?? 0;
-        if (latestTimestamp > 0) {
-          setAvailableEndMs((prev) => Math.max(prev, latestTimestamp));
-        }
-        setDataRevision((prev) => prev + 1);
-      };
-
-      const handlePositionChunk = (chunk: OpenF1Position[]) => {
-        const normalized = sortByTimestamp(withTimestamp(chunk));
-        chunkAppend(
-          Object.fromEntries(
-            Object.keys(telemetryByDriver).map((key) => [
-              Number(key),
-              telemetryByDriver[Number(key)].positions,
-            ]),
-          ),
-          normalized,
-        );
-        setDataRevision((prev) => prev + 1);
-      };
-
-      const positionStartMs = Math.max(0, sessionStartMs - 60 * 60 * 1000);
-      await Promise.all([
-        fetchChunked<OpenF1Location>(
-          "location",
-          { session_key: session.session_key },
-          sessionStartMs,
-          sessionEndMs,
-          180_000,
-          handleLocationsChunk,
-          controller.signal,
-          "persist",
-        ),
-        fetchChunked<OpenF1Position>(
-          "position",
-          { session_key: session.session_key },
-          positionStartMs,
-          sessionEndMs,
-          600_000,
-          handlePositionChunk,
-          controller.signal,
-          "persist",
-        ),
-      ]);
-
-      Object.values(telemetryByDriver).forEach((telemetry) => {
-        telemetry.locations = sortByTimestamp(telemetry.locations as TimedSample<OpenF1Location>[]);
-        telemetry.positions = sortByTimestamp(telemetry.positions as TimedSample<OpenF1Position>[]);
-      });
-
-      sessionCacheRef.current.set(session.session_key, baseData);
-      // Upload even if the effect is later cleaned up: the payload is already fully built
-      // at this point, and skipping the upload prevents cache warming.
-      void uploadReplayToWorker(session.session_key, baseData, cached.uploadToken).catch(
-        () => undefined,
+      const selected = yearSessions.find(
+        (entry) => entry.round === round && entry.type === sessionType,
       );
-      return baseData;
+      if (!selected) return;
+      const nextManifest = await loadManifest(getArchiveCatalogUrl(), selected, {
+        signal: controller.signal,
+      });
+      if (!nextManifest.locations.length)
+        throw new Error("This replay has no archived location data.");
+      const core = await loadReplayCore(getArchiveCatalogUrl(), nextManifest, {
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted) return;
+      const context: ReplayWindowContext = {
+        manifest: nextManifest,
+        core,
+        knownDrivers: new Set(Object.keys(core.telemetryByDriver).map(Number)),
+        chunks: new Map(),
+        targetIndex: null,
+      };
+      contextRef.current = context;
+      setManifest(nextManifest);
+      setSessionEndMs(nextManifest.sessionEndMs);
+      setData(core);
+      await requestWindow(nextManifest.sessionStartMs);
     };
 
-    load()
-      .then((result) => {
+    void load()
+      .catch((loadError) => {
         if (!controller.signal.aborted) {
-          setData(result);
+          setError(loadError instanceof Error ? loadError.message : "Failed to load replay data");
         }
-      })
-      .catch((err: Error) => {
-        if (controller.signal.aborted) {
-          return;
-        }
-        setError(err.message);
       })
       .finally(() => {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-          setIsPrimarySessionSettled(true);
-        }
+        if (!controller.signal.aborted) setLoading(false);
       });
 
     return () => {
       controller.abort();
+      windowAbortRef.current?.abort();
     };
-  }, [sessions, sessionType]);
+  }, [year, round, sessionType, requestWindow]);
 
   return {
     data,
     loading,
     error,
-    meetings: sortedMeetings,
+    meetings,
     sessions,
     availableYears,
-    availableEndMs,
+    loadedStartMs,
+    loadedEndMs,
+    sessionEndMs,
     dataRevision,
+    manifest,
+    requestWindow,
   };
 };

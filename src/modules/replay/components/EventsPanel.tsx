@@ -1,5 +1,5 @@
 import { Pause, Play } from "lucide-react";
-import { memo, useEffect, useMemo, useRef } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import type { OpenF1TeamRadio, TimedSample } from "../types/openf1.types";
 import type { EventsPanelProps } from "../types/replay.types";
 import { formatTime } from "../utils/format.util";
@@ -88,6 +88,9 @@ const EventsPanelBase = ({
   onSelectEvent,
 }: EventsPanelProps) => {
   const activeEventRef = useRef<HTMLElement | null>(null);
+  const setActiveEventRef = useCallback((element: HTMLElement | null) => {
+    activeEventRef.current = element;
+  }, []);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const timestamps = useMemo(() => events.map((event) => event.timestampMs), [events]);
 
@@ -160,47 +163,52 @@ const EventsPanelBase = ({
                 <div key={`${event.timestampMs}-${event.type}-${index}`}>
                   {markerLineIndex === index && (
                     <div
-                      ref={activeEventRef}
+                      ref={setActiveEventRef}
                       className="h-[2px] w-full rounded bg-[#E10600]"
                       aria-hidden="true"
                     />
                   )}
-                  <button
-                    ref={isActive ? activeEventRef : null}
-                    type="button"
-                    onClick={() => onSelectEvent(event.timestampMs)}
-                    className={`group relative mt-1.5 w-full rounded-lg border px-3 py-2 text-left transition ${
+                  <div
+                    className={`group relative mt-1.5 w-full rounded-lg border px-3 py-2 transition ${
                       isActive
                         ? "border-red-500/40 bg-red-500/10"
                         : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
                     }`}
                   >
-                    <span
-                      className={`absolute top-1 bottom-1 left-0 w-[2px] rounded-r ${
-                        isActive ? "bg-[#E10600]" : ""
-                      }`}
-                      style={isActive ? undefined : { backgroundColor: event.color }}
-                      aria-hidden="true"
-                    />
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="font-mono text-[10px] text-white/60 tabular-nums">
-                        {formatTime(event.timestampMs - startTimeMs)}
-                      </span>
+                    <button
+                      ref={isActive ? setActiveEventRef : null}
+                      type="button"
+                      onClick={() => onSelectEvent(event.timestampMs)}
+                      className="block w-full text-left"
+                      aria-label={`${event.type}: ${event.detail || event.label}`}
+                    >
                       <span
-                        className="inline-flex items-center gap-1 rounded-full border border-white/15 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-white/45"
-                        style={{ color: event.color }}
-                      >
+                        className={`absolute top-1 bottom-1 left-0 w-[2px] rounded-r ${
+                          isActive ? "bg-[#E10600]" : ""
+                        }`}
+                        style={isActive ? undefined : { backgroundColor: event.color }}
+                        aria-hidden="true"
+                      />
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <span className="font-mono text-[10px] text-white/60 tabular-nums">
+                          {formatTime(event.timestampMs - startTimeMs)}
+                        </span>
                         <span
-                          className="h-1.5 w-1.5 rounded-full"
-                          style={{ backgroundColor: event.color }}
-                          aria-hidden="true"
-                        />
-                        {event.type}
-                      </span>
-                    </div>
-                    <div className="text-xs leading-snug text-white/80">
-                      {event.detail || event.label}
-                    </div>
+                          className="inline-flex items-center gap-1 rounded-full border border-white/15 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-white/45"
+                          style={{ color: event.color }}
+                        >
+                          <span
+                            className="h-1.5 w-1.5 rounded-full"
+                            style={{ backgroundColor: event.color }}
+                            aria-hidden="true"
+                          />
+                          {event.type}
+                        </span>
+                      </div>
+                      <div className="text-xs leading-snug text-white/80">
+                        {event.detail || event.label}
+                      </div>
+                    </button>
                     {radio && (
                       <div className="mt-2 flex items-center gap-2">
                         <button
@@ -234,13 +242,13 @@ const EventsPanelBase = ({
                         </div>
                       </div>
                     )}
-                  </button>
+                  </div>
                 </div>
               );
             })}
             {markerLineIndex === events.length && (
               <div
-                ref={activeEventRef}
+                ref={setActiveEventRef}
                 className="h-[2px] w-full rounded bg-[#E10600]"
                 aria-hidden="true"
               />

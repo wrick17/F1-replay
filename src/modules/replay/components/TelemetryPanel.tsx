@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { memo, useEffect, useMemo, useState } from "react";
+import type { ArchiveManifest } from "../../archive/types";
 import { useCarTelemetryData } from "../hooks/useCarTelemetryData";
 import {
   clamp,
@@ -16,6 +17,10 @@ import type { CarTelemetryPayload } from "../types/carTelemetry.types";
 import type { TelemetryPanelProps, TelemetryRow } from "../types/replay.types";
 import { getCompoundBadge, getCompoundLabel } from "../utils/format.util";
 import { Tooltip } from "./Tooltip";
+
+type ArchiveTelemetryPanelProps = TelemetryPanelProps & {
+  archiveManifest?: ArchiveManifest | null;
+};
 
 type OvertakeRole = "overtaking" | "overtaken" | null;
 
@@ -259,11 +264,9 @@ export const TelemetryPanel = ({
   activeOvertakes = [],
   isLoading = false,
   currentTimeMs = 0,
-  sessionKey = null,
-  sessionStartMs = 0,
-  sessionEndMs = 0,
+  archiveManifest = null,
   onTelemetryLoadingChange,
-}: TelemetryPanelProps) => {
+}: ArchiveTelemetryPanelProps) => {
   const showSkeleton = isLoading && rows.length === 0;
   const overtakeRoleMap = useMemo(() => {
     const map = new Map<number, OvertakeRole>();
@@ -314,10 +317,9 @@ export const TelemetryPanel = ({
   };
 
   const telemetry = useCarTelemetryData({
-    enabled: !isLoading,
-    sessionKey,
-    sessionStartMs,
-    sessionEndMs,
+    enabled: telemetryEnabled && !isLoading && Boolean(archiveManifest?.car),
+    manifest: archiveManifest,
+    currentTimeMs,
   });
 
   useEffect(() => {
@@ -329,6 +331,7 @@ export const TelemetryPanel = ({
     () => hasCarTelemetryPayload(telemetry.payload),
     [telemetry.payload],
   );
+  const telemetryAvailable = Boolean(archiveManifest?.car?.chunks.length);
   const showTelemetryCards = telemetryEnabled && hasTelemetryData;
 
   const stats = useMemo(() => {
@@ -418,7 +421,7 @@ export const TelemetryPanel = ({
       <div>
         <div className="flex items-center justify-between gap-3">
           <div className="text-sm font-semibold text-white">Leaderboard</div>
-          {hasTelemetryData && (
+          {telemetryAvailable && (
             <button
               type="button"
               aria-pressed={telemetryEnabled}
@@ -441,15 +444,17 @@ export const TelemetryPanel = ({
             </button>
           )}
         </div>
-        {hasTelemetryData && telemetryEnabled && telemetry.error && (
-          <div className="mt-1 text-[10px] text-red-200/80">Telemetry error: {telemetry.error}</div>
+        {telemetryEnabled && telemetry.error && (
+          <div role="alert" className="mt-1 text-[10px] text-red-200/80">
+            Telemetry error: {telemetry.error}
+          </div>
         )}
         {shouldShowTelemetryLoadingNotice({
           hasTelemetryData,
           telemetryEnabled,
           telemetryLoading: telemetry.loading,
           telemetryError: telemetry.error,
-        }) && <div className="mt-1 text-[10px] text-white/50">Loading telemetry…</div>}
+        }) && <output className="mt-1 text-[10px] text-white/50">Loading telemetry…</output>}
       </div>
       <div className="grid grid-cols-2 gap-2 text-[11px] text-white/70">
         <div>
@@ -516,6 +521,9 @@ export const TelemetryPanel = ({
                   />
                 ))}
           </AnimatePresence>
+          {!showSkeleton && rows.length === 0 && (
+            <p className="py-4 text-center text-xs text-white/50">No leaderboard data available.</p>
+          )}
         </div>
       </div>
     </div>

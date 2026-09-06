@@ -6,102 +6,38 @@ type ReplayCacheRow = {
   created_at: string;
 };
 
-type ReplayUploadBody = {
-  session_key: number;
-  payload: unknown;
-};
-
-type UploadTokenPayload = {
-  session_key: number;
-  exp: number;
-};
-
 type Env = {
   DB: D1Database;
   REPLAY_BUCKET: R2Bucket;
-  REPLAY_UPLOAD_SECRET: string;
 };
 
-const TOKEN_TTL_SECONDS = 600;
 const CACHE_CONTROL_IMMUTABLE = "public, max-age=31536000, immutable";
+const EDGE_CACHE_VERSION = "3";
 
-const base64UrlEncode = (input: ArrayBuffer | Uint8Array) => {
-  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
-  let binary = "";
-  bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte);
-  });
-  const base64 = btoa(binary);
-  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+type WorkerResponseInit = ResponseInit & { encodeBody?: "manual" };
+
+const parseSessionKey = (value: string | null) => {
+  if (!value || !/^[1-9]\d*$/.test(value)) return null;
+  const sessionKey = Number(value);
+  return Number.isSafeInteger(sessionKey) ? sessionKey : null;
 };
 
-const base64UrlDecode = (value: string) => {
-  const padded = value.replace(/-/g, "+").replace(/_/g, "/");
-  const padding = padded.length % 4 === 0 ? "" : "=".repeat(4 - (padded.length % 4));
-  const binary = atob(`${padded}${padding}`);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
+const edgeCacheKey = (requestUrl: string) => {
+  const url = new URL(requestUrl);
+  url.searchParams.set("__cache_version", EDGE_CACHE_VERSION);
+  return new Request(url.toString(), { method: "GET" });
 };
 
-let signingKeyPromise: Promise<CryptoKey> | null = null;
-
-const getSigningKey = (secret: string) => {
-  if (!signingKeyPromise) {
-    const encoder = new TextEncoder();
-    signingKeyPromise = crypto.subtle.importKey(
-      "raw",
-      encoder.encode(secret),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign", "verify"],
-    );
-  }
-  return signingKeyPromise;
-};
-
-const signTokenPayload = async (payload: UploadTokenPayload, secret: string) => {
-  const encoder = new TextEncoder();
-  const payloadJson = JSON.stringify(payload);
-  const payloadB64 = base64UrlEncode(encoder.encode(payloadJson));
-  const key = await getSigningKey(secret);
-  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(payloadB64));
-  const signatureB64 = base64UrlEncode(signature);
-  return `${payloadB64}.${signatureB64}`;
-};
-
-const verifyToken = async (token: string, secret: string): Promise<UploadTokenPayload | null> => {
-  const [payloadB64, signatureB64] = token.split(".");
-  if (!payloadB64 || !signatureB64) {
-    return null;
-  }
-  const encoder = new TextEncoder();
-  const key = await getSigningKey(secret);
-  const expected = base64UrlEncode(
-    await crypto.subtle.sign("HMAC", key, encoder.encode(payloadB64)),
-  );
-  if (expected !== signatureB64) {
-    return null;
-  }
-  const payloadBytes = base64UrlDecode(payloadB64);
-  const payloadJson = new TextDecoder().decode(payloadBytes);
-  const payload = JSON.parse(payloadJson) as UploadTokenPayload;
-  if (typeof payload.session_key !== "number" || typeof payload.exp !== "number") {
-    return null;
-  }
-  const now = Math.floor(Date.now() / 1000);
-  if (payload.exp < now) {
-    return null;
-  }
-  return payload;
-};
+const responseInit = (status: number, headers: Headers): WorkerResponseInit => ({
+  status,
+  headers,
+  ...(headers.has("Content-Encoding") ? { encodeBody: "manual" as const } : {}),
+});
 
 const withCors = (headers: Headers, origin: string | null) => {
   headers.set("Access-Control-Allow-Origin", origin ?? "*");
-  headers.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  headers.set("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS");
+  headers.set("Access-Control-Expose-Headers", "Content-Encoding, ETag, X-Cache");
   headers.set("Access-Control-Max-Age", "86400");
   return headers;
 };
@@ -116,105 +52,42 @@ const jsonResponse = (body: unknown, status = 200, options?: { cacheControl?: st
   return new Response(JSON.stringify(body), { status, headers });
 };
 
-const sliceJsonValue = (text: string, startIndex: number) => {
-  const start = startIndex;
-  const first = text[start];
-  if (first !== "{" && first !== "[") {
-    throw new Error("Invalid JSON payload: expected object/array");
+const statusResponse = (status: "hit" | "miss", xCache: string, headOnly: boolean) =>
+  new Response(headOnly ? null : JSON.stringify({ status }), {
+    status: status === "hit" ? 200 : 202,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Cache": xCache,
+    },
+  });
+
+const r2Headers = (object: R2Object) => {
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  if (!headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json; charset=utf-8");
   }
-
-  const stack: string[] = [];
-  let inString = false;
-  let escaped = false;
-
-  for (let i = start; i < text.length; i += 1) {
-    const c = text[i];
-    if (inString) {
-      if (escaped) {
-        escaped = false;
-      } else if (c === "\\") {
-        escaped = true;
-      } else if (c === "\"") {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (c === "\"") {
-      inString = true;
-      continue;
-    }
-
-    if (c === "{" || c === "[") {
-      stack.push(c);
-      continue;
-    }
-
-    if (c === "}" || c === "]") {
-      const open = stack.pop();
-      if (!open) {
-        throw new Error("Invalid JSON payload: unexpected closing bracket");
-      }
-      if ((open === "{" && c !== "}") || (open === "[" && c !== "]")) {
-        throw new Error("Invalid JSON payload: mismatched brackets");
-      }
-      if (stack.length === 0) {
-        return { json: text.slice(start, i + 1), endIndex: i + 1 };
-      }
-    }
-  }
-
-  throw new Error("Invalid JSON payload: unterminated JSON value");
+  headers.set("Cache-Control", CACHE_CONTROL_IMMUTABLE);
+  headers.set("ETag", object.httpEtag);
+  headers.set("X-Cache", "HIT");
+  return headers;
 };
 
-const parseLegacyUploadBody = (bodyText: string) => {
-  // Legacy clients upload `{ session_key, payload }`. We want to avoid `JSON.parse` + `JSON.stringify`
-  // for huge payloads, so we do a minimal extraction and store only the raw payload JSON in R2.
-  const payloadKeyIdx = bodyText.indexOf("\"payload\"");
-  if (payloadKeyIdx < 0) {
-    throw new Error("Invalid payload: missing payload");
-  }
-
-  const headerText = bodyText.slice(0, payloadKeyIdx);
-  const skMatch = /"session_key"\s*:\s*(\d+)/.exec(headerText);
-  if (!skMatch) {
-    throw new Error("Invalid payload: missing session_key");
-  }
-  const sessionKey = Number(skMatch[1]);
-  if (!Number.isFinite(sessionKey)) {
-    throw new Error("Invalid payload: session_key must be a number");
-  }
-
-  const colonIdx = bodyText.indexOf(":", payloadKeyIdx);
-  if (colonIdx < 0) {
-    throw new Error("Invalid payload: malformed payload key");
-  }
-
-  let i = colonIdx + 1;
-  while (i < bodyText.length && /\s/.test(bodyText[i] as string)) i += 1;
-  const { json: payloadJson } = sliceJsonValue(bodyText, i);
-  return { sessionKey, payloadJson };
-};
-
-const handleGetReplay = async (request: Request, env: Env) => {
+const handleReadReplay = async (request: Request, env: Env, headOnly: boolean) => {
   const url = new URL(request.url);
-  const sessionKey = Number(url.searchParams.get("session_key"));
+  const sessionKey = parseSessionKey(url.searchParams.get("session_key"));
   const statusOnly = url.searchParams.get("status") === "1";
-  if (!Number.isFinite(sessionKey)) {
-    return jsonResponse({ error: "session_key is required" }, 400);
+  if (sessionKey === null) {
+    return jsonResponse({ error: "session_key must be a positive integer" }, 400);
   }
 
   if (statusOnly) {
     const canonicalUrl = new URL(request.url);
     canonicalUrl.searchParams.delete("status");
-    const edgeHit = await caches.default.match(new Request(canonicalUrl.toString(), { method: "GET" }));
+    const edgeHit = await caches.default.match(edgeCacheKey(canonicalUrl.toString()));
     if (edgeHit?.status === 200) {
-      const headers = new Headers({
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-        "X-Cache": "EDGE",
-      });
-      return new Response(JSON.stringify({ status: "hit" }), { status: 200, headers });
+      return statusResponse("hit", "EDGE", headOnly);
     }
   }
 
@@ -225,109 +98,33 @@ const handleGetReplay = async (request: Request, env: Env) => {
     .first<ReplayCacheRow>();
 
   if (cached?.r2_key) {
-    const object = await env.REPLAY_BUCKET.get(cached.r2_key);
-    if (object) {
-      if (statusOnly) {
-        const headers = new Headers({
-          "Content-Type": "application/json; charset=utf-8",
-          "Cache-Control": "no-store",
-          "X-Cache": "HIT",
-        });
-        return new Response(JSON.stringify({ status: "hit" }), { status: 200, headers });
+    if (statusOnly || headOnly) {
+      const object = await env.REPLAY_BUCKET.head(cached.r2_key);
+      if (object) {
+        if (statusOnly) return statusResponse("hit", "HIT", headOnly);
+        const headers = r2Headers(object);
+        return new Response(null, responseInit(200, headers));
       }
-      const headers = new Headers({
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": CACHE_CONTROL_IMMUTABLE,
-        "X-Cache": "HIT",
-      });
-      return new Response(object.body, { status: 200, headers });
+    } else {
+      const object = await env.REPLAY_BUCKET.get(cached.r2_key);
+      if (object) {
+        const headers = r2Headers(object);
+        return new Response(object.body, responseInit(200, headers));
+      }
     }
   }
 
   if (cached?.payload) {
-    if (statusOnly) {
-      const headers = new Headers({
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-        "X-Cache": "HIT",
-      });
-      return new Response(JSON.stringify({ status: "hit" }), { status: 200, headers });
-    }
+    if (statusOnly) return statusResponse("hit", "HIT", headOnly);
     const headers = new Headers({
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": CACHE_CONTROL_IMMUTABLE,
       "X-Cache": "HIT",
     });
-    return new Response(cached.payload, { status: 200, headers });
+    return new Response(headOnly ? null : cached.payload, { status: 200, headers });
   }
 
-  if (statusOnly) {
-    return jsonResponse({ status: "miss" }, 202, { cacheControl: "no-store" });
-  }
-
-  const exp = Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS;
-  const token = await signTokenPayload({ session_key: sessionKey, exp }, env.REPLAY_UPLOAD_SECRET);
-  return jsonResponse(
-    { uploadToken: token, expiresAt: new Date(exp * 1000).toISOString() },
-    202,
-    { cacheControl: "no-store" },
-  );
-};
-
-const handlePostReplay = async (request: Request, env: Env) => {
-  const url = new URL(request.url);
-  const rawSessionKey = url.searchParams.get("session_key");
-
-  const authHeader = request.headers.get("Authorization") ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!token) {
-    return jsonResponse({ error: "Missing upload token" }, 401);
-  }
-
-  const tokenPayload = await verifyToken(token, env.REPLAY_UPLOAD_SECRET);
-  if (!tokenPayload) {
-    return jsonResponse({ error: "Invalid or expired token" }, 401);
-  }
-
-  // Preferred format (new):
-  // - `POST /replay?session_key=<n>`
-  // - body is the ReplaySessionData JSON
-  //
-  // Legacy format:
-  // - `POST /replay`
-  // - body is `{ session_key, payload }`
-  let sessionKey: number;
-  let payloadText: string;
-  if (rawSessionKey) {
-    sessionKey = Number(rawSessionKey);
-    if (!Number.isFinite(sessionKey)) {
-      return jsonResponse({ error: "session_key must be a number" }, 400);
-    }
-    if (tokenPayload.session_key !== sessionKey) {
-      return jsonResponse({ error: "Invalid or expired token" }, 401);
-    }
-    payloadText = await request.text();
-  } else {
-    const bodyText = await request.text();
-    const legacy = parseLegacyUploadBody(bodyText);
-    sessionKey = legacy.sessionKey;
-    if (tokenPayload.session_key !== sessionKey) {
-      return jsonResponse({ error: "Invalid or expired token" }, 401);
-    }
-    payloadText = legacy.payloadJson;
-  }
-
-  const r2Key = `replay/${sessionKey}.json`;
-  await env.REPLAY_BUCKET.put(r2Key, payloadText, {
-    httpMetadata: { contentType: "application/json" },
-  });
-  await env.DB.prepare(
-    "INSERT OR REPLACE INTO replay_cache (session_key, payload, r2_key, payload_size, created_at) VALUES (?, ?, ?, ?, ?)",
-  )
-    .bind(sessionKey, "", r2Key, payloadText.length, new Date().toISOString())
-    .run();
-
-  return new Response(null, { status: 204 });
+  return statusResponse("miss", "MISS", headOnly);
 };
 
 export default {
@@ -335,59 +132,66 @@ export default {
     const url = new URL(request.url);
     const origin = request.headers.get("Origin");
     if (request.method === "OPTIONS") {
-      const headers = withCors(new Headers(), origin);
-      return new Response(null, { status: 204, headers });
+      return new Response(null, { status: 204, headers: withCors(new Headers(), origin) });
     }
 
     if (url.pathname !== "/replay") {
       const headers = withCors(new Headers(), origin);
       headers.set("Content-Type", "application/json; charset=utf-8");
-      return new Response(JSON.stringify({ error: "Not found" }), {
-        status: 404,
-        headers,
+      return new Response(JSON.stringify({ error: "Not found" }), { status: 404, headers });
+    }
+
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      const response = jsonResponse({ error: "Method not allowed" }, 405);
+      return new Response(response.body, {
+        status: response.status,
+        headers: withCors(new Headers(response.headers), origin),
+      });
+    }
+
+    if (parseSessionKey(url.searchParams.get("session_key")) === null) {
+      const response = jsonResponse({ error: "session_key must be a positive integer" }, 400);
+      return new Response(response.body, {
+        status: response.status,
+        headers: withCors(new Headers(response.headers), origin),
       });
     }
 
     try {
-      let response: Response;
-      if (request.method === "GET") {
-        // Cloudflare edge cache (separate from D1/R2) to reduce read pressure.
-        const cacheKey = new Request(request.url, { method: "GET" });
-        const edgeHit = await caches.default.match(cacheKey);
-        if (edgeHit) {
-          const headers = withCors(new Headers(edgeHit.headers), origin);
-          headers.set("X-Cache", "EDGE");
-          return new Response(edgeHit.body, { status: edgeHit.status, headers });
-        }
-
-        const originResponse = await handleGetReplay(request, env);
-        const headers = withCors(new Headers(originResponse.headers), origin);
-        if (originResponse.status === 200) {
-          response = new Response(originResponse.body, {
-            status: originResponse.status,
-            headers,
-          });
-          ctx.waitUntil(caches.default.put(cacheKey, response.clone()));
-          return response;
-        }
-        return new Response(originResponse.body, { status: originResponse.status, headers });
-      } else if (request.method === "POST") {
-        response = await handlePostReplay(request, env);
-      } else {
-        response = jsonResponse({ error: "Method not allowed" }, 405);
+      const headOnly = request.method === "HEAD";
+      const cacheKey = edgeCacheKey(request.url);
+      const edgeHit = await caches.default.match(cacheKey);
+      if (edgeHit) {
+        if (!headOnly) return edgeHit;
+        const headers = withCors(new Headers(edgeHit.headers), origin);
+        return new Response(null, responseInit(edgeHit.status, headers));
       }
-      const headers = withCors(new Headers(response.headers), origin);
-      return new Response(response.body, { status: response.status, headers });
+
+      const originResponse = await handleReadReplay(request, env, headOnly);
+      const headers = withCors(new Headers(originResponse.headers), origin);
+      if (!headOnly && originResponse.status === 200) {
+        const response = new Response(
+          originResponse.body,
+          responseInit(originResponse.status, headers),
+        );
+        const cacheHeaders = withCors(new Headers(headers), null);
+        cacheHeaders.set("X-Cache", "EDGE");
+        const cacheResponse = new Response(
+          response.clone().body,
+          responseInit(response.status, cacheHeaders),
+        );
+        ctx.waitUntil(caches.default.put(cacheKey, cacheResponse));
+        return response;
+      }
+      return new Response(
+        headOnly ? null : originResponse.body,
+        responseInit(originResponse.status, headers),
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unexpected error";
       const headers = withCors(new Headers(), origin);
-      return new Response(JSON.stringify({ error: message }), {
-        status: 500,
-        headers: new Headers({
-          "Content-Type": "application/json; charset=utf-8",
-          ...Object.fromEntries(headers),
-        }),
-      });
+      headers.set("Content-Type", "application/json; charset=utf-8");
+      return new Response(JSON.stringify({ error: message }), { status: 500, headers });
     }
   },
 };

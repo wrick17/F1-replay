@@ -1,48 +1,25 @@
-import type { DashboardSessionRow } from "../api/cacheWarmer.client";
+import { loadCatalog } from "../../archive";
+import type { ArchiveCatalog, ArchiveCatalogSession } from "../../archive/types";
 
-export const normalizeText = (value: string) => value.trim().toLowerCase();
+const archiveBaseUrl =
+  import.meta.env.RSBUILD_ARCHIVE_URL?.trim() || "https://data.f1.wrick17.com/";
 
-export const filterDashboardRows = (rows: DashboardSessionRow[], searchTerm: string) => {
-  const search = normalizeText(searchTerm);
-  if (!search) {
-    return rows;
-  }
+export const ARCHIVE_CATALOG_URL = `${archiveBaseUrl.replace(/\/?$/, "/")}catalog.json`;
+export const ARCHIVE_WORKFLOW_URL =
+  "https://github.com/wrick17/F1-replay/actions/workflows/archive.yml";
 
-  return rows.filter((row) => {
-    const haystack = [
-      String(row.year),
-      `r${row.round}`,
-      String(row.round),
-      row.meeting_name ?? "",
-      row.session_type,
-      row.session_name ?? "",
-      String(row.session_key),
-      row.replay_status,
-      row.telemetry_status,
-      row.last_error ?? "",
-    ]
-      .join(" ")
-      .toLowerCase();
-    return haystack.includes(search);
-  });
-};
+export const loadArchiveCatalog = (signal?: AbortSignal) =>
+  // Ops health must not report a stale local fallback as current.
+  loadCatalog(ARCHIVE_CATALOG_URL, { signal, retries: 0, networkOnly: true });
 
-export const byNewestUpdate = (a: DashboardSessionRow, b: DashboardSessionRow) => {
-  return Date.parse(b.updated_at) - Date.parse(a.updated_at);
-};
+export const summarizeArchive = (catalog: ArchiveCatalog) => ({
+  seasons: new Set(catalog.sessions.map((session) => session.year)).size,
+  meetings: new Set(catalog.sessions.map((session) => session.meetingKey)).size,
+  sessions: catalog.sessions.length,
+  carReady: catalog.sessions.filter((session) => session.status.car === "ready").length,
+});
 
-const isCacheReady = (status: DashboardSessionRow["replay_status"]) =>
-  status === "hit" || status === "warmed";
-
-export const hasMissingCache = (row: DashboardSessionRow) =>
-  !isCacheReady(row.replay_status) || !isCacheReady(row.telemetry_status);
-
-export const shouldShowRowError = (row: DashboardSessionRow) =>
-  hasMissingCache(row) && Boolean(row.last_error);
-
-export const byMissingThenNewestUpdate = (a: DashboardSessionRow, b: DashboardSessionRow) => {
-  const aMissing = hasMissingCache(a) ? 1 : 0;
-  const bMissing = hasMissingCache(b) ? 1 : 0;
-  if (aMissing !== bMissing) return bMissing - aMissing;
-  return byNewestUpdate(a, b);
-};
+export const byNewestSession = (a: ArchiveCatalogSession, b: ArchiveCatalogSession) =>
+  b.year - a.year ||
+  b.round - a.round ||
+  Date.parse(b.session.date_start) - Date.parse(a.session.date_start);

@@ -1,3 +1,5 @@
+import type { ReplaySessionData } from "../types/openf1.types";
+import type { CacheMode } from "./cache";
 import { getPersisted, inFlight, responseCache, setPersisted } from "./cache";
 import { rateLimit, sleep } from "./rateLimiter";
 
@@ -7,11 +9,19 @@ const WORKER_BASE_URL =
   import.meta.env.VITE_WORKER_URL ??
   "https://openf1-proxy.wrick17worker.workers.dev";
 const MAX_TRANSIENT_ERROR_ATTEMPTS = 5;
+const MAX_RATE_LIMIT_ATTEMPTS = 5;
 
 const getRetryDelayMs = (response: Response, attempt: number) => {
-  const retryAfter = Number(response.headers.get("retry-after"));
-  if (!Number.isNaN(retryAfter) && retryAfter >= 0) {
-    return retryAfter * 1000;
+  const retryAfter = response.headers.get("retry-after");
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return seconds * 1000;
+    }
+    const dateMs = Date.parse(retryAfter);
+    if (Number.isFinite(dateMs)) {
+      return Math.max(0, dateMs - Date.now());
+    }
   }
   return Math.min(1000 * 2 ** attempt, 8000);
 };
@@ -48,9 +58,11 @@ export const fetchOpenF1 = <T>(
     if (responseCache.has(key)) {
       return Promise.resolve(responseCache.get(key) as T);
     }
-    const existing = inFlight.get(key);
-    if (existing) {
-      return existing as Promise<T>;
+    if (!signal) {
+      const existing = inFlight.get(key);
+      if (existing) {
+        return existing as Promise<T>;
+      }
     }
   }
   const request = (async () => {
@@ -67,6 +79,9 @@ export const fetchOpenF1 = <T>(
       const response = await fetch(`${API_BASE_URL}/${key}`, { signal });
       if (!response.ok) {
         if (response.status === 429) {
+          if (attempt >= MAX_RATE_LIMIT_ATTEMPTS - 1) {
+            throw new Error("OpenF1 request failed: 429");
+          }
           await sleep(getRetryDelayMs(response, attempt), signal);
           attempt += 1;
           continue;
@@ -92,13 +107,16 @@ export const fetchOpenF1 = <T>(
       }
       return payload;
     }
-  })().finally(() => {
-    inFlight.delete(key);
+  })();
+  const trackedRequest = request.finally(() => {
+    if (inFlight.get(key) === trackedRequest) {
+      inFlight.delete(key);
+    }
   });
   if (cacheMode !== "no-store") {
-    inFlight.set(key, request);
+    inFlight.set(key, trackedRequest);
   }
-  return request;
+  return trackedRequest;
 };
 
 export const fetchOpenF1OrEmpty = async <T extends unknown[]>(
@@ -111,7 +129,7 @@ export const fetchOpenF1OrEmpty = async <T extends unknown[]>(
     return await fetchOpenF1<T>(path, params, signal, cacheMode);
   } catch (error) {
     if (error instanceof Error && error.message === "OpenF1 request failed: 404") {
-      return [] as T;
+      return [] as unknown as T;
     }
     throw error;
   }
@@ -162,16 +180,7 @@ export const fetchReplayFromWorker = async (
   signal?: AbortSignal,
 ): Promise<WorkerReplayHit | WorkerReplayMiss> => {
   const url = `${WORKER_BASE_URL}/replay${buildQuery({ session_key: sessionKey })}`;
-  let response: Response;
-  try {
-    response = await fetch(url, { signal });
-  } catch {
-    return {
-      status: "miss",
-      uploadToken: "",
-      expiresAt: "",
-    };
-  }
+  const response = await fetch(url, { signal });
   if (response.status === 200) {
     const payload = (await response.json()) as ReplaySessionData;
     return { status: "hit", payload };

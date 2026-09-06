@@ -17,7 +17,20 @@ type KeyboardShortcutActions = {
   prevSession: () => void;
 };
 
-const IGNORED_TAG_NAMES = new Set(["INPUT", "TEXTAREA", "SELECT"]);
+const IGNORED_TAG_NAMES = new Set(["A", "BUTTON", "FORM", "INPUT", "SELECT", "TEXTAREA"]);
+
+export const shouldIgnoreKeyboardShortcutTarget = (target: EventTarget | null): boolean => {
+  const element = target as
+    | (EventTarget & {
+        isContentEditable?: boolean;
+        tagName?: string;
+      })
+    | null;
+  return Boolean(
+    element?.isContentEditable ||
+      (element?.tagName && IGNORED_TAG_NAMES.has(element.tagName.toUpperCase())),
+  );
+};
 
 export const useKeyboardShortcuts = (actions: KeyboardShortcutActions) => {
   const actionsRef = useRef(actions);
@@ -25,8 +38,7 @@ export const useKeyboardShortcuts = (actions: KeyboardShortcutActions) => {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target && IGNORED_TAG_NAMES.has(target.tagName)) return;
+      if (shouldIgnoreKeyboardShortcutTarget(e.target)) return;
 
       const a = actionsRef.current;
       const isArrowUp = e.key === "ArrowUp";

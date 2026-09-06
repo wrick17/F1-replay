@@ -144,7 +144,7 @@ export const HomePage = () => {
             F1 Replay Hub
           </h1>
           <p className="text-sm text-zinc-300">
-            Race intelligence home. Jump into replays fast, with standings and live-season context.
+            Watch archived sessions, follow the standings, and find the next race weekend.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -179,17 +179,26 @@ export const HomePage = () => {
             href={OPS_CACHE_PATH}
             className="rounded-lg border border-red-300/40 bg-red-500/20 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-red-100 transition hover:bg-red-500/30"
           >
-            Cache Ops
+            Archive Status
           </a>
         </div>
       </header>
 
       <main className="mx-auto mt-6 grid w-full max-w-350 gap-5 lg:grid-cols-[1.4fr_1fr]">
         <section className="rounded-2xl border border-red-300/20 bg-linear-to-br from-red-950/50 via-black/70 to-black/80 p-4">
-          {loading && <p className="text-sm text-zinc-300">Loading season dashboard...</p>}
-          {error && <p className="text-sm text-red-200">{error}</p>}
+          {loading && <output className="text-sm text-zinc-300">Loading replay archive...</output>}
+          {error && (
+            <p role="alert" className="text-sm text-red-200">
+              {error}
+            </p>
+          )}
           {!loading && !error && data && (
             <>
+              {data.warnings.length > 0 && (
+                <output className="mb-4 rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                  Replay archive is ready. Some season context is temporarily unavailable.
+                </output>
+              )}
               <div className="grid gap-4 md:grid-cols-2">
                 <article className="rounded-xl border border-white/15 bg-black/35 p-4">
                   <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-300">
@@ -434,6 +443,9 @@ export const HomePage = () => {
                   <p className="text-sm font-semibold text-red-100">{entry.points} pts</p>
                 </div>
               ))}
+              {!loading && data && data.driverStandings.length === 0 && (
+                <p className="text-sm text-zinc-300">Driver standings are currently unavailable.</p>
+              )}
             </div>
           </article>
 
@@ -472,6 +484,11 @@ export const HomePage = () => {
                   <p className="text-sm font-semibold text-red-100">{entry.points} pts</p>
                 </div>
               ))}
+              {!loading && data && data.constructorStandings.length === 0 && (
+                <p className="text-sm text-zinc-300">
+                  Constructor standings are currently unavailable.
+                </p>
+              )}
             </div>
           </article>
 

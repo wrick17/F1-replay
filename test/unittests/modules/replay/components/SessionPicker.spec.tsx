@@ -139,6 +139,7 @@ describe("SessionPicker", () => {
 
     expect(markup).toContain('id="replay-year"');
     expect(markup).toContain('name="replay-year"');
+    expect(markup).toContain('for="replay-year"');
     expect(markup).not.toContain('id="replay-year" disabled=""');
   });
 });

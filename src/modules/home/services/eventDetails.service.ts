@@ -3,7 +3,7 @@ import {
   buildReplayHref,
   type ReplayRouteParams,
 } from "../../../app/routing";
-import { fetchOpenF1 } from "../../replay/api/openf1.client";
+import { getArchiveCatalogUrl, loadCatalog, loadManifest, loadReplayCore } from "../../archive";
 import {
   filterReplayableMeetings,
   filterReplayableSessions,
@@ -210,17 +210,21 @@ const average = (values: Array<number | null | undefined>): number | null => {
   return valid.reduce((sum, value) => sum + value, 0) / valid.length;
 };
 
-const withTimeout = async <T>(task: (signal: AbortSignal) => Promise<T>, timeoutMs: number) => {
+const withTimeout = async <T>(
+  task: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number,
+  signal?: AbortSignal,
+) => {
   const controller = new AbortController();
   const timerId = globalThis.setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await task(controller.signal);
+    return await task(signal ? AbortSignal.any([controller.signal, signal]) : controller.signal);
   } finally {
     globalThis.clearTimeout(timerId);
   }
 };
 
-const fetchJolpica = async <T>(path: string): Promise<T> => {
+const fetchJolpica = async <T>(path: string, signal?: AbortSignal): Promise<T> => {
   const candidates = [
     `${JOLPICA_BASE_URL}/${path}/?format=json`,
     `${JOLPICA_BASE_URL}/${path}?format=json`,
@@ -232,6 +236,7 @@ const fetchJolpica = async <T>(path: string): Promise<T> => {
       const response = await withTimeout(
         (signal) => fetch(url, { signal }),
         HOME_REQUEST_TIMEOUT_MS,
+        signal,
       );
       if (!response.ok) {
         throw new Error(`Jolpica request failed: ${response.status}`);
@@ -578,86 +583,119 @@ export const resolveReplayEventDetails = ({
   } satisfies ReplayEventDetails;
 };
 
+export type ArchiveEventDetails = {
+  data: ReplayEventDetails;
+  drivers: OpenF1Driver[];
+};
+
+export const loadArchiveEventDetails = async (
+  route: ReplayRouteParams,
+  signal?: AbortSignal,
+): Promise<ArchiveEventDetails | null> => {
+  const archiveCatalogUrl = getArchiveCatalogUrl();
+  const catalog = await loadCatalog(archiveCatalogUrl, { signal });
+  const target = catalog.sessions.find(
+    (entry) =>
+      entry.year === route.year && entry.round === route.round && entry.type === route.sessionType,
+  );
+  if (!target) return null;
+  const manifest = await loadManifest(archiveCatalogUrl, target, { signal });
+  const core = await loadReplayCore(archiveCatalogUrl, manifest, { signal });
+  const weekendSessions = catalog.sessions
+    .filter(
+      (entry) =>
+        entry.meetingKey === target.meetingKey &&
+        SUPPORTED_SESSION_TYPES.includes(entry.type as ReplaySessionType),
+    )
+    .sort((a, b) => Date.parse(a.session.date_start) - Date.parse(b.session.date_start))
+    .map((entry) => {
+      const sessionType = entry.type as ReplaySessionType;
+      return {
+        id: `${entry.sessionKey}-${sessionType}`,
+        sessionType,
+        sessionName: entry.session.session_name,
+        startTime: entry.session.date_start,
+        endTime: entry.session.date_end,
+        detailsHref: buildEventDetailsHref(entry.year, entry.round, sessionType),
+        replayHref: buildReplayHref(entry.year, entry.round, sessionType),
+      } satisfies ReplayEventSessionSummary;
+    });
+  const stints = Object.values(core.telemetryByDriver).flatMap((telemetry) => telemetry.stints);
+  const laps = Object.values(core.telemetryByDriver).flatMap(
+    (telemetry) => telemetry.laps as OpenF1LapDetail[],
+  );
+  return {
+    drivers: core.drivers,
+    data: {
+      year: route.year,
+      round: route.round,
+      meetingKey: target.meetingKey,
+      sessionKey: target.sessionKey,
+      meetingName: target.meeting.meeting_name,
+      officialMeetingName: target.meeting.meeting_official_name || null,
+      circuitName: target.meeting.circuit_short_name,
+      locality: "",
+      country: target.meeting.country_name,
+      startTime: target.session.date_start,
+      sessionType: route.sessionType,
+      detailsHref: buildEventDetailsHref(route.year, route.round, route.sessionType),
+      replayHref: buildReplayHref(route.year, route.round, route.sessionType),
+      weekendSessions,
+      sessionResults: [],
+      stints: buildStintSummaries(stints, core.drivers),
+      lapMetrics: buildLapMetrics(laps, core.drivers),
+    },
+  };
+};
+
+export const loadEventDetailsSupplement = async (
+  base: ArchiveEventDetails,
+  signal?: AbortSignal,
+): Promise<ReplayEventDetails> => {
+  const { data, drivers } = base;
+  const empty = { MRData: { RaceTable: { Races: [] as JolpicaRace[] } } };
+  const [racesPayload, raceResultPayload, sprintResultPayload, qualifyingPayload] =
+    await Promise.all([
+      fetchJolpica<{ MRData?: { RaceTable?: { Races?: JolpicaRace[] } } }>(
+        `${data.year}/races`,
+        signal,
+      ).catch(() => empty),
+      fetchJolpica<{ MRData?: { RaceTable?: { Races?: JolpicaRace[] } } }>(
+        `${data.year}/${data.round}/results`,
+        signal,
+      ).catch(() => empty),
+      fetchJolpica<{ MRData?: { RaceTable?: { Races?: JolpicaRace[] } } }>(
+        `${data.year}/${data.round}/sprint`,
+        signal,
+      ).catch(() => empty),
+      fetchJolpica<{ MRData?: { RaceTable?: { Races?: JolpicaRace[] } } }>(
+        `${data.year}/${data.round}/qualifying`,
+        signal,
+      ).catch(() => empty),
+    ]);
+  if (signal?.aborted) throw new DOMException("The operation was aborted", "AbortError");
+  const race = (racesPayload.MRData?.RaceTable?.Races ?? []).find(
+    (entry) => safeNumber(entry.round, -1) === data.round,
+  );
+  return {
+    ...data,
+    meetingName: race?.raceName ?? data.meetingName,
+    circuitName: race?.Circuit?.circuitName ?? data.circuitName,
+    locality: race?.Circuit?.Location?.locality ?? data.locality,
+    country: race?.Circuit?.Location?.country ?? data.country,
+    sessionResults: buildSessionResults(
+      raceResultPayload.MRData?.RaceTable?.Races?.[0] ?? null,
+      sprintResultPayload.MRData?.RaceTable?.Races?.[0] ?? null,
+      qualifyingPayload.MRData?.RaceTable?.Races?.[0] ?? null,
+      drivers,
+    ),
+  };
+};
+
 export const getReplayEventDetails = async (
   route: ReplayRouteParams,
+  signal?: AbortSignal,
 ): Promise<ReplayEventDetails | null> => {
-  const [
-    racesPayload,
-    meetings,
-    sessions,
-    raceResultPayload,
-    sprintResultPayload,
-    qualifyingPayload,
-  ] = await Promise.all([
-    fetchJolpica<{ MRData?: { RaceTable?: { Races?: JolpicaRace[] } } }>(`${route.year}/races`),
-    fetchOpenF1<OpenF1Meeting[]>("meetings", { year: route.year }, undefined, "persist"),
-    fetchOpenF1<OpenF1Session[]>("sessions", { year: route.year }, undefined, "persist"),
-    fetchJolpica<{ MRData?: { RaceTable?: { Races?: JolpicaRace[] } } }>(
-      `${route.year}/${route.round}/results`,
-    ).catch(() => ({ MRData: { RaceTable: { Races: [] } } })),
-    fetchJolpica<{ MRData?: { RaceTable?: { Races?: JolpicaRace[] } } }>(
-      `${route.year}/${route.round}/sprint`,
-    ).catch(() => ({ MRData: { RaceTable: { Races: [] } } })),
-    fetchJolpica<{ MRData?: { RaceTable?: { Races?: JolpicaRace[] } } }>(
-      `${route.year}/${route.round}/qualifying`,
-    ).catch(() => ({ MRData: { RaceTable: { Races: [] } } })),
-  ]);
-
-  const now = Date.now();
-  const races = racesPayload?.MRData?.RaceTable?.Races ?? [];
-  const replayableMeetings = [...filterReplayableMeetings(meetings, sessions, now)].sort(
-    (a, b) => Date.parse(a.date_start) - Date.parse(b.date_start),
-  );
-  const targetMeeting = replayableMeetings[route.round - 1] ?? null;
-
-  const targetSession =
-    targetMeeting === null
-      ? null
-      : (filterReplayableSessions(sessions, now)
-          .filter(
-            (session) =>
-              session.meeting_key === targetMeeting.meeting_key &&
-              session.session_type === route.sessionType,
-          )
-          .sort((a, b) => Date.parse(b.date_end) - Date.parse(a.date_end))[0] ?? null);
-
-  const [drivers, stints, laps] =
-    targetSession === null
-      ? [[], [], []]
-      : await Promise.all([
-          fetchOpenF1<OpenF1Driver[]>(
-            "drivers",
-            { session_key: targetSession.session_key },
-            undefined,
-            "persist",
-          ).catch(() => []),
-          fetchOpenF1<OpenF1Stint[]>(
-            "stints",
-            { session_key: targetSession.session_key },
-            undefined,
-            "persist",
-          ).catch(() => []),
-          fetchOpenF1<OpenF1LapDetail[]>(
-            "laps",
-            { session_key: targetSession.session_key },
-            undefined,
-            "persist",
-          ).catch(() => []),
-        ]);
-
-  const raceResultRace = raceResultPayload?.MRData?.RaceTable?.Races?.[0] ?? null;
-  const sprintResultRace = sprintResultPayload?.MRData?.RaceTable?.Races?.[0] ?? null;
-  const qualifyingRace = qualifyingPayload?.MRData?.RaceTable?.Races?.[0] ?? null;
-
-  return resolveReplayEventDetails({
-    route,
-    races,
-    meetings,
-    sessions,
-    now,
-    sessionResults: buildSessionResults(raceResultRace, sprintResultRace, qualifyingRace, drivers),
-    drivers,
-    stints,
-    laps,
-  });
+  const base = await loadArchiveEventDetails(route, signal);
+  return base ? loadEventDetailsSupplement(base, signal) : null;
 };

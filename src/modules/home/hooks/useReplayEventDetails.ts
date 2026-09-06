@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import type { ReplayRouteParams } from "../../../app/routing";
-import { getReplayEventDetails } from "../services/eventDetails.service";
+import {
+  loadArchiveEventDetails,
+  loadEventDetailsSupplement,
+} from "../services/eventDetails.service";
 import type { ReplayEventDetails } from "../types/home.types";
 
 type ReplayEventDetailsState = {
@@ -22,21 +25,29 @@ export const useReplayEventDetails = (route: ReplayRouteParams | null): ReplayEv
       return;
     }
 
-    let cancelled = false;
+    const controller = new AbortController();
     setState({ data: null, loading: true, error: null });
 
     const load = async () => {
       try {
-        const details = await getReplayEventDetails(route);
-        if (!cancelled) {
-          if (!details) {
+        const archive = await loadArchiveEventDetails(route, controller.signal);
+        if (!controller.signal.aborted) {
+          if (!archive) {
             setState({ data: null, loading: false, error: "Replay details not found." });
             return;
           }
-          setState({ data: details, loading: false, error: null });
+          setState({ data: archive.data, loading: false, error: null });
+          try {
+            const supplemented = await loadEventDetailsSupplement(archive, controller.signal);
+            if (!controller.signal.aborted) {
+              setState({ data: supplemented, loading: false, error: null });
+            }
+          } catch {
+            // Archive details remain useful when optional public result data fails.
+          }
         }
       } catch (error) {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setState({
             data: null,
             loading: false,
@@ -49,7 +60,7 @@ export const useReplayEventDetails = (route: ReplayRouteParams | null): ReplayEv
     void load();
 
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [route]);
 

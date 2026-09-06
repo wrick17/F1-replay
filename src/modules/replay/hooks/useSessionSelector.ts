@@ -12,6 +12,29 @@ export const getAvailableSessionTypes = (sessions: OpenF1Session[]): SessionType
 export const getFallbackSessionType = (sessions: OpenF1Session[]): SessionType | null =>
   getAvailableSessionTypes(sessions)[0] ?? null;
 
+const meetingRound = (meeting: OpenF1Meeting, index: number) => {
+  const value = "round" in meeting ? meeting.round : undefined;
+  return typeof value === "number" ? value : index + 1;
+};
+
+export const getAdjacentReplayRound = (
+  meetings: OpenF1Meeting[],
+  currentRound: number,
+  direction: -1 | 1,
+) => {
+  const rounds = meetings.map(meetingRound).sort((a, b) => a - b);
+  if (!rounds.length) return currentRound;
+  const currentIndex = rounds.indexOf(currentRound);
+  if (currentIndex < 0)
+    return direction > 0 ? (rounds[0] ?? currentRound) : (rounds.at(-1) ?? currentRound);
+  return rounds[Math.min(rounds.length - 1, Math.max(0, currentIndex + direction))] ?? currentRound;
+};
+
+export const getCorrectedRound = (meetings: OpenF1Meeting[], currentRound: number) => {
+  const rounds = meetings.map(meetingRound).sort((a, b) => a - b);
+  return rounds.length > 0 && !rounds.includes(currentRound) ? (rounds[0] ?? null) : null;
+};
+
 export const getCorrectedYear = (
   availableYears: number[],
   year: number | null,
@@ -64,6 +87,11 @@ export const useSessionAutoCorrect = ({
     return sessions.some((session) => session.session_type === sessionType);
   }, [sessions, sessionType]);
 
+  const availableRounds = useMemo(
+    () => meetings.map(meetingRound).sort((a, b) => a - b),
+    [meetings],
+  );
+
   useEffect(() => {
     if (sessions.length === 0 || hasSelectedSession) {
       return;
@@ -87,13 +115,19 @@ export const useSessionAutoCorrect = ({
     if (manualRoundRef.current) {
       return;
     }
+    const correctedRound = getCorrectedRound(meetings, round);
+    if (correctedRound !== null) {
+      setRound(correctedRound);
+      return;
+    }
     if (sessions.length === 0 || hasSupportedSession) {
       return;
     }
-    if (round < meetings.length) {
-      setRound((prev: number) => Math.min(prev + 1, meetings.length));
+    const nextRound = availableRounds.find((candidate) => candidate > round);
+    if (nextRound !== undefined) {
+      setRound(nextRound);
     }
-  }, [sessions, hasSupportedSession, meetings.length, round, setRound, manualRoundRef]);
+  }, [sessions, hasSupportedSession, availableRounds, meetings, round, setRound, manualRoundRef]);
 
   return { hasSupportedSession, hasSelectedSession };
 };

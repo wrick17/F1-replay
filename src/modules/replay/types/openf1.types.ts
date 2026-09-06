@@ -5,6 +5,8 @@ export type OpenF1Meeting = {
   year: number;
   country_name: string;
   circuit_short_name: string;
+  circuit_key?: number;
+  circuit_info_url?: string;
   date_start: string;
   date_end: string;
 };
@@ -134,7 +136,14 @@ export type ReplayTelemetry = {
   laps: TimedSample<OpenF1Lap>[];
 };
 
+export type TrackGeometry = {
+  points: Array<[number, number]>;
+  rotation: number;
+  source: "circuit" | "lap";
+};
+
 export type ReplaySessionData = {
+  trackGeometry?: TrackGeometry;
   meeting: OpenF1Meeting;
   session: OpenF1Session;
   drivers: OpenF1Driver[];

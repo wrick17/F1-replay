@@ -43,3 +43,26 @@ describe("telemetry.util", () => {
     expect(stint?.compound).toBe("SOFT");
   });
 });
+
+describe("location coverage", () => {
+  const samples = [0, 1000, 11000].map((timestampMs) => ({
+    timestampMs, x: timestampMs / 100, y: 0, z: 0, date: "", driver_number: 1,
+  }));
+  it("interpolates by timestamp and never extrapolates or bridges a telemetry gap", async () => {
+    const { interpolateLocation } = await import("modules/replay/utils/telemetry.util");
+    expect(interpolateLocation(samples, -1)).toBeNull();
+    expect(interpolateLocation(samples, 500)?.x).toBe(5);
+    expect(interpolateLocation(samples, 2000)?.x).toBe(10);
+    expect(interpolateLocation(samples, 6000)).toBeNull();
+    expect(interpolateLocation(samples, 11000)?.x).toBe(110);
+    expect(interpolateLocation(samples, 12000)?.x).toBe(110);
+    expect(interpolateLocation(samples, 14000)).toBeNull();
+    expect(interpolateLocation(samples, Number.NaN)).toBeNull();
+    expect(interpolateLocation([samples[0]], 500)?.x).toBe(0);
+    expect(interpolateLocation([], 500)).toBeNull();
+    for (const step of [1000 / 30, 1000 / 60]) {
+      for (let time = 0; time < 500; time += step) interpolateLocation(samples, time);
+      expect(interpolateLocation(samples, 500)?.x).toBe(5);
+    }
+  });
+});

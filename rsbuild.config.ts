@@ -44,6 +44,7 @@ export default defineConfig({
       index: "./src/index.tsx",
     },
     define: {
+      "import.meta.env.RSBUILD_ARCHIVE_URL": JSON.stringify(process.env.RSBUILD_ARCHIVE_URL || "https://data.f1.wrick17.com"),
       "import.meta.env.RSBUILD_WORKER_URL": rsbuildWorkerUrl
         ? JSON.stringify(rsbuildWorkerUrl)
         : "undefined",

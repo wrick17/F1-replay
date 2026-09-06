@@ -89,6 +89,7 @@ export const ControlsBar = ({
           }`}
           onClick={onTogglePlay}
           disabled={!canPlay}
+          aria-label={canPlay ? (isPlaying ? "Pause replay" : "Play replay") : "Replay loading"}
         >
           {canPlay ? (
             isPlaying ? (
