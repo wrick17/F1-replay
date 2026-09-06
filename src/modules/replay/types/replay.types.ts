@@ -13,6 +13,7 @@ export type SessionType = "Qualifying" | "Sprint" | "Race";
 export type DriverRenderState = {
   position: NormalizedPosition | null;
   color: string;
+  locationStatus?: "live" | "stale" | "unavailable";
   racePosition?: number | null;
 };
 
@@ -57,6 +58,7 @@ export type TimelineEvent = {
 
 export type TrackViewProps = {
   trackPath: NormalizedPosition[];
+  pitLanePath?: NormalizedPosition[];
   driverStates: Record<number, DriverRenderState>;
   driverNames: Record<number, string>;
   driverFullNames?: Record<number, string>;

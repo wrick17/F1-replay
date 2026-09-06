@@ -15,7 +15,7 @@ import {
   validateBuiltArchive,
   validateCatalog,
 } from "../../src/modules/archive";
-import { buildTrackGeometry } from "../../src/modules/replay/services/trackBuilder.service";
+import { buildPitLaneGeometry, buildTrackGeometry } from "../../src/modules/replay/services/trackBuilder.service";
 import type { CarTelemetryPayload } from "../../src/modules/replay/types/carTelemetry.types";
 import type {
   OpenF1Meeting,
@@ -614,18 +614,18 @@ const canonicalGeometry = async (meeting: OpenF1Meeting): Promise<TrackGeometry 
 };
 
 const addGeometry = async (replay: ReplaySessionData) => {
-  if (replay.trackGeometry?.source === "circuit") {
-    replay.trackGeometry = buildTrackGeometry(replay);
-    return;
+  if (replay.trackGeometry?.source !== "circuit") {
+    try {
+      replay.trackGeometry = (await canonicalGeometry(replay.meeting)) ?? replay.trackGeometry;
+    } catch (error) {
+      console.warn(`Canonical geometry failed for ${replay.session.session_key}: ${String(error)}`);
+    }
   }
-  let candidate = replay.trackGeometry;
-  try {
-    candidate = (await canonicalGeometry(replay.meeting)) ?? candidate;
-  } catch (error) {
-    console.warn(`Canonical geometry failed for ${replay.session.session_key}: ${String(error)}`);
-  }
-  replay.trackGeometry = candidate;
   replay.trackGeometry = buildTrackGeometry(replay);
+  if (replay.trackGeometry && !replay.trackGeometry.pitLane) {
+    const pitLane = buildPitLaneGeometry(replay);
+    if (pitLane.length) replay.trackGeometry.pitLane = pitLane;
+  }
 };
 
 const omittedTimedSamples = (replay: ReplaySessionData) =>

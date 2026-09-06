@@ -59,6 +59,10 @@ A session manifest contains:
 
 Core data includes session metadata, drivers, timing, race control, weather, pit, overtake, radio, and track geometry data. Driver locations live in compact numeric tuples outside the core object. Car tuples contain timestamp, driver, speed, gear, RPM, throttle, brake, and DRS.
 
+Track geometry can include an optional `pitLane` array of raw XY coordinates. The publisher derives it from a complete measured pit traversal. Older archives use bundled circuit/year pit references only when their circuit anchors align with the selected geometry. Rebuild those references with `bun scripts/archive/build-pit-lanes.ts <full-replay-export-directory>`; this reads local exports and makes no cloud requests. A session without a credible traversal or aligned reference omits the pit lane.
+
+Driver dots stay at their measured coordinates. Crowded captions can be hidden, while each dot remains focusable. After a telemetry gap, a dashed dot retains the last measured location and its details identify it as stale. A driver without a past location sample is not assigned a guessed track position.
+
 The first location and car window is 60 seconds, followed by four-minute windows. Location chunks include the nearest per-driver sample before and after the owned window as guards. This keeps interpolation stable without duplicating whole sessions.
 
 Car telemetry is optional. `status.car` is `ready` when its chunks were published and `unavailable` otherwise. Replay core and location data remain usable without it.

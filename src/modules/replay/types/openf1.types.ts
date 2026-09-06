@@ -108,6 +108,7 @@ export type OpenF1Pit = {
   driver_number: number;
   lap_number: number;
   pit_duration: number | null;
+  lane_duration?: number | null;
   session_key: number;
   meeting_key: number;
 };
@@ -137,6 +138,7 @@ export type ReplayTelemetry = {
 };
 
 export type TrackGeometry = {
+  pitLane?: Array<[number, number]>;
   points: Array<[number, number]>;
   rotation: number;
   source: "circuit" | "lap";

@@ -217,15 +217,20 @@ const validateTrackGeometry = (value: unknown) => {
   if (geometry.source !== "circuit" && geometry.source !== "lap") {
     fail("core.payload.trackGeometry.source is invalid");
   }
-  const points = array(geometry.points, "core.payload.trackGeometry.points");
-  if (points.length < 3) fail("core.payload.trackGeometry needs at least three points");
-  for (const [index, value] of points.entries()) {
-    const point = array(value, `core.payload.trackGeometry.points[${index}]`);
-    if (
-      point.length !== 2 ||
-      point.some((coordinate) => typeof coordinate !== "number" || !Number.isFinite(coordinate))
-    ) {
-      fail(`core.payload.trackGeometry.points[${index}] is invalid`);
+  for (const field of ["points", "pitLane"] as const) {
+    if (field === "pitLane" && geometry[field] === undefined) continue;
+    const points = array(geometry[field], `core.payload.trackGeometry.${field}`);
+    if (points.length < 3) fail(`core.payload.trackGeometry.${field} needs at least three points`);
+    if (field === "pitLane" && points.length > 2048)
+      fail("core.payload.trackGeometry.pitLane is too large");
+    for (const [index, value] of points.entries()) {
+      const point = array(value, `core.payload.trackGeometry.${field}[${index}]`);
+      if (
+        point.length !== 2 ||
+        point.some((coordinate) => typeof coordinate !== "number" || !Number.isFinite(coordinate))
+      ) {
+        fail(`core.payload.trackGeometry.${field}[${index}] is invalid`);
+      }
     }
   }
   return geometry as unknown as NonNullable<ReplaySessionData["trackGeometry"]>;

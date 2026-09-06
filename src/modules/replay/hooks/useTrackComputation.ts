@@ -58,6 +58,7 @@ export const useTrackComputation = ({
   const driverTeams = useMemo(() => buildDriverTeams(data?.drivers ?? []), [data]);
   return {
     trackPath: track?.trackPath ?? [],
+    pitLanePath: track?.pitLanePath ?? [],
     driverStates,
     driverNames,
     driverFullNames,

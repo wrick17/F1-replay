@@ -9,6 +9,7 @@ import {
   loadReplayCore,
   loadReplaySession,
   validateBuiltArchive,
+  validateCore,
   validateCatalog,
 } from "../../../../src/modules/archive";
 import type { CarTelemetryPayload } from "../../../../src/modules/replay/types/carTelemetry.types";
@@ -21,6 +22,7 @@ const replay = {
       [1, 1],
       [2, 0],
     ],
+    pitLane: [[0, 0], [1, -0.2], [2, 0]],
     rotation: 0,
     source: "circuit",
   },
@@ -502,4 +504,17 @@ describe("static replay archive", () => {
       globalThis.fetch = originalFetch;
     }
   });
+});
+
+
+it("validates optional pit-lane points without requiring them in older cores", async () => {
+  const archive = await buildSessionArchive(replay, { round: 24 });
+  const core = JSON.parse(archive.files.get(archive.manifest.core.url)!);
+  expect(() => validateCore(core, archive.manifest)).not.toThrow();
+  delete core.payload.trackGeometry.pitLane;
+  expect(() => validateCore(core, archive.manifest)).not.toThrow();
+  for (const invalid of [[], [[0, 0]], [[0, 0], [1, null], [2, 0]], [[0, 0, 0], [1, 0], [2, 0]]]) {
+    core.payload.trackGeometry.pitLane = invalid;
+    expect(() => validateCore(core, archive.manifest)).toThrow("trackGeometry.pitLane");
+  }
 });

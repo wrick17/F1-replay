@@ -2,15 +2,21 @@ import { memo, useMemo, useState } from "react";
 import type { TrackViewProps } from "../types/replay.types";
 import { computeBounds, toPoint2D, VIEWBOX_PADDING } from "../utils/geometry.util";
 
-const TrackBase = memo(({ pathD }: { pathD: string }) => (
+const TrackBase = memo(({ pathD, pitD }: { pathD: string; pitD: string }) => (
   <g fill="none" strokeLinecap="round" strokeLinejoin="round">
     <path d={pathD} stroke="#151e2a" strokeWidth="15" />
     <path d={pathD} stroke="#8d9aaa" strokeWidth="5" />
+    {pitD && (
+      <path data-pit-lane="true" d={pitD} stroke="#38bdf8" strokeWidth="4" strokeDasharray="9 5">
+        <title>Pit lane</title>
+      </path>
+    )}
   </g>
 ));
 
 export const TrackView = ({
   trackPath,
+  pitLanePath = [],
   driverStates,
   driverNames,
   driverFullNames,
@@ -21,7 +27,18 @@ export const TrackView = ({
   const [focusedDriver, setFocusedDriver] = useState<number | null>(null);
   const [hoveredDriver, setHoveredDriver] = useState<number | null>(null);
   const scaledTrack = useMemo(() => trackPath.map(toPoint2D), [trackPath]);
-  const bounds = useMemo(() => computeBounds(scaledTrack), [scaledTrack]);
+  const scaledPit = useMemo(() => pitLanePath.map(toPoint2D), [pitLanePath]);
+  const bounds = useMemo(
+    () => computeBounds([...scaledTrack, ...scaledPit]),
+    [scaledTrack, scaledPit],
+  );
+  const pitD = useMemo(
+    () =>
+      scaledPit
+        .map((point, index) => `${index ? "L" : "M"}${point.x.toFixed(2)},${point.y.toFixed(2)}`)
+        .join(" "),
+    [scaledPit],
+  );
   const pathD = useMemo(() => {
     let penDown = false;
     return scaledTrack
@@ -61,7 +78,7 @@ export const TrackView = ({
     );
   const active = entries.find((entry) => entry.driverNumber === activeDriver);
   const labelText = active
-    ? `P${active.state.racePosition ?? "–"} ${active.fullName} · ${driverTeams[active.driverNumber]?.name ?? ""}`
+    ? `P${active.state.racePosition ?? "–"} ${active.fullName} · ${driverTeams[active.driverNumber]?.name ?? ""}${active.state.locationStatus === "stale" ? " · Last known location" : ""}`
     : "";
   const labelWidth = Math.min(
     Math.max(labelText.length * 6.5 + 24, 110),
@@ -112,7 +129,7 @@ export const TrackView = ({
     >
       <title>F1 circuit and driver positions</title>
       <desc>Focus a driver marker to show the full driver name, position, and team.</desc>
-      <TrackBase pathD={pathD} />
+      <TrackBase pathD={pathD} pitD={pitD} />
       {entries.map((entry) => (
         // biome-ignore lint/a11y/useSemanticElements: SVG has no native button; keyboard activation and focus are provided
         <g
@@ -127,19 +144,20 @@ export const TrackView = ({
               setFocusedDriver(entry.driverNumber);
             }
           }}
-          aria-label={`Position ${entry.state.racePosition ?? "unknown"}, ${entry.fullName}, ${driverTeams[entry.driverNumber]?.name ?? ""}`}
+          aria-label={`Position ${entry.state.racePosition ?? "unknown"}, ${entry.fullName}, ${driverTeams[entry.driverNumber]?.name ?? ""}${entry.state.locationStatus === "stale" ? ", last known location" : ""}`}
           onFocus={() => setFocusedDriver(entry.driverNumber)}
           onBlur={() => setFocusedDriver(null)}
           onMouseEnter={() => setHoveredDriver(entry.driverNumber)}
           onMouseLeave={() => setHoveredDriver(null)}
           style={{ outline: "none" }}
         >
-          <title>{entry.fullName}</title>
+          <title>{`${entry.fullName}${entry.state.locationStatus === "stale" ? " · Last known location" : ""}`}</title>
           <circle
-            r={entry.selected || entry.driverNumber === focusedDriver ? 9 : 6}
+            r={entry.selected || entry.driverNumber === focusedDriver ? 9 : 7}
             fill={entry.state.color}
             stroke={entry.driverNumber === activeDriver ? "#fff" : "#0c111a"}
             strokeWidth="2"
+            strokeDasharray={entry.state.locationStatus === "stale" ? "3 2" : undefined}
           />
           {visibleLabels.has(entry.driverNumber) && (
             <g data-track-caption={entry.driverNumber}>

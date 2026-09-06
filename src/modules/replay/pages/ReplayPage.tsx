@@ -88,7 +88,7 @@ export const ReplayPage = () => {
     replay.setSpeed(prefs.speed);
   }, [prefs.speed]);
 
-  const { trackPath, driverStates, driverNames, driverFullNames, driverTeams } =
+  const { trackPath, pitLanePath, driverStates, driverNames, driverFullNames, driverTeams } =
     useTrackComputation({
       data,
       dataRevision,
@@ -335,6 +335,7 @@ export const ReplayPage = () => {
       <div className="relative mx-4 mt-4 min-h-[260px] md:absolute md:inset-0 md:mx-0 md:mt-0 md:pb-44 md:pl-[17.5rem] md:pr-80 md:pt-32">
         <TrackView
           trackPath={trackPath}
+          pitLanePath={pitLanePath}
           driverStates={driverStates}
           driverNames={driverNames}
           driverFullNames={driverFullNames}
