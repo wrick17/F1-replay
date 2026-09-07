@@ -30,6 +30,9 @@ async function checkReplay3D() {
   await waitFor(() => mode() === "3d", "3D did not become ready");
   check(document.querySelectorAll(".replay-spatial canvas").length === 1, "Expected one 3D canvas");
   await waitFor(() => sceneFrames() > 0, "3D did not render its first frame");
+  // WebGPU validation errors arrive asynchronously after a submitted frame.
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+  check(mode() === "3d" && document.querySelector(".replay-spatial canvas"), "3D failed after GPU validation");
   const firstFrames = sceneFrames();
   check(button("Switch to 2D view").textContent.trim() === "3D", "Mode button must show only3D");
   check(document.querySelector(".game-inspector"), "3D entry must show the data inspector");
@@ -49,6 +52,9 @@ async function checkReplay3D() {
   await waitFor(() => mode() === "3d", "Second 3D activation failed");
   await waitFor(() => sceneFrames() > firstFrames, "3D rendering did not resume after switching back");
   check(button("Pause replay"), "Switching to 3D stopped playback");
+  const playingFrames = sceneFrames();
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+  check(mode() === "3d" && sceneFrames() > playingFrames, "3D failed during sustained playback");
   click("Switch to 2D view");
   await waitFor(() => mode() === "2d", "Second return to 2D failed");
   check(button("Pause replay"), "Returning to 2D stopped playback");

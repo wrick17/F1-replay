@@ -127,6 +127,20 @@ const ribbon = (
   return geometry;
 };
 
+/** WebGPU uniform bindings need backing storage even when a scenery batch has no instances. */
+export const createReplayInstances3D = (
+  geometry: BufferGeometry,
+  material: MeshStandardMaterial,
+  count: number,
+) => {
+  const mesh = new InstancedMesh(geometry, material, Math.max(1, count));
+  mesh.count = count;
+  mesh.visible = count > 0;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
+};
+
 export const createReplayWorld3D = (
   scene: Scene,
   center: Vector3,
@@ -491,9 +505,7 @@ export const createReplayWorld3D = (
     material: MeshStandardMaterial,
     count: number,
   ) => {
-    const mesh = new InstancedMesh(geometry, material, count);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
+    const mesh = createReplayInstances3D(geometry, material, count);
     scene.add(mesh);
     return mesh;
   };
