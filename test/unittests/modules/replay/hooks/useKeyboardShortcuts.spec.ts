@@ -1,18 +1,37 @@
-import { describe, expect, it } from "bun:test";
-import { shouldIgnoreKeyboardShortcutTarget } from "modules/replay/hooks/useKeyboardShortcuts";
+import { expect, it, mock } from "bun:test";
+import { handleReplayShortcut } from "modules/replay/hooks/useKeyboardShortcuts";
 
-describe("shouldIgnoreKeyboardShortcutTarget", () => {
-  it("ignores interactive and editable targets", () => {
-    for (const tagName of ["A", "BUTTON", "FORM", "INPUT", "SELECT", "TEXTAREA"]) {
-      expect(shouldIgnoreKeyboardShortcutTarget({ tagName } as EventTarget)).toBe(true);
-    }
-    expect(
-      shouldIgnoreKeyboardShortcutTarget({ tagName: "DIV", isContentEditable: true } as EventTarget),
-    ).toBe(true);
-  });
-
-  it("allows shortcuts from the page itself", () => {
-    expect(shouldIgnoreKeyboardShortcutTarget({ tagName: "DIV" } as EventTarget)).toBe(false);
-    expect(shouldIgnoreKeyboardShortcutTarget(null)).toBe(false);
-  });
+it("replay hotkeys override focused controls and native navigation, preserving browser combinations", () => {
+  const actions = {
+    currentTimeMs: 100000, skipIntervalMs: 10000,
+    togglePlay: mock(() => {}), seekTo: mock((_time: number) => {}),
+    cycleSpeed: mock(() => {}), toggleRadio: mock(() => {}),
+    cycleSkipInterval: mock(() => {}), toggleTimelineExpanded: mock(() => {}),
+    nextRound: mock(() => {}), prevRound: mock(() => {}),
+    nextYear: mock(() => {}), prevYear: mock(() => {}),
+    nextSession: mock(() => {}), prevSession: mock(() => {}),
+  };
+  const press = (key: string, extra = {}) => {
+    const e = { key, target: { tagName: "INPUT", type: "range" },
+      preventDefault: mock(() => {}), stopPropagation: mock(() => {}), ...extra };
+    handleReplayShortcut(e as unknown as KeyboardEvent, actions);
+    return e;
+  };
+  expect(press(" ").preventDefault).toHaveBeenCalled();
+  expect(actions.togglePlay).toHaveBeenCalledTimes(1);
+  press(" ", { repeat: true });
+  expect(actions.togglePlay).toHaveBeenCalledTimes(1);
+  press("ArrowRight");
+  expect(actions.seekTo).toHaveBeenLastCalledWith(110000);
+  press("ArrowLeft");
+  expect(actions.seekTo).toHaveBeenLastCalledWith(90000);
+  for (const key of ["Tab", "Enter", "Home", "End"]) {
+    const e = press(key);
+    expect(e.preventDefault).toHaveBeenCalled();
+    expect(e.stopPropagation).toHaveBeenCalled();
+  }
+  press("ArrowUp", { shiftKey: true, metaKey: true });
+  expect(actions.nextSession).toHaveBeenCalledTimes(1);
+  expect(press("s", { metaKey: true }).preventDefault).not.toHaveBeenCalled();
+  expect(actions.cycleSpeed).not.toHaveBeenCalled();
 });

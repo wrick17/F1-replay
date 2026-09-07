@@ -150,3 +150,17 @@ it("confines a prior-year translation to that reference's pit lane, leaving curr
   expect(sameYear.normalization.offset.y).toBeCloseTo(baseline.offset.y - shift.y, 8);
   expect(sameYear.pitLanePath[0]).toEqual(withPriorPit.pitLanePath[0]);
 });
+
+it("derives car heading from the replay cursor even after a backward seek", () => {
+  const data = fixture();
+  data.telemetryByDriver[1].locations = [
+    { ...sample(1)[0], timestampMs: 1000, x: 0, y: 0, z: 10 },
+    { ...sample(1)[0], timestampMs: 1500, x: 100, y: 0, z: 20 },
+    { ...sample(1)[0], timestampMs: 2000, x: 100, y: 100, z: 30 },
+  ];
+  const normalization = { scale: 1, offset: { x: 0, y: 0, z: 0 } };
+  expect(computeDriverStates(data, 2000, normalization)[1].direction).toEqual({ x: 0, y: 100, z: 10 });
+  expect(computeDriverStates(data, 1500, normalization)[1].direction).toEqual({ x: 100, y: 0, z: 10 });
+  expect(computeDriverStates(data, 999, normalization)[1].direction).toBeUndefined();
+  expect(computeDriverStates(data, 10000, normalization)[1].direction).toBeUndefined();
+});

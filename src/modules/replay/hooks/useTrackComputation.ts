@@ -44,6 +44,7 @@ export const useTrackComputation = ({
     const states = computeDriverStates(data, currentTimeMs, track.normalization);
     for (const state of Object.values(states)) {
       if (state.position) state.position = rotateTrackPoint(state.position, track.rotation);
+      if (state.direction) state.direction = rotateTrackPoint(state.direction, track.rotation);
     }
     return states;
   }, [data, dataRevision, currentTimeMs, track]);

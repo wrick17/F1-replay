@@ -27,7 +27,6 @@ type TimelineSliderProps = {
   onStopRadio: () => void;
   onPauseRadio: () => void;
   onResumeRadio: () => void;
-  onTogglePlay: () => void;
   onMarkerClick?: (timestampMs: number) => void;
 };
 
@@ -102,17 +101,12 @@ export const TimelineSlider = ({
   onStopRadio,
   onPauseRadio,
   onResumeRadio,
-  onTogglePlay,
   onMarkerClick,
 }: TimelineSliderProps) => {
   const trackRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
   const hoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Drag-pause refs for expanded mode
-  const userDraggingRef = useRef(false);
-  const wasPlayingBeforeDragRef = useRef(false);
 
   // Manual hover state (user-initiated)
   const [hoveredEvent, setHoveredEvent] = useState<TimelineEvent | null>(null);
@@ -147,11 +141,6 @@ export const TimelineSlider = ({
   onPlayRadioRef.current = onPlayRadio;
   const onStopRadioRef = useRef(onStopRadio);
   onStopRadioRef.current = onStopRadio;
-  const expandedRef = useRef(expanded);
-  expandedRef.current = expanded;
-  const onTogglePlayRef = useRef(onTogglePlay);
-  onTogglePlayRef.current = onTogglePlay;
-
   const duration = Math.max(1, endTimeMs - startTimeMs);
   const rangeValue = Math.min(endTimeMs, Math.max(startTimeMs, currentTimeMs));
   const progress = ((currentTimeMs - startTimeMs) / duration) * 100;
@@ -206,17 +195,6 @@ export const TimelineSlider = ({
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
       closeAllPopups();
 
-      // In expanded mode, pause race on drag start
-      if (expandedRef.current) {
-        userDraggingRef.current = true;
-        if (isPlayingRef.current) {
-          wasPlayingBeforeDragRef.current = true;
-          onTogglePlayRef.current();
-        } else {
-          wasPlayingBeforeDragRef.current = false;
-        }
-      }
-
       seekFromPointer(e.clientX);
     },
     [closeAllPopups, seekFromPointer],
@@ -233,15 +211,6 @@ export const TimelineSlider = ({
 
   const onPointerUp = useCallback(() => {
     isDragging.current = false;
-
-    // In expanded mode, resume race on drag end if it was playing before
-    if (expandedRef.current && userDraggingRef.current) {
-      userDraggingRef.current = false;
-      if (wasPlayingBeforeDragRef.current) {
-        wasPlayingBeforeDragRef.current = false;
-        onTogglePlayRef.current();
-      }
-    }
   }, []);
 
   const computeMarkerPercent = useCallback(
@@ -402,7 +371,7 @@ export const TimelineSlider = ({
 
   // Auto-scroll in expanded mode: keep handle at 30% from left
   useEffect(() => {
-    if (!expanded || userDraggingRef.current) return;
+    if (!expanded || isDragging.current) return;
     const container = scrollContainerRef.current;
     if (!container) return;
 

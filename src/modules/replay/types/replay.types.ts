@@ -12,6 +12,7 @@ export type SessionType = "Qualifying" | "Sprint" | "Race";
 
 export type DriverRenderState = {
   position: NormalizedPosition | null;
+  direction?: NormalizedPosition;
   color: string;
   locationStatus?: "live" | "stale" | "unavailable";
   racePosition?: number | null;

@@ -25,6 +25,9 @@ export const computeDriverStates = (
         ? findSampleAtTime(locations, currentTimeMs)
         : null;
     const locationSample = liveLocation ?? previous;
+    const earlierLocation = liveLocation
+      ? interpolateLocation(locations, currentTimeMs - 500)
+      : null;
     const positionSample = getCurrentPosition(telemetry?.positions ?? [], currentTimeMs);
     const racePosition = positionSample?.position ?? null;
     if (
@@ -39,6 +42,13 @@ export const computeDriverStates = (
           y: (locationSample.y - normalization.offset.y) * normalization.scale,
           z: (locationSample.z - normalization.offset.z) * normalization.scale,
         },
+        direction: earlierLocation
+          ? {
+              x: locationSample.x - earlierLocation.x,
+              y: locationSample.y - earlierLocation.y,
+              z: locationSample.z - earlierLocation.z,
+            }
+          : undefined,
         locationStatus: liveLocation ? "live" : "stale",
         color: `#${driver.team_colour}`,
         racePosition,

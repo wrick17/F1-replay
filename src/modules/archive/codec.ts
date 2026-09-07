@@ -1,5 +1,6 @@
 import type { CarTelemetryPayload } from "../replay/types/carTelemetry.types";
 import type { OpenF1Location, ReplaySessionData, TimedSample } from "../replay/types/openf1.types";
+import { sha256Hex } from "./hash";
 import {
   ARCHIVE_SCHEMA_VERSION,
   type ArchiveCarChunk,
@@ -18,14 +19,9 @@ import {
 const FIRST_CHUNK_MS = 60_000;
 const DEFAULT_CHUNK_MS = 240_000;
 
-const sha256 = async (content: string) => {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(content));
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-};
-
 const addObject = async (files: Map<string, string>, value: unknown): Promise<ArchiveObject> => {
   const content = JSON.stringify(value);
-  const hash = await sha256(content);
+  const hash = await sha256Hex(content);
   const url = `objects/${hash}.json`;
   files.set(url, content);
   return { url, sha256: hash, bytes: new TextEncoder().encode(content).byteLength };

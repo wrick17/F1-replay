@@ -1,5 +1,193 @@
 @import "tailwindcss";
 
+.replay-view-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 36px;
+  padding: 0.4rem 0.65rem;
+  border: 1px solid #ffffff30;
+  border-radius: 8px;
+  color: #dce4ee;
+  background: #ffffff08;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 180ms,
+    border-color 180ms;
+}
+
+.replay-view-toggle:hover {
+  background: #ffffff18;
+}
+.replay-view-toggle:focus-visible {
+  outline: 2px solid #7dd3fc;
+  outline-offset: 3px;
+}
+.replay-view-toggle[aria-pressed="true"] {
+  border-color: #f8717180;
+  background: #ef444420;
+  color: #fff;
+}
+.replay-flat,
+.replay-spatial {
+  transition:
+    opacity 650ms ease,
+    transform 650ms ease;
+}
+.replay-flat {
+  opacity: 1;
+  transform-origin: center;
+}
+.replay-spatial {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(1.025);
+}
+.replay-is-3d .replay-flat {
+  opacity: 0;
+  transform: perspective(1000px) rotateX(18deg) scale(0.92);
+  pointer-events: none;
+}
+.replay-is-3d .replay-spatial {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+}
+.replay-is-3d .replay-stage {
+  position: fixed;
+  inset: 0;
+  height: 100dvh;
+  margin: 0;
+}
+.replay-is-3d {
+  height: 100dvh;
+  overflow: hidden;
+}
+.replay-is-3d > aside,
+.replay-is-3d > footer {
+  display: none;
+}
+.replay-is-3d .replay-header {
+  position: fixed;
+  z-index: 50;
+  inset: 12px 20px auto;
+  margin: 0;
+  flex-wrap: nowrap;
+  padding: 10px 14px;
+  gap: 16px;
+  border: 1px solid #ffffff24;
+  border-radius: 12px;
+  background: linear-gradient(115deg, #101920ed, #101920a6);
+  box-shadow: 0 8px 32px #00000024;
+  backdrop-filter: blur(18px);
+}
+.replay-is-3d .replay-brand {
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+.replay-is-3d .replay-load-status {
+  display: none;
+}
+.replay-game-session {
+  min-width: 0;
+}
+.replay-game-session > summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+  text-align: right;
+}
+.replay-game-session > summary::-webkit-details-marker {
+  display: none;
+}
+.replay-game-session > summary:focus-visible {
+  outline: 2px solid #7dd3fc;
+  outline-offset: 4px;
+}
+.replay-game-race-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+.replay-game-session-type {
+  color: #d8e0e7b3;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.replay-game-session-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(500px, calc(100vw - 40px));
+  padding: 18px;
+  border: 1px solid #ffffff26;
+  border-radius: 12px;
+  background: #0b131ded;
+  backdrop-filter: blur(24px);
+}
+@media (max-width: 767px) {
+  .replay-is-3d .replay-header {
+    inset: 10px 10px auto;
+    gap: 8px;
+    padding: 9px;
+  }
+  .replay-is-3d .replay-brand {
+    gap: 5px;
+  }
+  .replay-is-3d .replay-brand img {
+    height: 19px;
+  }
+  .replay-is-3d .replay-view-toggle {
+    padding: 6px;
+    gap: 4px;
+  }
+  .replay-is-3d .replay-panels-label {
+    display: none;
+  }
+  .replay-game-session > summary {
+    gap: 4px;
+  }
+  .replay-game-race-title {
+    font-size: 11px;
+    max-width: 112px;
+  }
+  .replay-game-session-type {
+    display: none;
+  }
+}
+.replay-shell > aside {
+  transition:
+    opacity 300ms,
+    transform 450ms;
+}
+.replay-panels-hidden > aside {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .replay-shell > header,
+  .replay-shell > footer {
+    transition: right 450ms ease;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .replay-flat,
+  .replay-spatial,
+  .replay-shell > aside,
+  .replay-shell > header,
+  .replay-shell > footer {
+    transition: none;
+  }
+}
+
 html,
 body,
 #root {

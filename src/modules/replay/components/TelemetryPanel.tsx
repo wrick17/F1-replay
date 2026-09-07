@@ -20,6 +20,7 @@ import { Tooltip } from "./Tooltip";
 
 type ArchiveTelemetryPanelProps = TelemetryPanelProps & {
   archiveManifest?: ArchiveManifest | null;
+  autoEnable?: boolean;
 };
 
 type OvertakeRole = "overtaking" | "overtaken" | null;
@@ -265,6 +266,7 @@ export const TelemetryPanel = ({
   isLoading = false,
   currentTimeMs = 0,
   archiveManifest = null,
+  autoEnable = false,
   onTelemetryLoadingChange,
 }: ArchiveTelemetryPanelProps) => {
   const showSkeleton = isLoading && rows.length === 0;
@@ -281,11 +283,11 @@ export const TelemetryPanel = ({
   useEffect(() => {
     try {
       const stored = localStorage.getItem("f1.telemetry.enabled");
-      setTelemetryEnabled(stored === "true");
+      setTelemetryEnabled(autoEnable || stored === "true");
     } catch {
-      setTelemetryEnabled(false);
+      setTelemetryEnabled(autoEnable);
     }
-  }, []);
+  }, [autoEnable]);
 
   useEffect(() => {
     const handleKeyboardToggle = () => {

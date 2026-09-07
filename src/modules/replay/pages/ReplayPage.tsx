@@ -1,8 +1,18 @@
-import { ChevronRight, Loader2 } from "lucide-react";
+import {
+  Box,
+  ChevronDown,
+  ChevronRight,
+  Layers,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  PanelsTopLeft,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { HOME_PATH } from "../../../app/routing";
 import { ControlsBar } from "../components/ControlsBar";
 import { EventsPanel } from "../components/EventsPanel";
+import { ReplayGameHUD } from "../components/ReplayGameHUD";
 import { SessionPicker } from "../components/SessionPicker";
 import { TelemetryPanel } from "../components/TelemetryPanel";
 import { TrackView } from "../components/TrackView";
@@ -23,6 +33,7 @@ import { useUserPreferences } from "../hooks/useUserPreferences";
 import { buildTimelineEvents, getActiveOvertakes } from "../services/events.service";
 import { computeTelemetryRows, computeTelemetrySummary } from "../services/telemetry.service";
 import { getWeatherAtTime } from "../services/weather.service";
+import { getReplayEnvironment } from "../utils/replayEnvironment.util";
 
 export const isReplayHeaderLoading = (
   isBlockingReplayLoad: boolean,
@@ -114,6 +125,11 @@ export const ReplayPage = () => {
     if (!data) return null;
     return getWeatherAtTime(data.weather, replay.currentTimeMs);
   }, [data, replay.currentTimeMs]);
+  const environment = getReplayEnvironment(
+    replay.currentTimeMs,
+    data?.session.gmt_offset ?? data?.meeting.gmt_offset,
+    currentWeather,
+  );
 
   const activeOvertakes = useMemo(() => {
     if (!data) return [];
@@ -123,20 +139,6 @@ export const ReplayPage = () => {
   const { currentRadio, isAudioPlaying, playRadio, stopRadio, pauseRadio, resumeRadio } =
     useTeamRadio();
   const replaySeekTo = replay.seekTo;
-  const replayTogglePlay = replay.togglePlay;
-  const replayIsPlaying = replay.isPlaying;
-
-  const handleMarkerClick = useCallback(
-    (timestampMs: number) => {
-      void requestWindow(timestampMs);
-      replaySeekTo(timestampMs);
-      if (!replayIsPlaying) {
-        replayTogglePlay();
-      }
-    },
-    [replayIsPlaying, replaySeekTo, replayTogglePlay, requestWindow],
-  );
-
   const handleSeek = useCallback(
     (timestampMs: number) => {
       void requestWindow(timestampMs);
@@ -168,6 +170,47 @@ export const ReplayPage = () => {
   const [telemetryCollapsed, setTelemetryCollapsed] = useState(false);
   const [eventsCollapsed, setEventsCollapsed] = useState(false);
   const [isCarTelemetryLoading, setIsCarTelemetryLoading] = useState(false);
+  const [followDriver, setFollowDriver] = useState<number | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const update = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", update);
+    return () => document.removeEventListener("fullscreenchange", update);
+  }, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: changing races resets the camera's driver selection
+  useEffect(() => {
+    setFollowDriver(null);
+  }, [data?.session.session_key]);
+  const [wants3D, setWants3D] = useState(false);
+  const [sceneReady, setSceneReady] = useState(false);
+  const [sceneError, setSceneError] = useState<string | null>(null);
+  const [panelsVisible, setPanelsVisible] = useState(true);
+  const [Scene, setScene] = useState<typeof import("../components/TrackView3D").default | null>(
+    null,
+  );
+  const show3D = wants3D && sceneReady;
+  const handleSceneReady = useCallback(() => setSceneReady(true), []);
+  const handleSceneError = useCallback((message: string) => {
+    setSceneError(message);
+    setWants3D(false);
+    setSceneReady(false);
+    setScene(null);
+  }, []);
+
+  useEffect(() => {
+    if (!wants3D || Scene) return;
+    let cancelled = false;
+    import("../components/TrackView3D")
+      .then((module) => {
+        if (!cancelled) setScene(() => module.default);
+      })
+      .catch(() => {
+        if (!cancelled) handleSceneError("The 3D view could not load. Please try again.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [wants3D, Scene, handleSceneError]);
 
   const toggleLegendCollapsed = useCallback(() => setLegendCollapsed((prev) => !prev), []);
   const toggleShortcutsCollapsed = useCallback(() => setShortcutsCollapsed((prev) => !prev), []);
@@ -272,8 +315,104 @@ export const ReplayPage = () => {
     ? "border-amber-500/30 bg-amber-500/20 text-amber-300"
     : "border-red-500/30 bg-red-500/15 text-red-200";
 
+  const telemetryPanel = (
+    <TelemetryPanel
+      autoEnable={show3D}
+      summary={telemetrySummary}
+      rows={
+        show3D
+          ? telemetryRows.filter(
+              (row) => row.driverNumber === (followDriver ?? telemetryRows[0]?.driverNumber),
+            )
+          : telemetryRows
+      }
+      activeOvertakes={activeOvertakes}
+      isLoading={isBlockingLoad}
+      currentTimeMs={replay.currentTimeMs}
+      sessionKey={data?.session.session_key ?? null}
+      sessionStartMs={data?.sessionStartMs ?? 0}
+      sessionEndMs={data?.sessionEndMs ?? 0}
+      archiveManifest={manifest}
+      onTelemetryLoadingChange={setIsCarTelemetryLoading}
+    />
+  );
+  const eventsPanel = (
+    <EventsPanel
+      events={timelineEvents}
+      startTimeMs={sessionStartMs}
+      currentTimeMs={replay.currentTimeMs}
+      isPlaying={replay.isPlaying}
+      radioEnabled={prefs.radioEnabled}
+      isRadioPlaying={isAudioPlaying}
+      currentRadio={currentRadio}
+      onPlayRadio={playRadio}
+      onStopRadio={stopRadio}
+      hasEvents={timelineEvents.length > 0}
+      legendCollapsed={legendCollapsed}
+      shortcutsCollapsed={shortcutsCollapsed}
+      onToggleLegendCollapsed={toggleLegendCollapsed}
+      onToggleShortcutsCollapsed={toggleShortcutsCollapsed}
+      onSelectEvent={handleEventSelect}
+    />
+  );
+  const sessionPicker = (
+    <SessionPicker
+      year={selectedYear}
+      round={session.round}
+      sessionType={session.sessionType}
+      meetings={meetings}
+      sessions={sessions}
+      yearOptions={availableYears}
+      isLoading={isBlockingLoad}
+      onYearChange={(nextYear) => {
+        session.setYear(nextYear);
+        session.setRound(1);
+        session.manualRoundRef.current = false;
+      }}
+      onRoundChange={(nextRound) => {
+        session.manualRoundRef.current = true;
+        session.setRound(nextRound);
+      }}
+      onSessionTypeChange={session.setSessionType}
+    />
+  );
+  const playbackControls = (
+    <ControlsBar
+      isPlaying={replay.isPlaying}
+      isBuffering={replay.isBuffering}
+      speed={prefs.speed}
+      currentTimeMs={replay.currentTimeMs}
+      startTimeMs={sessionStartMs}
+      endTimeMs={effectiveEndMs}
+      canPlay={canPlay}
+      timelineEvents={timelineEvents}
+      hasTeamRadio={Boolean(data?.teamRadios?.length)}
+      radioEnabled={prefs.radioEnabled}
+      drivers={drivers}
+      isRadioPlaying={isAudioPlaying}
+      skipIntervalLabel={skipIntervalLabel}
+      expanded={prefs.timelineExpanded}
+      onTogglePlay={replay.togglePlay}
+      onSkipBack={handleSkipBack}
+      onSkipForward={handleSkipForward}
+      onCycleSpeed={prefs.cycleSpeed}
+      onCycleSkipInterval={prefs.cycleSkipInterval}
+      onToggleExpanded={prefs.toggleTimelineExpanded}
+      onSeek={handleSeek}
+      onRadioToggle={prefs.toggleRadio}
+      onPlayRadio={playRadio}
+      onStopRadio={stopRadio}
+      onPauseRadio={pauseRadio}
+      onResumeRadio={resumeRadio}
+      onMarkerClick={handleSeek}
+    />
+  );
+
   return (
-    <div className="relative min-h-screen w-full overflow-y-auto text-white md:h-screen md:w-screen md:overflow-hidden">
+    <div
+      className={`replay-shell relative min-h-screen w-full overflow-y-auto text-white md:h-screen md:w-screen md:overflow-hidden ${show3D ? "replay-is-3d" : ""} ${show3D && !panelsVisible ? "replay-panels-hidden" : ""}`}
+      data-view={show3D ? "3d" : "2d"}
+    >
       {/* Noise texture overlay */}
       <div
         className="pointer-events-none absolute inset-0 z-0 opacity-55 mix-blend-overlay"
@@ -284,14 +423,63 @@ export const ReplayPage = () => {
           filter: "contrast(200%) brightness(400%)",
         }}
       />
-      <header className="relative z-10 mx-4 mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/20 bg-white/5 px-4 py-3 backdrop-blur-xl md:absolute md:left-4 md:right-80 md:top-4 md:mx-0 md:mt-0">
-        <div className="flex flex-wrap items-center gap-2">
+      <header className="replay-header relative z-10 mx-4 mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/20 bg-white/5 px-4 py-3 backdrop-blur-xl md:absolute md:left-4 md:right-80 md:top-4 md:mx-0 md:mt-0">
+        <div className="replay-brand flex flex-wrap items-center gap-2">
           <a href={HOME_PATH} className="flex items-center" aria-label="Go to home page">
             <img src="/logo.png" alt="" className="h-6 w-auto" />
             <span className="sr-only">F1 Replay</span>
           </a>
+          <button
+            type="button"
+            className="replay-view-toggle"
+            aria-label={wants3D ? "Switch to 2D view" : "Switch to 3D view"}
+            aria-pressed={wants3D}
+            onClick={() => {
+              setSceneError(null);
+              if (!wants3D) setPanelsVisible(true);
+              setWants3D((previous) => !previous);
+            }}
+          >
+            {wants3D && !sceneReady ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : wants3D ? (
+              <Layers size={15} />
+            ) : (
+              <Box size={15} />
+            )}
+            <span>{show3D ? "3D" : "2D"}</span>
+          </button>
+          {show3D && (
+            <button
+              type="button"
+              className="replay-view-toggle"
+              aria-label={panelsVisible ? "Hide replay panels" : "Show replay panels"}
+              aria-pressed={panelsVisible}
+              onClick={() => setPanelsVisible((previous) => !previous)}
+            >
+              <PanelsTopLeft size={15} />
+              <span className="replay-panels-label">Panels</span>
+            </button>
+          )}
+          {show3D && document.fullscreenEnabled && (
+            <button
+              type="button"
+              className="replay-view-toggle"
+              aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              onClick={() => {
+                const action = document.fullscreenElement
+                  ? document.exitFullscreen()
+                  : document.documentElement.requestFullscreen();
+                void action.catch(() =>
+                  setSceneError("Fullscreen is unavailable in this browser."),
+                );
+              }}
+            >
+              {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+            </button>
+          )}
           <span
-            className={`inline-flex min-w-[220px] max-w-[220px] items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium whitespace-nowrap ${statusClass} ${
+            className={`replay-load-status inline-flex min-w-[220px] max-w-[220px] items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium whitespace-nowrap ${statusClass} ${
               hasStatus ? "" : "invisible"
             }`}
             aria-hidden={!hasStatus}
@@ -302,29 +490,31 @@ export const ReplayPage = () => {
             <span className="truncate">{statusText}</span>
           </span>
         </div>
-        <WeatherBadge weather={currentWeather} isLoading={isBlockingLoad} />
-        <SessionPicker
-          year={selectedYear}
-          round={session.round}
-          sessionType={session.sessionType}
-          meetings={meetings}
-          sessions={sessions}
-          yearOptions={availableYears}
-          isLoading={isBlockingLoad}
-          onYearChange={(nextYear) => {
-            session.setYear(nextYear);
-            session.setRound(1);
-            session.manualRoundRef.current = false;
-          }}
-          onRoundChange={(nextRound) => {
-            session.manualRoundRef.current = true;
-            session.setRound(nextRound);
-          }}
-          onSessionTypeChange={session.setSessionType}
-        />
+        {!show3D && <WeatherBadge weather={currentWeather} isLoading={isBlockingLoad} />}
+        {show3D ? (
+          <details className="replay-game-session">
+            <summary>
+              <span className="replay-game-race-title">
+                {data?.meeting.meeting_name ?? "F1 Replay"}
+              </span>
+              <span className="replay-game-session-type">
+                {selectedYear} · {session.sessionType}
+              </span>
+              <ChevronDown size={14} />
+            </summary>
+            <div className="replay-game-session-menu">{sessionPicker}</div>
+          </details>
+        ) : (
+          sessionPicker
+        )}
       </header>
 
       <div className="relative z-10 mx-4 mt-3 flex max-w-[420px] flex-col gap-2 md:absolute md:left-4 md:top-24 md:mx-0 md:mt-0">
+        {sceneError && (
+          <output className="rounded-lg border border-amber-500/40 bg-black/80 px-3 py-2 text-xs text-amber-200">
+            {sceneError} The 2D replay is still available.
+          </output>
+        )}
         {!hasSupportedSession && sessions.length > 0 && (
           <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
             No replayable session types are available for this round yet. Choose another round.
@@ -332,49 +522,71 @@ export const ReplayPage = () => {
         )}
       </div>
 
-      <div className="relative mx-4 mt-4 min-h-[260px] md:absolute md:inset-0 md:mx-0 md:mt-0 md:pb-44 md:pl-[17.5rem] md:pr-80 md:pt-32">
-        <TrackView
-          trackPath={trackPath}
-          pitLanePath={pitLanePath}
-          driverStates={driverStates}
-          driverNames={driverNames}
-          driverFullNames={driverFullNames}
-          driverTeams={driverTeams}
-          selectedDrivers={selectedDrivers}
-          className="h-full w-full"
-        />
+      <div className="replay-stage relative mx-4 mt-4 min-h-[260px] md:absolute md:inset-0 md:mx-0 md:mt-0">
+        <div
+          className="replay-flat h-full w-full md:pb-44 md:pl-[17.5rem] md:pr-80 md:pt-32"
+          inert={show3D}
+          aria-hidden={show3D}
+        >
+          <TrackView
+            trackPath={trackPath}
+            pitLanePath={pitLanePath}
+            driverStates={driverStates}
+            driverNames={driverNames}
+            driverFullNames={driverFullNames}
+            driverTeams={driverTeams}
+            selectedDrivers={selectedDrivers}
+            className="h-full w-full"
+          />
+        </div>
+        {Scene && (
+          <div className="replay-spatial absolute inset-0" inert={!show3D} aria-hidden={!show3D}>
+            <Scene
+              circuitKey={data?.meeting.circuit_key}
+              trackPath={trackPath}
+              pitLanePath={pitLanePath}
+              driverStates={driverStates}
+              driverNames={driverNames}
+              driverFullNames={driverFullNames}
+              driverTeams={driverTeams}
+              selectedDrivers={selectedDrivers}
+              className="h-full w-full"
+              active={wants3D}
+              environment={environment}
+              followDriver={followDriver}
+              onFollowDriver={setFollowDriver}
+              onReady={handleSceneReady}
+              onError={handleSceneError}
+            />
+          </div>
+        )}
       </div>
 
-      <footer className="relative z-10 mx-4 mt-4 md:absolute md:bottom-4 md:left-4 md:right-80 md:mx-0 md:mt-0">
-        <ControlsBar
-          isPlaying={replay.isPlaying}
-          isBuffering={replay.isBuffering}
-          speed={prefs.speed}
+      {show3D && (
+        <ReplayGameHUD
+          rows={telemetryRows}
+          driverStates={driverStates}
+          events={timelineEvents}
           currentTimeMs={replay.currentTimeMs}
           startTimeMs={sessionStartMs}
-          endTimeMs={effectiveEndMs}
-          canPlay={canPlay}
-          timelineEvents={timelineEvents}
-          hasTeamRadio={Boolean(data?.teamRadios?.length)}
-          radioEnabled={prefs.radioEnabled}
-          drivers={drivers}
-          isRadioPlaying={isAudioPlaying}
-          skipIntervalLabel={skipIntervalLabel}
-          expanded={prefs.timelineExpanded}
-          onTogglePlay={replay.togglePlay}
-          onSkipBack={handleSkipBack}
-          onSkipForward={handleSkipForward}
-          onCycleSpeed={prefs.cycleSpeed}
-          onCycleSkipInterval={prefs.cycleSkipInterval}
-          onToggleExpanded={prefs.toggleTimelineExpanded}
+          isPlaying={replay.isPlaying}
+          weather={currentWeather}
+          environment={environment}
+          meetingName={data?.meeting.meeting_name ?? "F1 Replay"}
+          sessionType={session.sessionType}
+          panelsVisible={panelsVisible}
           onSeek={handleSeek}
-          onRadioToggle={prefs.toggleRadio}
-          onPlayRadio={playRadio}
-          onStopRadio={stopRadio}
-          onPauseRadio={pauseRadio}
-          onResumeRadio={resumeRadio}
-          onMarkerClick={handleMarkerClick}
+          controls={playbackControls}
+          telemetryPanel={telemetryPanel}
+          eventsPanel={eventsPanel}
+          onShowPanels={() => setPanelsVisible(true)}
+          followDriver={followDriver}
+          onFollowDriver={setFollowDriver}
         />
+      )}
+
+      <footer className="relative z-10 mx-4 mt-4 md:absolute md:bottom-4 md:left-4 md:right-80 md:mx-0 md:mt-0">
+        {!show3D && playbackControls}
       </footer>
 
       <aside
@@ -393,18 +605,7 @@ export const ReplayPage = () => {
         )}
         <div className={`${telemetryCollapsed ? "hidden" : "block"} md:block md:h-full md:min-h-0`}>
           <div className="h-[60vh] min-h-[320px] md:h-full md:min-h-0">
-            <TelemetryPanel
-              summary={telemetrySummary}
-              rows={telemetryRows}
-              activeOvertakes={activeOvertakes}
-              isLoading={isBlockingLoad}
-              currentTimeMs={replay.currentTimeMs}
-              sessionKey={data?.session.session_key ?? null}
-              sessionStartMs={data?.sessionStartMs ?? 0}
-              sessionEndMs={data?.sessionEndMs ?? 0}
-              archiveManifest={manifest}
-              onTelemetryLoadingChange={setIsCarTelemetryLoading}
-            />
+            {!show3D && telemetryPanel}
           </div>
         </div>
       </aside>
@@ -425,23 +626,7 @@ export const ReplayPage = () => {
         )}
         <div className={`${eventsCollapsed ? "hidden" : "block"} md:block md:h-full md:min-h-0`}>
           <div className="h-[45vh] min-h-[260px] md:h-full md:min-h-0">
-            <EventsPanel
-              events={timelineEvents}
-              startTimeMs={sessionStartMs}
-              currentTimeMs={replay.currentTimeMs}
-              isPlaying={replay.isPlaying}
-              radioEnabled={prefs.radioEnabled}
-              isRadioPlaying={isAudioPlaying}
-              currentRadio={currentRadio}
-              onPlayRadio={playRadio}
-              onStopRadio={stopRadio}
-              hasEvents={timelineEvents.length > 0}
-              legendCollapsed={legendCollapsed}
-              shortcutsCollapsed={shortcutsCollapsed}
-              onToggleLegendCollapsed={toggleLegendCollapsed}
-              onToggleShortcutsCollapsed={toggleShortcutsCollapsed}
-              onSelectEvent={handleEventSelect}
-            />
+            {!show3D && eventsPanel}
           </div>
         </div>
       </aside>

@@ -2,6 +2,7 @@ import type { CarTelemetryPayload } from "../replay/types/carTelemetry.types";
 import type { ReplaySessionData } from "../replay/types/openf1.types";
 import { appendLocations, decodeCarChunk, decodeCore, decodeLocationChunk } from "./codec";
 import { getBundledCatalogUrl } from "./config";
+import { sha256Hex } from "./hash";
 import {
   ARCHIVE_SCHEMA_VERSION,
   type ArchiveCarChunk,
@@ -530,10 +531,7 @@ const fetchObject = async (
 ) => {
   const bytes = await fetchBytes(resolveObjectUrl(catalogUrl, object), maxBytes, options);
   if (bytes.byteLength !== object.bytes) fail("object byte size mismatch");
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  const hash = Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
+  const hash = await sha256Hex(bytes);
   if (hash !== object.sha256) fail("object hash mismatch");
   return parseJson(bytes);
 };

@@ -138,134 +138,156 @@ const EventsPanelBase = ({
     container.scrollTo({ top: nextScrollTop, behavior: "auto" });
   }, [isPlaying, activeIndex, markerLineIndex]);
 
-  return (
-    <div
-      className="flex h-full flex-col gap-3 rounded-xl border border-white/20 bg-white/5 p-4 backdrop-blur-xl"
-      data-testid="events-panel"
-    >
-      <div className="flex items-end justify-between">
-        <div className="text-sm font-semibold text-white">Race Events</div>
-        <div className="text-[11px] text-white/55">{events.length}</div>
-      </div>
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto pr-1">
-        {events.length === 0 ? (
-          <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/55">
-            Events appear here when replay data is loaded.
-          </div>
-        ) : (
-          <div className="flex flex-col gap-1.5">
-            {events.map((event, index) => {
-              const isActive = index === activeIndex;
-              const radio = event.type === "radio" && isRadioSample(event.data) ? event.data : null;
-              const isCurrentRadio = radio ? isSameRadio(currentRadio, radio) : false;
-              const showPause = Boolean(radio && isCurrentRadio && isRadioPlaying);
-              return (
-                <div key={`${event.timestampMs}-${event.type}-${index}`}>
-                  {markerLineIndex === index && (
-                    <div
-                      ref={setActiveEventRef}
-                      className="h-[2px] w-full rounded bg-[#E10600]"
-                      aria-hidden="true"
-                    />
-                  )}
-                  <div
-                    className={`group relative mt-1.5 w-full rounded-lg border px-3 py-2 transition ${
-                      isActive
-                        ? "border-red-500/40 bg-red-500/10"
-                        : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
-                    }`}
-                  >
-                    <button
-                      ref={isActive ? setActiveEventRef : null}
-                      type="button"
-                      onClick={() => onSelectEvent(event.timestampMs)}
-                      className="block w-full text-left"
-                      aria-label={`${event.type}: ${event.detail || event.label}`}
-                    >
-                      <span
-                        className={`absolute top-1 bottom-1 left-0 w-[2px] rounded-r ${
-                          isActive ? "bg-[#E10600]" : ""
-                        }`}
-                        style={isActive ? undefined : { backgroundColor: event.color }}
+  // Rebuild the event list only when its active marker or controls change, not every replay frame.
+  return useMemo(
+    () => (
+      <div
+        className="flex h-full flex-col gap-3 rounded-xl border border-white/20 bg-white/5 p-4 backdrop-blur-xl"
+        data-testid="events-panel"
+      >
+        <div className="flex items-end justify-between">
+          <div className="text-sm font-semibold text-white">Race Events</div>
+          <div className="text-[11px] text-white/55">{events.length}</div>
+        </div>
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto pr-1">
+          {events.length === 0 ? (
+            <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/55">
+              Events appear here when replay data is loaded.
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {events.map((event, index) => {
+                const isActive = index === activeIndex;
+                const radio =
+                  event.type === "radio" && isRadioSample(event.data) ? event.data : null;
+                const isCurrentRadio = radio ? isSameRadio(currentRadio, radio) : false;
+                const showPause = Boolean(radio && isCurrentRadio && isRadioPlaying);
+                return (
+                  <div key={`${event.timestampMs}-${event.type}-${index}`}>
+                    {markerLineIndex === index && (
+                      <div
+                        ref={setActiveEventRef}
+                        className="h-[2px] w-full rounded bg-[#E10600]"
                         aria-hidden="true"
                       />
-                      <div className="mb-1 flex items-center justify-between gap-2">
-                        <span className="font-mono text-[10px] text-white/60 tabular-nums">
-                          {formatTime(event.timestampMs - startTimeMs)}
-                        </span>
-                        <span
-                          className="inline-flex items-center gap-1 rounded-full border border-white/15 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-white/45"
-                          style={{ color: event.color }}
-                        >
-                          <span
-                            className="h-1.5 w-1.5 rounded-full"
-                            style={{ backgroundColor: event.color }}
-                            aria-hidden="true"
-                          />
-                          {event.type}
-                        </span>
-                      </div>
-                      <div className="text-xs leading-snug text-white/80">
-                        {event.detail || event.label}
-                      </div>
-                    </button>
-                    {radio && (
-                      <div className="mt-2 flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={(evt) => {
-                            evt.stopPropagation();
-                            if (showPause) {
-                              onStopRadio();
-                              return;
-                            }
-                            onPlayRadio(radio);
-                          }}
-                          disabled={!radioEnabled}
-                          className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition ${
-                            radioEnabled
-                              ? "bg-blue-500 text-white hover:bg-blue-400"
-                              : "bg-white/10 text-white/40"
-                          }`}
-                          aria-label={showPause ? "Stop team radio" : "Play team radio"}
-                        >
-                          {showPause ? <Pause size={12} /> : <Play size={12} />}
-                        </button>
-                        <div className="flex items-end gap-[2px]" style={{ height: 14 }}>
-                          {["20%", "40%", "70%", "45%"].map((height, waveformIndex) => (
-                            <span
-                              key={`${event.timestampMs}-${waveformIndex}`}
-                              className="w-[2px] rounded-sm bg-blue-400 transition-[height] duration-150"
-                              style={{ height: showPause ? height : "20%" }}
-                            />
-                          ))}
-                        </div>
-                      </div>
                     )}
+                    <div
+                      className={`group relative mt-1.5 w-full rounded-lg border px-3 py-2 transition ${
+                        isActive
+                          ? "border-red-500/40 bg-red-500/10"
+                          : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
+                      }`}
+                    >
+                      <button
+                        ref={isActive ? setActiveEventRef : null}
+                        type="button"
+                        onClick={() => onSelectEvent(event.timestampMs)}
+                        className="block w-full text-left"
+                        aria-label={`${event.type}: ${event.detail || event.label}`}
+                      >
+                        <span
+                          className={`absolute top-1 bottom-1 left-0 w-[2px] rounded-r ${
+                            isActive ? "bg-[#E10600]" : ""
+                          }`}
+                          style={isActive ? undefined : { backgroundColor: event.color }}
+                          aria-hidden="true"
+                        />
+                        <div className="mb-1 flex items-center justify-between gap-2">
+                          <span className="font-mono text-[10px] text-white/60 tabular-nums">
+                            {formatTime(event.timestampMs - startTimeMs)}
+                          </span>
+                          <span
+                            className="inline-flex items-center gap-1 rounded-full border border-white/15 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-white/45"
+                            style={{ color: event.color }}
+                          >
+                            <span
+                              className="h-1.5 w-1.5 rounded-full"
+                              style={{ backgroundColor: event.color }}
+                              aria-hidden="true"
+                            />
+                            {event.type}
+                          </span>
+                        </div>
+                        <div className="text-xs leading-snug text-white/80">
+                          {event.detail || event.label}
+                        </div>
+                      </button>
+                      {radio && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={(evt) => {
+                              evt.stopPropagation();
+                              if (showPause) {
+                                onStopRadio();
+                                return;
+                              }
+                              onPlayRadio(radio);
+                            }}
+                            disabled={!radioEnabled}
+                            className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition ${
+                              radioEnabled
+                                ? "bg-blue-500 text-white hover:bg-blue-400"
+                                : "bg-white/10 text-white/40"
+                            }`}
+                            aria-label={showPause ? "Stop team radio" : "Play team radio"}
+                          >
+                            {showPause ? <Pause size={12} /> : <Play size={12} />}
+                          </button>
+                          <div className="flex items-end gap-[2px]" style={{ height: 14 }}>
+                            {["20%", "40%", "70%", "45%"].map((height, waveformIndex) => (
+                              <span
+                                key={`${event.timestampMs}-${waveformIndex}`}
+                                className="w-[2px] rounded-sm bg-blue-400 transition-[height] duration-150"
+                                style={{ height: showPause ? height : "20%" }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-            {markerLineIndex === events.length && (
-              <div
-                ref={setActiveEventRef}
-                className="h-[2px] w-full rounded bg-[#E10600]"
-                aria-hidden="true"
-              />
-            )}
-          </div>
-        )}
+                );
+              })}
+              {markerLineIndex === events.length && (
+                <div
+                  ref={setActiveEventRef}
+                  className="h-[2px] w-full rounded bg-[#E10600]"
+                  aria-hidden="true"
+                />
+              )}
+            </div>
+          )}
+        </div>
+        <div className="shrink-0">
+          <MarkerLegend
+            hasEvents={hasEvents}
+            legendCollapsed={legendCollapsed}
+            onToggleLegendCollapsed={onToggleLegendCollapsed}
+            shortcutsCollapsed={shortcutsCollapsed}
+            onToggleShortcutsCollapsed={onToggleShortcutsCollapsed}
+          />
+        </div>
       </div>
-      <div className="shrink-0">
-        <MarkerLegend
-          hasEvents={hasEvents}
-          legendCollapsed={legendCollapsed}
-          onToggleLegendCollapsed={onToggleLegendCollapsed}
-          shortcutsCollapsed={shortcutsCollapsed}
-          onToggleShortcutsCollapsed={onToggleShortcutsCollapsed}
-        />
-      </div>
-    </div>
+    ),
+    [
+      events,
+      startTimeMs,
+      activeIndex,
+      markerLineIndex,
+      radioEnabled,
+      isRadioPlaying,
+      currentRadio,
+      onPlayRadio,
+      onStopRadio,
+      hasEvents,
+      legendCollapsed,
+      shortcutsCollapsed,
+      onToggleLegendCollapsed,
+      onToggleShortcutsCollapsed,
+      onSelectEvent,
+      setActiveEventRef,
+    ],
   );
 };
 

@@ -1,4 +1,5 @@
 export type OpenF1Meeting = {
+  gmt_offset?: string;
   meeting_key: number;
   meeting_name: string;
   meeting_official_name: string;
@@ -12,6 +13,7 @@ export type OpenF1Meeting = {
 };
 
 export type OpenF1Session = {
+  gmt_offset?: string;
   session_key: number;
   meeting_key: number;
   session_name: string;

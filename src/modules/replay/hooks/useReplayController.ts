@@ -35,7 +35,7 @@ export const useReplayController = ({
   const [speed, setSpeed] = useState(1);
   const lastFrameRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
-  const resumeWhenLoadedRef = useRef(false);
+  const playbackIntentRef = useRef(false);
   const currentTimeMsRef = useRef(currentTimeMs);
   currentTimeMsRef.current = currentTimeMs;
 
@@ -55,7 +55,7 @@ export const useReplayController = ({
   }, []);
 
   const stop = useCallback(() => {
-    resumeWhenLoadedRef.current = false;
+    playbackIntentRef.current = false;
     setIsPlaying(false);
     setIsBuffering(false);
     cancelFrame();
@@ -78,7 +78,7 @@ export const useReplayController = ({
       }
       if (!isReplayTimeLoaded(next, loadedStartMsRef.current, loadedEndMsRef.current)) {
         setCurrentTimeMs(next);
-        resumeWhenLoadedRef.current = true;
+        playbackIntentRef.current = true;
         setIsBuffering(true);
         setIsPlaying(false);
         cancelFrame();
@@ -102,8 +102,7 @@ export const useReplayController = ({
   useEffect(() => {
     if (!isBuffering || !isReplayTimeLoaded(currentTimeMs, loadedStartMs, loadedEndMs)) return;
     setIsBuffering(false);
-    if (resumeWhenLoadedRef.current) {
-      resumeWhenLoadedRef.current = false;
+    if (playbackIntentRef.current) {
       setIsPlaying(true);
     }
   }, [currentTimeMs, isBuffering, loadedEndMs, loadedStartMs]);
@@ -114,41 +113,36 @@ export const useReplayController = ({
   }, [startTimeMs, stop]);
 
   const togglePlay = useCallback(() => {
-    if (isBuffering) {
-      resumeWhenLoadedRef.current = false;
-      setIsBuffering(false);
+    if (playbackIntentRef.current) {
+      stop();
       return;
     }
-    if (isPlaying) {
-      resumeWhenLoadedRef.current = false;
-      setIsPlaying(false);
-      setIsBuffering(false);
-      return;
-    }
+    playbackIntentRef.current = true;
     if (!isReplayTimeLoaded(currentTimeMs, loadedStartMs, loadedEndMs)) {
-      resumeWhenLoadedRef.current = true;
       setIsBuffering(true);
       return;
     }
     setIsBuffering(false);
     setIsPlaying(true);
-  }, [currentTimeMs, isBuffering, isPlaying, loadedEndMs, loadedStartMs]);
+  }, [currentTimeMs, loadedEndMs, loadedStartMs, stop]);
 
   const seekTo = useCallback(
     (timestampMs: number) => {
       const clamped = Math.min(Math.max(timestampMs, startTimeMs), endTimeMs);
-      const wasPlaying = isPlaying;
+      const wasPlaying = playbackIntentRef.current;
+      currentTimeMsRef.current = clamped;
+      lastFrameRef.current = null;
       setCurrentTimeMs(clamped);
       if (!isReplayTimeLoaded(clamped, loadedStartMs, loadedEndMs)) {
-        resumeWhenLoadedRef.current = wasPlaying;
+        cancelFrame();
         setIsPlaying(false);
         setIsBuffering(true);
       } else {
-        resumeWhenLoadedRef.current = false;
+        setIsPlaying(wasPlaying);
         setIsBuffering(false);
       }
     },
-    [endTimeMs, isPlaying, loadedEndMs, loadedStartMs, startTimeMs],
+    [cancelFrame, endTimeMs, loadedEndMs, loadedStartMs, startTimeMs],
   );
 
   return { currentTimeMs, isPlaying, isBuffering, speed, setSpeed, togglePlay, seekTo };

@@ -30,7 +30,6 @@ describe("TimelineSlider", () => {
         onStopRadio: () => undefined,
         onPauseRadio: () => undefined,
         onResumeRadio: () => undefined,
-        onTogglePlay: () => undefined,
       }),
     );
 

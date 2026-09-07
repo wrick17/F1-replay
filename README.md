@@ -39,6 +39,24 @@ bun run build
 
 Set `RSBUILD_ARCHIVE_URL` to use another archive root. Production defaults to `https://data.f1.wrick17.com`.
 
+## 3D replay
+
+Replays open in 2D. The button beside the logo switches views without resetting playback; its label shows the current view. In 3D, drag to orbit, scroll to zoom, and click a car or timing row to follow a driver. Reset returns to the overview. Telemetry and race events are available in the right-hand HUD.
+
+The world follows the recorded weather and race-local time at the replay cursor, including backward seeks. Red-and-white kerbs follow detected corner sections; straights retain white edge lines. Kerb placement and surrounding scenery are procedural and illustrative, not a surveyed recreation of the venue.
+
+Road width, car scale, kerb detection, prop spacing, and terrain clearance use the same renderer for every circuit. Terrain is cut below intersecting road surfaces, with retaining walls beneath exposed edges.
+
+Circuit elevation profiles are derived from archived location data and matched against the replay's ordered track layout. The terrain and pit lane follow the road height. Relief is exaggerated threefold for readability; Suzuka also has an open underpass with additional bridge clearance for the miniature cars. Source provenance and coverage are recorded in `src/modules/replay/data/circuitElevations.json`.
+
+Run `bun run generate:elevations` to rebuild profiles from the archive. It verifies source object hashes, caches downloads under `/tmp/f1-elevation-profiles`, and records any unsupported layouts as gaps instead of inventing elevations.
+
+Pit lanes include team-colored garages and stopping bays, placed procedurally on clear sections. Car headings ease through turns without changing recorded positions and snap correctly when seeking.
+
+Cars use the supplied `public/models/rmgt-toon-f1-remix.stl`: one shared 8,832-triangle mesh with team-colored bodywork and black tires, loaded only in 3D.
+
+The renderer uses WebGPU when available and falls back to WebGL2. Plain HTTP LAN addresses use WebGL2; archive integrity checks also work there without the secure-context Web Crypto API. The 3D renderer loads only when requested and stops drawing when idle or in 2D.
+
 ## Archive format
 
 The mutable `catalog.json` contains its schema version, publisher-owned `updatedAt`, and the available sessions. Every session points to an immutable manifest in `objects/<sha256>.json`.

@@ -17,101 +17,58 @@ type KeyboardShortcutActions = {
   prevSession: () => void;
 };
 
-const IGNORED_TAG_NAMES = new Set(["A", "BUTTON", "FORM", "INPUT", "SELECT", "TEXTAREA"]);
-
-export const shouldIgnoreKeyboardShortcutTarget = (target: EventTarget | null): boolean => {
-  const element = target as
-    | (EventTarget & {
-        isContentEditable?: boolean;
-        tagName?: string;
-      })
-    | null;
-  return Boolean(
-    element?.isContentEditable ||
-      (element?.tagName && IGNORED_TAG_NAMES.has(element.tagName.toUpperCase())),
-  );
+// Replay owns keyboard input, including when a native control has focus.
+export const handleReplayShortcut = (e: KeyboardEvent, a: KeyboardShortcutActions) => {
+  const arrowVertical = e.key === "ArrowUp" || e.key === "ArrowDown";
+  const sessionCombo = arrowVertical && e.shiftKey && (e.ctrlKey || e.metaKey) && !e.altKey;
+  // Keep browser/OS combinations, except the app's documented session shortcut.
+  if ((e.ctrlKey || e.metaKey || e.altKey) && !sessionCombo) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (arrowVertical) {
+    if (sessionCombo) {
+      if (e.key === "ArrowUp") a.nextSession();
+      else a.prevSession();
+    } else if (e.shiftKey) {
+      if (e.key === "ArrowUp") a.nextYear();
+      else a.prevYear();
+    } else if (e.key === "ArrowUp") a.prevRound();
+    else a.nextRound();
+    return;
+  }
+  if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+    a.seekTo(a.currentTimeMs + (e.key === "ArrowLeft" ? -1 : 1) * a.skipIntervalMs);
+    return;
+  }
+  if (e.repeat) return;
+  switch (e.key.toLowerCase()) {
+    case " ":
+      a.togglePlay();
+      break;
+    case "s":
+      a.cycleSpeed();
+      break;
+    case "m":
+      a.toggleRadio();
+      break;
+    case "i":
+      a.cycleSkipInterval();
+      break;
+    case "e":
+      a.toggleTimelineExpanded();
+      break;
+    case "t":
+      window.dispatchEvent(new Event("f1:toggle-telemetry"));
+      break;
+  }
 };
 
 export const useKeyboardShortcuts = (actions: KeyboardShortcutActions) => {
   const actionsRef = useRef(actions);
   actionsRef.current = actions;
-
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (shouldIgnoreKeyboardShortcutTarget(e.target)) return;
-
-      const a = actionsRef.current;
-      const isArrowUp = e.key === "ArrowUp";
-      const isArrowDown = e.key === "ArrowDown";
-
-      if (isArrowUp || isArrowDown) {
-        const isSessionCombo = e.shiftKey && (e.ctrlKey || e.metaKey);
-        const isYearCombo = e.shiftKey && !e.ctrlKey && !e.metaKey;
-        if (isSessionCombo) {
-          e.preventDefault();
-          if (isArrowUp) {
-            a.nextSession();
-          } else {
-            a.prevSession();
-          }
-          return;
-        }
-        if (isYearCombo) {
-          e.preventDefault();
-          if (isArrowUp) {
-            a.nextYear();
-          } else {
-            a.prevYear();
-          }
-          return;
-        }
-        if (!e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
-          e.preventDefault();
-          if (isArrowUp) {
-            a.prevRound();
-          } else {
-            a.nextRound();
-          }
-        }
-      }
-
-      switch (e.key) {
-        case " ":
-          e.preventDefault();
-          a.togglePlay();
-          break;
-        case "ArrowLeft":
-          e.preventDefault();
-          a.seekTo(a.currentTimeMs - a.skipIntervalMs);
-          break;
-        case "ArrowRight":
-          e.preventDefault();
-          a.seekTo(a.currentTimeMs + a.skipIntervalMs);
-          break;
-        case "s":
-        case "S":
-          a.cycleSpeed();
-          break;
-        case "m":
-        case "M":
-          a.toggleRadio();
-          break;
-        case "i":
-        case "I":
-          a.cycleSkipInterval();
-          break;
-        case "e":
-        case "E":
-          a.toggleTimelineExpanded();
-          break;
-        case "t":
-        case "T":
-          window.dispatchEvent(new Event("f1:toggle-telemetry"));
-          break;
-      }
-    };
-
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
+    const handler = (e: KeyboardEvent) => handleReplayShortcut(e, actionsRef.current);
+    document.addEventListener("keydown", handler, true);
+    return () => document.removeEventListener("keydown", handler, true);
   }, []);
 };

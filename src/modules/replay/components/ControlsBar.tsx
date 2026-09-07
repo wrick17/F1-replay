@@ -71,7 +71,6 @@ export const ControlsBar = ({
             onPauseRadio={onPauseRadio}
             onResumeRadio={onResumeRadio}
             onMarkerClick={onMarkerClick}
-            onTogglePlay={onTogglePlay}
           />
         </div>
         <span className="shrink-0 font-mono text-xs tabular-nums text-white/50">

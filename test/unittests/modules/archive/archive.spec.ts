@@ -306,6 +306,37 @@ describe("static replay archive", () => {
     }
   });
 
+  it("loads and verifies archives without Web Crypto", async () => {
+    const archive = await buildSessionArchive(replay, { round: 24 });
+    const manifestObject = archive.catalog.sessions[0].manifest;
+    const server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        const content = archive.files.get(new URL(request.url).pathname.slice(1));
+        return content === undefined ? new Response("missing", { status: 404 }) : new Response(content);
+      },
+    });
+    const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+    Object.defineProperty(globalThis, "crypto", { configurable: true, value: {} });
+
+    try {
+      const catalogUrl = `${server.url}catalog.json`;
+      const loaded = await loadReplaySession(catalogUrl, archive.catalog.sessions[0], { retries: 0 });
+      expect(loaded.data.session.session_key).toBe(replay.session.session_key);
+
+      const manifest = archive.files.get(manifestObject.url);
+      if (!manifest) throw new Error("manifest fixture missing");
+      archive.files.set(manifestObject.url, manifest.replace('"schemaVersion":2', '"schemaVersion":3'));
+      await expect(loadManifest(catalogUrl, archive.catalog.sessions[0], { retries: 0 })).rejects.toThrow(
+        "object hash mismatch",
+      );
+    } finally {
+      server.stop(true);
+      if (originalCrypto) Object.defineProperty(globalThis, "crypto", originalCrypto);
+      else Reflect.deleteProperty(globalThis, "crypto");
+    }
+  });
+
   it("rejects content that does not match its immutable URL", async () => {
     const archive = await buildSessionArchive(replay, { round: 24 });
     const manifestObject = archive.catalog.sessions[0].manifest;
