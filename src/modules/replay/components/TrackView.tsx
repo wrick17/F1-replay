@@ -1,5 +1,12 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { CircuitSurroundings } from "../types/circuitSurroundings.types";
 import type { TrackViewProps } from "../types/replay.types";
+import {
+  MAP_COLORS,
+  mapBounds,
+  mapPolygonPath,
+  mapScreenBounds2D,
+} from "../utils/circuitMapGeometry.util";
 import { computeBounds, toPoint2D, VIEWBOX_PADDING } from "../utils/geometry.util";
 
 const TrackBase = memo(({ pathD, pitD }: { pathD: string; pitD: string }) => (
@@ -14,6 +21,84 @@ const TrackBase = memo(({ pathD, pitD }: { pathD: string; pitD: string }) => (
   </g>
 ));
 
+const MapBackdrop = memo(
+  ({
+    surroundings,
+    bounds,
+  }: {
+    surroundings: CircuitSurroundings;
+    bounds: ReturnType<typeof mapBounds>;
+  }) => {
+    const visible = (points: [number, number][]) => {
+      const feature = mapBounds(points);
+      return (
+        feature.maxX * 1000 >= bounds.minX - VIEWBOX_PADDING &&
+        feature.minX * 1000 <= bounds.maxX + VIEWBOX_PADDING &&
+        feature.maxY * 1000 >= bounds.minY - VIEWBOX_PADDING &&
+        feature.minY * 1000 <= bounds.maxY + VIEWBOX_PADDING
+      );
+    };
+    return (
+      <g
+        pointerEvents="none"
+        data-map-buildings={surroundings.buildings.length}
+        data-map-features={
+          surroundings.buildings.length + surroundings.roads.length + surroundings.areas.length
+        }
+      >
+        <path d={mapPolygonPath(surroundings.coverage)} fill="#192c29" fillRule="evenodd" />
+        {surroundings.areas.map((area) =>
+          area.polygons
+            .filter((polygon) => visible(polygon[0]))
+            .map((polygon, index) => (
+              <path
+                key={`${area.id}-${index}`}
+                d={mapPolygonPath(polygon)}
+                fill={MAP_COLORS[area.kind]}
+                fillOpacity={area.kind === "water" ? 0.75 : 0.35}
+                fillRule="evenodd"
+              />
+            )),
+        )}
+        <g fill="none" strokeLinecap="round" strokeLinejoin="round">
+          {surroundings.roads
+            .filter((road) => visible(road.points))
+            .map((road) => (
+              <path
+                key={road.id}
+                d={road.points
+                  .map(
+                    (point, i) =>
+                      `${i ? "L" : "M"}${(point[0] * 1000).toFixed(2)},${(point[1] * 1000).toFixed(2)}`,
+                  )
+                  .join(" ")}
+                stroke={road.kind === "footway" || road.kind === "path" ? "#526966" : "#60716f"}
+                strokeWidth={Math.max(0.8, (road.widthM ?? 5) * surroundings.metersToWorld * 1000)}
+                opacity={road.tunnel ? 0.35 : 0.85}
+              />
+            ))}
+        </g>
+        {surroundings.buildings.map((building) =>
+          building.polygons
+            .filter((polygon) => visible(polygon[0]))
+            .map((polygon, index) => (
+              <path
+                key={`${building.id}-${index}`}
+                d={mapPolygonPath(polygon)}
+                fill="#788a83"
+                stroke="#a2b2a8"
+                strokeWidth="0.65"
+                fillRule="evenodd"
+              >
+                <title>{building.name ?? "Mapped building"}</title>
+              </path>
+            )),
+        )}
+      </g>
+    );
+  },
+);
+
 export const TrackView = ({
   trackPath,
   pitLanePath = [],
@@ -23,6 +108,7 @@ export const TrackView = ({
   driverTeams,
   selectedDrivers,
   className,
+  surroundings,
 }: TrackViewProps) => {
   const [focusedDriver, setFocusedDriver] = useState<number | null>(null);
   const [hoveredDriver, setHoveredDriver] = useState<number | null>(null);
@@ -32,6 +118,43 @@ export const TrackView = ({
     () => computeBounds([...scaledTrack, ...scaledPit]),
     [scaledTrack, scaledPit],
   );
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [mapVisibleBounds, setMapVisibleBounds] = useState<ReturnType<
+    typeof mapScreenBounds2D
+  > | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: A new viewBox needs its screen transform measured after layout.
+  useLayoutEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const measure = () => {
+      const matrix = svg.getScreenCTM();
+      if (!matrix) return;
+      const next = mapScreenBounds2D(matrix, window.innerWidth, window.innerHeight);
+      if (next)
+        setMapVisibleBounds((previous) =>
+          previous &&
+          Object.keys(next).every(
+            (key) =>
+              Math.abs(next[key as keyof typeof next] - previous[key as keyof typeof next]) < 0.01,
+          )
+            ? previous
+            : next,
+        );
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(svg);
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, { passive: true });
+    const flat = svg.closest(".replay-flat");
+    flat?.addEventListener("transitionend", measure);
+    measure();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure);
+      flat?.removeEventListener("transitionend", measure);
+    };
+  }, [bounds]);
   const pitD = useMemo(
     () =>
       scaledPit
@@ -121,6 +244,8 @@ export const TrackView = ({
   return (
     // biome-ignore lint/a11y/useSemanticElements: SVG group preserves interactive driver markers in the accessibility tree
     <svg
+      ref={svgRef}
+      style={{ overflow: "visible" }}
       className={className}
       viewBox={`${bounds.minX - VIEWBOX_PADDING} ${bounds.minY - VIEWBOX_PADDING} ${Math.max(bounds.width, 1) + VIEWBOX_PADDING * 2} ${Math.max(bounds.height, 1) + VIEWBOX_PADDING * 2}`}
       preserveAspectRatio="xMidYMid meet"
@@ -129,6 +254,9 @@ export const TrackView = ({
     >
       <title>F1 circuit and driver positions</title>
       <desc>Focus a driver marker to show the full driver name, position, and team.</desc>
+      {surroundings && (
+        <MapBackdrop surroundings={surroundings} bounds={mapVisibleBounds ?? bounds} />
+      )}
       <TrackBase pathD={pathD} pitD={pitD} />
       {entries.map((entry) => (
         // biome-ignore lint/a11y/useSemanticElements: SVG has no native button; keyboard activation and focus are provided

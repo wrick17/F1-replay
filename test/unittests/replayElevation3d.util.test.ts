@@ -66,3 +66,18 @@ test("non-Suzuka profiles elevate roads without adding a bridge", () => {
   expect(result.points.map(({x,z}) => ({x,z}))).toEqual(lap);
   expect(elevateReplayTrack3D(lap, 46).points).toBe(lap);
 });
+
+test("recorded relief is reduced 45 percent while horizontal geometry stays exact",()=>{
+ const generic = { ...profile, circuitKey: 2, crossing: undefined };
+ const result=elevateReplayTrack3D(lap,2,[generic]);
+ const planarLength=lap.reduce((sum,point,i)=>sum+Math.hypot(point.x-lap[(i+1)%lap.length].x,point.z-lap[(i+1)%lap.length].z),0);
+ for(const i of [0,100,250,400,600,900]){
+  const progress=i/lap.length;
+  let sample=0;while(sample<generic.samples.length-2&&generic.samples[sample+1][0]<progress)sample++;
+  const [a,b]=[generic.samples[sample],generic.samples[sample+1]];
+  const raw=a[1]+(b[1]-a[1])*(progress-a[0])/(b[0]-a[0]);
+  const priorHeight=raw*planarLength/generic.geometry.referencePlanarLengthRaw*3;
+  expect(result.points[i].y!).toBeCloseTo(priorHeight*.55,10);
+  expect(result.points[i].x).toBe(lap[i].x);expect(result.points[i].z).toBe(lap[i].z);
+ }
+});

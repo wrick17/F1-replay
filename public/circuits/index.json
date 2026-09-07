@@ -1,0 +1,1893 @@
+{
+  "schemaVersion": 1,
+  "circuits": [
+    {
+      "circuitKey": 2,
+      "snapshotAt": "2026-09-07T10:26:49Z",
+      "bytes": 1416011,
+      "gzipBytes": 413986,
+      "featureCounts": {
+        "buildings": 2587,
+        "roads": 1728,
+        "areas": 783
+      },
+      "vertexCounts": {
+        "buildings": 16172,
+        "roads": 11001,
+        "areas": 10183,
+        "total": 37356
+      },
+      "terrain": {
+        "width": 219,
+        "height": 219,
+        "minimumMeters": 88.3,
+        "maximumMeters": 170.6
+      },
+      "coverage": [
+        [
+          [
+            -2.2140192,
+            -2.2072185
+          ],
+          [
+            2.209995,
+            -2.2072185
+          ],
+          [
+            2.209995,
+            2.2167956
+          ],
+          [
+            -2.2140192,
+            2.2167956
+          ],
+          [
+            -2.2140192,
+            -2.2072185
+          ]
+        ]
+      ],
+      "alignment": {
+        "method": "orientation-preserving closed-loop similarity",
+        "rmsMeters": 6.476927633270519,
+        "maxErrorMeters": 18.47419091673572,
+        "validationRmsMeters": 5.103956585480795,
+        "validationP95Meters": 8.911187981690707,
+        "validationMaxMeters": 12.928185018057682,
+        "sourceBuildingElements": 2587,
+        "sourceRoadElements": 2384,
+        "rawUnitsPerMeter": 10.029971840011573,
+        "reversed": false,
+        "progressShift": 0.946,
+        "osmRacewayWayIds": [
+          55224168,
+          55224167,
+          169854842,
+          169800226,
+          169800223,
+          169800225,
+          169848882,
+          169800224,
+          169800222,
+          169618242,
+          169618240,
+          169618241,
+          169618245,
+          169609611,
+          169730588,
+          3571477,
+          169730585,
+          169730587,
+          169733768,
+          169730586,
+          430075118,
+          169733766,
+          169733769,
+          169733770,
+          169848880,
+          169848884,
+          169848881
+        ]
+      }
+    },
+    {
+      "circuitKey": 4,
+      "snapshotAt": "2026-09-07T10:27:50Z",
+      "bytes": 754667,
+      "gzipBytes": 230336,
+      "featureCounts": {
+        "buildings": 2404,
+        "roads": 764,
+        "areas": 161
+      },
+      "vertexCounts": {
+        "buildings": 13788,
+        "roads": 5345,
+        "areas": 3006,
+        "total": 22139
+      },
+      "terrain": {
+        "width": 123,
+        "height": 123,
+        "minimumMeters": 162.7,
+        "maximumMeters": 331
+      },
+      "coverage": [
+        [
+          [
+            -1.7014476,
+            -1.7114398
+          ],
+          [
+            1.8431959,
+            -1.7114398
+          ],
+          [
+            1.8431959,
+            1.8332037
+          ],
+          [
+            -1.7014476,
+            1.8332037
+          ],
+          [
+            -1.7014476,
+            -1.7114398
+          ]
+        ]
+      ],
+      "alignment": {
+        "method": "orientation-preserving closed-loop similarity",
+        "rmsMeters": 3.6549449465106063,
+        "maxErrorMeters": 7.423668037116262,
+        "validationRmsMeters": 2.9526640181517685,
+        "validationP95Meters": 5.457980589395555,
+        "validationMaxMeters": 6.269427095435175,
+        "sourceBuildingElements": 2404,
+        "sourceRoadElements": 1054,
+        "rawUnitsPerMeter": 10.016023937851925,
+        "reversed": false,
+        "progressShift": 0.138,
+        "osmRacewayWayIds": [
+          231328650,
+          1333262244
+        ]
+      }
+    },
+    {
+      "circuitKey": 6,
+      "snapshotAt": "2026-09-07T10:28:53Z",
+      "bytes": 3183674,
+      "gzipBytes": 1000030,
+      "featureCounts": {
+        "buildings": 8044,
+        "roads": 4887,
+        "areas": 1347
+      },
+      "vertexCounts": {
+        "buildings": 57579,
+        "roads": 25188,
+        "areas": 15436,
+        "total": 98203
+      },
+      "terrain": {
+        "width": 229,
+        "height": 229,
+        "minimumMeters": 23.3,
+        "maximumMeters": 244
+      },
+      "coverage": [
+        [
+          [
+            -2.2,
+            -2.2
+          ],
+          [
+            2.2,
+            -2.2
+          ],
+          [
+            2.2,
+            2.2
+          ],
+          [
+            -2.2,
+            2.2
+          ],
+          [
+            -2.2,
+            -2.2
+          ]
+        ]
+      ],
+      "alignment": {
+        "method": "orientation-preserving closed-loop similarity",
+        "rmsMeters": 4.291520093113014,
+        "maxErrorMeters": 9.071146701807699,
+        "validationRmsMeters": 3.7065883210198924,
+        "validationP95Meters": 6.85840324980526,
+        "validationMaxMeters": 7.836788212921952,
+        "sourceBuildingElements": 8044,
+        "sourceRoadElements": 7172,
+        "rawUnitsPerMeter": 9.98908676957736,
+        "reversed": false,
+        "progressShift": 0.086,
+        "osmRacewayWayIds": [
+          1025616645,
+          1025616644,
+          1025616638,
+          1025616639,
+          1021771405,
+          1021771398,
+          1025616640,
+          1021771397,
+          1021771396,
+          1021771395,
+          1025616642,
+          1021771394,
+          1025616643,
+          1025616641,
+          7920430,
+          1021771393,
+          1025616657,
+          1021771400,
+          1025616656,
+          1021771399,
+          1021771402,
+          1025616655,
+          1025616653,
+          1025616654,
+          1021771401,
+          1025616652,
+          1025616651,
+          1025616650,
+          1021771404,
+          1025616648,
+          1025616649,
+          1021771403
+        ]
+      }
+    },
+    {
+      "circuitKey": 7,
+      "snapshotAt": "2026-09-07T10:29:58Z",
+      "bytes": 2641013,
+      "gzipBytes": 819468,
+      "featureCounts": {
+        "buildings": 4980,
+        "roads": 2127,
+        "areas": 2184
+      },
+      "vertexCounts": {
+        "buildings": 29888,
+        "roads": 16781,
+        "areas": 33433,
+        "total": 80102
+      },
+      "terrain": {
+        "width": 256,
+        "height": 256,
+        "minimumMeters": 281.7,
+        "maximumMeters": 615.1
+      },
+      "coverage": [
+        [
+          [
+            -2.1855411,
+            -2.1801713
+          ],
+          [
+            2.1863514,
+            -2.1801713
+          ],
+          [
+            2.1863514,
+            2.1917212
+          ],
+          [
+            -2.1855411,
+            2.1917212
+          ],
+          [
+            -2.1855411,
+            -2.1801713
+          ]
+        ]
+      ],
+      "alignment": {
+        "method": "orientation-preserving closed-loop similarity",
+        "rmsMeters": 6.3215488237410575,
+        "maxErrorMeters": 11.445350208101123,
+        "validationRmsMeters": 3.2544962422353314,
+        "validationP95Meters": 6.441468826709202,
+        "validationMaxMeters": 8.969264991114397,
+        "sourceBuildingElements": 4980,
+        "sourceRoadElements": 3209,
+        "rawUnitsPerMeter": 9.985861334400196,
+        "reversed": false,
+        "progressShift": 0.051,
+        "osmRacewayWayIds": [
+          175178443,
+          175178448,
+          126807110,
+          126835639,
+          126835637,
+          126835638,
+          1430527230,
+          24449918,
+          126807113,
+          175195997,
+          126807111,
+          126807112,
+          1359025268,
+          126807106,
+          1359025267,
+          126807103,
+          126807101,
+          126807109,
+          126807116,
+          175371353,
+          175371365,
+          126807100,
+          176133746,
+          126807114,
+          176133745,
+          178964809,
+          126807105,
+          637268672,
+          613486590,
+          126807099
+        ]
+      }
+    },
+    {
+      "circuitKey": 9,
+      "snapshotAt": "2026-09-07T10:37:06Z",
+      "bytes": 1930797,
+      "gzipBytes": 571676,
+      "featureCounts": {
+        "buildings": 5991,
+        "roads": 1658,
+        "areas": 246
+      },
+      "vertexCounts": {
+        "buildings": 39855,
+        "roads": 10757,
+        "areas": 3288,
+        "total": 53900
+      },
+      "terrain": {
+        "width": 229,
+        "height": 229,
+        "minimumMeters": 133.3,
+        "maximumMeters": 192.6
+      },
+      "coverage": [
+        [
+          [
+            -2.2,
+            -2.2
+          ],
+          [
+            2.2,
+            -2.2
+          ],
+          [
+            2.2,
+            2.2
+          ],
+          [
+            -2.2,
+            2.2
+          ],
+          [
+            -2.2,
+            -2.2
+          ]
+        ]
+      ],
+      "alignment": {
+        "method": "orientation-preserving closed-loop similarity",
+        "rmsMeters": 5.539164003069247,
+        "maxErrorMeters": 12.084884997830851,
+        "validationRmsMeters": 4.145447825775682,
+        "validationP95Meters": 7.884318656668635,
+        "validationMaxMeters": 9.231184439759662,
+        "sourceBuildingElements": 5991,
+        "sourceRoadElements": 2449,
+        "rawUnitsPerMeter": 10.022719819288211,
+        "reversed": false,
+        "progressShift": 0.977,
+        "osmRacewayWayIds": [
+          118258939,
+          118258950,
+          118258954,
+          118258956,
+          514758200,
+          514820043,
+          514820041,
+          118258930,
+          118258958,
+          118258962,
+          118258931,
+          118258929,
+          118258946,
+          118258935,
+          118258951,
+          118258940,
+          118258942,
+          118258947,
+          118258943,
+          118258961,
+          118258928,
+          514836010,
+          118258933,
+          118258937,
+          118258952,
+          514836011,
+          118256423,
+          118258957,
+          118258959
+        ]
+      }
+    },
+    {
+      "circuitKey": 10,
+      "snapshotAt": "2026-09-07T10:37:06Z",
+      "bytes": 11362751,
+      "gzipBytes": 3596704,
+      "featureCounts": {
+        "buildings": 3437,
+        "roads": 19974,
+        "areas": 4838
+      },
+      "vertexCounts": {
+        "buildings": 287904,
+        "roads": 84857,
+        "areas": 38181,
+        "total": 410942
+      },
+      "terrain": {
+        "width": 251,
+        "height": 251,
+        "minimumMeters": -15.5,
+        "maximumMeters": 78.5
+      },
+      "coverage": [
+        [
+          [
+            -2.446977,
+            -2.461387
+          ],
+          [
+            2.5576233,
+            -2.461387
+          ],
+          [
+            2.5576233,
+            2.5432133
+          ],
+          [
+            -2.446977,
+            2.5432133
+          ],
+          [
+            -2.446977,
+            -2.461387
+          ]
+        ]
+      ],
+      "alignment": {
+        "method": "orientation-preserving closed-loop similarity",
+        "rmsMeters": 4.573694773272187,
+        "maxErrorMeters": 11.49599839273182,
+        "validationRmsMeters": 4.048931253349778,
+        "validationP95Meters": 8.569206725606785,
+        "validationMaxMeters": 9.432314763847703,
+        "sourceBuildingElements": 43762,
+        "sourceRoadElements": 36266,
+        "rawUnitsPerMeter": 9.971781277664036,
+        "reversed": false,
+        "progressShift": 0.028,
+        "osmRacewayWayIds": [
+          987030977,
+          784076843,
+          784076839,
+          987030969,
+          1070446542,
+          784087846,
+          987030978,
+          987030966,
+          784083210,
+          987030982,
+          1050371045,
+          1013633268,
+          1013633269,
+          1050342733,
+          1021617920,
+          1021617874,
+          15856988,
+          -979723480,
+          987030968,
+          784071296,
+          979723479,
+          979723477,
+          1253159342,
+          979723478,
+          -1126808201,
+          -987030972,
+          987030985,
+          987030974,
+          987030973,
+          784076847
+        ]
+      }
+    },
+    {
+      "circuitKey": 14,
+      "snapshotAt": "2026-09-07T10:38:06Z",
+      "bytes": 7044393,
+      "gzipBytes": 2079785,
+      "featureCounts": {
+        "buildings": 28971,
+        "roads": 2184,
+        "areas": 297
+      },
+      "vertexCounts": {
+        "buildings": 213768,
+        "roads": 12248,
+        "areas": 3647,
+        "total": 229663
+      },
+      "terrain": {
+        "width": 130,
+        "height": 130,
+        "minimumMeters": 720,
+        "maximumMeters": 799.8
+      },
+      "coverage": [
+        [
+          [
+            -2.1506565,
+            -2.1782113
+          ],
+          [
+            2.1643758,
+            -2.1782113
+          ],
+          [
+            2.1643758,
+            2.136821
+          ],
+          [
+            -2.1506565,
+            2.136821
+          ],
+          [
+            -2.1506565,
+            -2.1782113
+          ]
+        ]
+      ],
+      "alignment": {
+        "method": "orientation-preserving closed-loop similarity",
+        "rmsMeters": 5.855246012977089,
+        "maxErrorMeters": 9.81321036403632,
+        "validationRmsMeters": 3.5112345248321564,
+        "validationP95Meters": 6.214208487463079,
+        "validationMaxMeters": 7.236357100600846,
+        "sourceBuildingElements": 28971,
+        "sourceRoadElements": 3634,
+        "rawUnitsPerMeter": 9.958325847838829,
+        "reversed": false,
+        "progressShift": 0.902,
+        "osmRacewayWayIds": [
+          190164733,
+          138567241,
+          131439569,
+          189535473,
+          807691487,
+          138566995,
+          138567001,
+          138566996,
+          807691486,
+          138567000,
+          138566997,
+          138566994,
+          138567002,
+          190164735,
+          138566998,
+          138566993,
+          190164734,
+          138566999,
+          138567236,
+          189535472,
+          190164736,
+          138567242,
+          190164737,
+          138567239,
+          138567234
+        ]
+      }
+    },
+    {
+      "circuitKey": 15,
+      "snapshotAt": "2026-09-07T10:38:06Z",
+      "bytes": 1485888,
+      "gzipBytes": 469685,
+      "featureCounts": {
+        "buildings": 2645,
+        "roads": 2696,
+        "areas": 539
+      },
+      "vertexCounts": {
+        "buildings": 18320,
+        "roads": 17390,
+        "areas": 8185,
+        "total": 43895
+      },
+      "terrain": {
+        "width": 172,
+        "height": 172,
+        "minimumMeters": 63.3,
+        "maximumMeters": 220.8
+      },
+      "coverage": [
+        [
+          [
+            -2.5967874,
+            -2.5771568
+          ],
+          [
+            2.5503707,
+            -2.5771568
+          ],
+          [
+            2.5503707,
+            2.5700013
+          ],
+          [
+            -2.5967874,
+            2.5700013
+          ],
+          [
+            -2.5967874,
+            -2.5771568
+          ]
+        ]
+      ],
+      "alignment": {
+        "method": "orientation-preserving closed-loop similarity",
+        "rmsMeters": 9.166892008656294,
+        "maxErrorMeters": 52.352539144853175,
+        "validationRmsMeters": 11.909683686236104,
+        "validationP95Meters": 38.89508132446876,
+        "validationMaxMeters": 49.138692320465175,
+        "sourceBuildingElements": 2645,
+        "sourceRoadElements": 4113,
+        "rawUnitsPerMeter": 9.98838073192312,
+        "reversed": false,
+        "progressShift": 0.865,
+        "osmRacewayWayIds": [
+          831804327
+        ],
+        "qualityNote": "Current OSM centerline differs locally at the former final chicane; the reverse nearest-segment p95 is 5.7m outside that section."
+      }
+    },
+    {
+      "circuitKey": 19,
+      "snapshotAt": "2026-09-07T10:38:06Z",
+      "bytes": 1002986,
+      "gzipBytes": 325544,
+      "featureCounts": {
+        "buildings": 2253,
+        "roads": 991,
+        "areas": 332
+      },
+      "vertexCounts": {
+        "buildings": 13461,
+        "roads": 9059,
+        "areas": 7429,
+        "total": 29949
+      },
+      "terrain": {
+        "width": 159,
+        "height": 159,
+        "minimumMeters": 647.2,
+        "maximumMeters": 1306.6
+      },
+      "coverage": [
+        [
+          [
+            -2.2167825,
+            -2.2192604
+          ],
+          [
+            2.2136753,
+            -2.2192604
+          ],
+          [
+            2.2136753,
+            2.2111974
+          ],
+          [
+            -2.2167825,
+            2.2111974
+          ],
+          [
+            -2.2167825,
+            -2.2192604
+          ]
+        ]
+      ],
+      "alignment": {
+        "method": "orientation-preserving closed-loop similarity",
+        "rmsMeters": 3.2153475390000144,
+        "maxErrorMeters": 9.612244373077456,
+        "validationRmsMeters": 3.4080141909042907,
+        "validationP95Meters": 6.0872805889132495,
+        "validationMaxMeters": 9.270043304956483,
+        "sourceBuildingElements": 2253,
+        "sourceRoadElements": 1242,
+        "rawUnitsPerMeter": 10.033900365765172,
+        "reversed": false,
+        "progressShift": 0.313,
+        "osmRacewayWayIds": [
+          347958266,
+          822592398,
+          822592399,
+          822592400,
+          822592401,
+          822592402,
+          822592405,
+          822592406,
+          822592407,
+          822592408,
+          822592409,
+          822592410,
+          822592403,
+          822592404
+        ]
+      }
+    },
+    {
+      "circuitKey": 22,
+      "snapshotAt": "2026-09-07T10:22:50Z",
+      "bytes": 2740932,
+      "gzipBytes": 859048,
+      "featureCounts": {
+        "buildings": 9681,
+        "roads": 3650,
+        "areas": 399
+      },
+      "vertexCounts": {
+        "buildings": 63990,
+        "roads": 20996,
+        "areas": 4163,
+        "total": 89149
+      },
+      "terrain": {
+        "width": 143,
+        "height": 143,
+        "minimumMeters": -0.7,
+        "maximumMeters": 962.5
+      },
+      "coverage": [
+        [
+          [
+            -2.550459,
+            -2.5442181
+          ],
+          [
+            2.6172257,
+            -2.5442181
+          ],
+          [
+            2.6172257,
+            2.6234666
+          ],
+          [
+            -2.550459,
+            2.6234666
+          ],
+          [
+            -2.550459,
+            -2.5442181
+          ]
+        ]
+      ],
+      "alignment": {
+        "method": "orientation-preserving open-fragment similarity",
+        "rmsMeters": 2.405695415937999,
+        "maxErrorMeters": 4.671450445067584,
+        "validationRmsMeters": 2.970172845952576,
+        "validationP95Meters": 5.115491138092623,
+        "validationMaxMeters": 7.719115229902453,
+        "sourceBuildingElements": 9681,
+        "sourceRoadElements": 5209,
+        "rawUnitsPerMeter": 9.956710781492973,
+        "reversed": false,
+        "progressShift": 0.799,
+        "osmRacewayWayIds": [
+          1081401613,
+          1081401614,
+          1081401615,
+          1081401616,
+          1081401617,
+          1148199871,
+          1470365906,
+          1470365907
+        ],
+        "openAlignmentWayIds": [
+          1081401615
+        ],
+        "qualityNote": "The full street lap is ordinary public road in OSM; eight independently mapped circuit fragments validate this transform within 7.8m."
+      }
+    },
+    {
+      "circuitKey": 23,
+      "snapshotAt": "2026-09-07T10:38:06Z",
+      "bytes": 11206787,
+      "gzipBytes": 3137219,
+      "featureCounts": {
+        "buildings": 29702,
+        "roads": 23776,
+        "areas": 3965
+      },
+      "vertexCounts": {
+        "buildings": 201004,
+        "roads": 103924,
+        "areas": 41785,
+        "total": 346713
+      },
+      "terrain": {
+        "width": 239,
+        "height": 239,
+        "minimumMeters": -8.8,
+        "maximumMeters": 231.1
+      },
+      "coverage": [
+        [
+          [
+            -2.1624271,
+            -2.1962916
+          ],
+          [
+            2.1986061,
+            -2.1962916
+          ],
+          [
+            2.1986061,
+            2.1647416
+          ],
+          [
+            -2.1624271,
+            2.1647416
+          ],
+          [
+            -2.1624271,
+            -2.1962916
+          ]
+        ]
+      ],
+      "alignment": {
+        "method": "orientation-preserving closed-loop similarity",
+        "rmsMeters": 6.769477676872129,
+        "maxErrorMeters": 19.41719122714872,
+        "validationRmsMeters": 3.255626728572603,
+        "validationP95Meters": 6.275520577076552,
+        "validationMaxMeters": 7.165292979690344,
+        "sourceBuildingElements": 29702,
+        "sourceRoadElements": 50151,
+        "rawUnitsPerMeter": 9.98741028215181,
+        "reversed": false,
+        "progressShift": 0.873,
+        "osmRacewayWayIds": [
+          136717490
+        ]
+      }
+    },
+    {
+      "circuitKey": 39,
+      "snapshotAt": "2026-09-07T10:38:06Z",
+      "bytes": 8828668,
+      "gzipBytes": 2910237,
+      "featureCounts": {
+        "buildings": 853,
+        "roads": 10767,
+        "areas": 4171
+      },
+      "vertexCounts": {
+        "buildings": 222690,
+        "roads": 56044,
+        "areas": 47130,
+        "total": 325864
+      },
+      "terrain": {
+        "width": 257,
+        "height": 257,
+        "minimumMeters": 154.7,
+        "maximumMeters": 286.9
+      },
+      "coverage": [
+        [
+          [
+            -2.2813084,
+            -2.2830978
+          ],
+          [
+            2.2794313,
+            -2.2830978
+          ],
+          [
+            2.2794313,
+            2.2776418
+          ],
+          [
+            -2.2813084,
+            2.2776418
+          ],
+          [
+            -2.2813084,
+            -2.2830978
+          ]
+        ]
+      ],
+      "alignment": {
+        "method": "orientation-preserving closed-loop similarity",
+        "rmsMeters": 4.282280354334801,
+        "maxErrorMeters": 9.133499413553881,
+        "validationRmsMeters": 2.899210436407173,
+        "validationP95Meters": 4.8183528625954635,
+        "validationMaxMeters": 8.591491638999774,
+        "sourceBuildingElements": 34240,
+        "sourceRoadElements": 16257,
+        "rawUnitsPerMeter": 10.014502517811753,
+        "reversed": false,
+        "progressShift": 0.997,
+        "osmRacewayWayIds": [
+          19842206,
+          179968242,
+          179968264,
+          179968220,
+          179968262,
+          179968245,
+          179968263,
+          179968229,
+          179968251,
+          179968230,
+          179968252,
+          179968228,
+          1443867792,
+          1443867793,
+          179968254,
+          179968226,
+          179968249,
+          179968239,
+          179968257,
+          179968234
+        ]
+      }
+    },
+    {
+      "circuitKey": 46,
+      "snapshotAt": "2026-09-07T10:09:36Z",
+      "bytes": 3624462,
+      "gzipBytes": 1100005,
+      "featureCounts": {
+        "buildings": 8417,
+        "roads": 7725,
+        "areas": 1020
+      },
+      "vertexCounts": {
+        "buildings": 51496,
+        "roads": 39620,
+        "areas": 15964,
+        "total": 107080
+      },
+      "terrain": {
+        "width": 253,
+        "height": 253,
+        "minimumMeters": -4.3,
+        "maximumMeters": 103.2
+      },
+      "coverage": [
+        [
+          [
+            -2.2288219,
+            -2.2210543
+          ],
+          [
+            2.2288911,
+            -2.2210543
+          ],
+          [
+            2.2288911,
+            2.2366588
+          ],
+          [
+            -2.2288219,
+            2.2366588
+          ],
+          [
+            -2.2288219,
+            -2.2210543
+          ]
+        ]
+      ],
+      "alignment": {
+        "method": "orientation-preserving closed-loop similarity",
+        "rmsMeters": 3.33887735196391,
+        "maxErrorMeters": 6.346181024757855,
+        "validationRmsMeters": 2.206802267011151,
+        "validationP95Meters": 4.174292826061877,
+        "validationMaxMeters": 6.0965693829639465,
+        "sourceBuildingElements": 8417,
+        "sourceRoadElements": 11599,
+        "rawUnitsPerMeter": 9.997618233851634,
+        "reversed": false,
+        "progressShift": 0.968,
+        "osmRacewayWayIds": [
+          183391665,
+          183391643,
+          183391645,
+          183391644,
+          183391657,
+          183391636,
+          183391635,
+          183391628,
+          183391634,
+          183391629,
+          183391633,
+          183391631,
+          183391632,
+          183391630,
+          183391642,
+          411295349,
+          183391641,
+          183391656,
+          183391664,
+          183391655,
+          183391662,
+          183391658,
+          183391646,
+          183391659,
+          183391651,
+          411295347,
+          183391649,
+          183391647,
+          411295351,
+          183391648,
+          411295348,
+          175231434,
+          183391652,
+          183391660,
+          411289989,
+          183391637,
+          183391639,
+          183391638,
+          183391640,
+          183391661
+        ]
+      }
+    },
+    {
+      "circuitKey": 49,
+      "snapshotAt": "2026-09-07T10:40:05Z",
+      "bytes": 486885,
+      "gzipBytes": 147810,
+      "featureCounts": {
+        "buildings": 311,
+        "roads": 1242,
+        "areas": 205
+      },
+      "vertexCounts": {
+        "buildings": 2068,
+        "roads": 5758,
+        "areas": 4178,
+        "total": 12004
+      },
+      "terrain": {
+        "width": 169,
+        "height": 169,
+        "minimumMeters": 0,
+        "maximumMeters": 21.5
+      },
+      "coverage": [
+        [
+          [
+            -2.4988979,
+            -2.2428885
+          ],
+          [
+            2.3080134,
+            -2.2428885
+          ],
+          [
+            2.3080134,
+            2.5640228
+          ],
+          [
+            -2.4988979,
+            2.5640228
+          ],
+          [
+            -2.4988979,
+            -2.2428885
+          ]
+        ]
+      ],
+      "alignment": {
+        "method": "orientation-preserving closed-loop similarity",
+        "rmsMeters": 1.6182848205431997,
+        "maxErrorMeters": 4.0275507165122875,
+        "validationRmsMeters": 0.968035839336086,
+        "validationP95Meters": 1.9903214561084304,
+        "validationMaxMeters": 2.4295767130142214,
+        "sourceBuildingElements": 311,
+        "sourceRoadElements": 1552,
+        "rawUnitsPerMeter": 9.982907395992111,
+        "reversed": false,
+        "progressShift": 0.003,
+        "osmRacewayWayIds": [
+          156328670
+        ]
+      }
+    },
+    {
+      "circuitKey": 55,
+      "snapshotAt": "2026-09-07T10:40:05Z",
+      "bytes": 2239037,
+      "gzipBytes": 646204,
+      "featureCounts": {
+        "buildings": 8001,
+        "roads": 2056,
+        "areas": 629
+      },
+      "vertexCounts": {
+        "buildings": 49209,
+        "roads": 11878,
+        "areas": 9042,
+        "total": 70129
+      },
+      "terrain": {
+        "width": 123,
+        "height": 123,
+        "minimumMeters": 0,
+        "maximumMeters": 36
+      },
+      "coverage": [
+        [
+          [
+            -2.2,
+            -2.2
+          ],
+          [
+            2.2,
+            -2.2
+          ],
+          [
+            2.2,
+            2.2
+          ],
+          [
+            -2.2,
+            2.2
+          ],
+          [
+            -2.2,
+            -2.2
+          ]
+        ]
+      ],
+      "alignment": {
+        "method": "orientation-preserving closed-loop similarity",
+        "rmsMeters": 5.276168862133792,
+        "maxErrorMeters": 10.242566503731533,
+        "validationRmsMeters": 3.3122421305618857,
+        "validationP95Meters": 6.0035172781754556,
+        "validationMaxMeters": 7.516421394908822,
+        "sourceBuildingElements": 8001,
+        "sourceRoadElements": 2819,
+        "rawUnitsPerMeter": 10.035654332566079,
+        "reversed": false,
+        "progressShift": 0.851,
+        "osmRacewayWayIds": [
+          1311879069,
+          1311522211,
+          1311522212,
+          1313671989,
+          1311522213,
+          1313671990,
+          1311522214,
+          1311522215,
+          1311522216,
+          1311522217,
+          1311522218,
+          1311566938,
+          1311566937,
+          1313671991,
+          1311566939,
+          1313671992,
+          1311566940,
+          1311710253,
+          24626850,
+          1311765615,
+          1311802779,
+          1311822339,
+          1311822340,
+          1311822341
+        ]
+      }
+    },
+    {
+      "circuitKey": 61,
+      "snapshotAt": "2026-09-07T10:22:50Z",
+      "bytes": 5149448,
+      "gzipBytes": 1557673,
+      "featureCounts": {
+        "buildings": 11523,
+        "roads": 10500,
+        "areas": 1011
+      },
+      "vertexCounts": {
+        "buildings": 95620,
+        "roads": 58754,
+        "areas": 10369,
+        "total": 164743
+      },
+      "terrain": {
+        "width": 190,
+        "height": 190,
+        "minimumMeters": -16.9,
+        "maximumMeters": 64.3
+      },
+      "coverage": [
+        [
+          [
+            -2.2423469,
+            -2.2781595
+          ],
+          [
+            2.2602721,
+            -2.2781595
+          ],
+          [
+            2.2602721,
+            2.2244595
+          ],
+          [
+            -2.2423469,
+            2.2244595
+          ],
+          [
+            -2.2423469,
+            -2.2781595
+          ]
+        ]
+      ],
+      "alignment": {
+        "method": "orientation-preserving open-fragment similarity",
+        "rmsMeters": 3.6335369493530467,
+        "maxErrorMeters": 8.062283734570366,
+        "validationRmsMeters": 7.55682019626317,
+        "validationP95Meters": 18.579373732092012,
+        "validationMaxMeters": 19.55502156548459,
+        "sourceBuildingElements": 11523,
+        "sourceRoadElements": 24425,
+        "rawUnitsPerMeter": 9.80737753991047,
+        "reversed": false,
+        "progressShift": 0.927,
+        "osmRacewayWayIds": [
+          303311924,
+          465064165,
+          686335806,
+          686335807
+        ],
+        "openAlignmentWayIds": [
+          686335807
+        ],
+        "qualityNote": "The full street lap is ordinary public road in OSM; four independently mapped circuit fragments validate this transform within 19.6m."
+      }
+    },
+    {
+      "circuitKey": 63,
+      "snapshotAt": "2026-09-07T10:40:05Z",
+      "bytes": 720183,
+      "gzipBytes": 220118,
+      "featureCounts": {
+        "buildings": 768,
+        "roads": 1603,
+        "areas": 513
+      },
+      "vertexCounts": {
+        "buildings": 5878,
+        "roads": 9027,
+        "areas": 5219,
+        "total": 20124
+      },
+      "terrain": {
+        "width": 151,
+        "height": 151,
+        "minimumMeters": -1.2,
+        "maximumMeters": 108.6
+      },
+      "coverage": [
+        [
+          [
+            -2.1895598,
+            -2.1987814
+          ],
+          [
+            2.2096048,
+            -2.1987814
+          ],
+          [
+            2.2096048,
+            2.2003832
+          ],
+          [
+            -2.1895598,
+            2.2003832
+          ],
+          [
+            -2.1895598,
+            -2.1987814
+          ]
+        ]
+      ],
+      "alignment": {
+        "method": "orientation-preserving closed-loop similarity",
+        "rmsMeters": 7.879646116630222,
+        "maxErrorMeters": 15.701664425139848,
+        "validationRmsMeters": 6.401195190636524,
+        "validationP95Meters": 12.504915673018406,
+        "validationMaxMeters": 15.567610752988976,
+        "sourceBuildingElements": 768,
+        "sourceRoadElements": 2084,
+        "rawUnitsPerMeter": 9.975586783816624,
+        "reversed": false,
+        "progressShift": 0.76,
+        "osmRacewayWayIds": [
+          4818385,
+          881756729,
+          881756728
+        ]
+      }
+    },
+    {
+      "circuitKey": 65,
+      "snapshotAt": "2026-09-07T10:40:05Z",
+      "bytes": 5209164,
+      "gzipBytes": 1262441,
+      "featureCounts": {
+        "buildings": 20316,
+        "roads": 6897,
+        "areas": 1642
+      },
+      "vertexCounts": {
+        "buildings": 112706,
+        "roads": 27484,
+        "areas": 12490,
+        "total": 152680
+      },
+      "terrain": {
+        "width": 187,
+        "height": 187,
+        "minimumMeters": 2222.2,
+        "maximumMeters": 2267.2
+      },
+      "coverage": [
+        [
+          [
+            -2.3153236,
+            -2.0851527
+          ],
+          [
+            2.1647701,
+            -2.0851527
+          ],
+          [
+            2.1647701,
+            2.394941
+          ],
+          [
+            -2.3153236,
+            2.394941
+          ],
+          [
+            -2.3153236,
+            -2.0851527
+          ]
+        ]
+      ],
+      "alignment": {
+        "method": "orientation-preserving closed-loop similarity",
+        "rmsMeters": 5.344900096883643,
+        "maxErrorMeters": 12.988577703374588,
+        "validationRmsMeters": 3.984038780067317,
+        "validationP95Meters": 6.578306858740015,
+        "validationMaxMeters": 8.147241499550626,
+        "sourceBuildingElements": 20316,
+        "sourceRoadElements": 10193,
+        "rawUnitsPerMeter": 9.963256351982777,
+        "reversed": false,
+        "progressShift": 0.08,
+        "osmRacewayWayIds": [
+          772754605,
+          772754608,
+          1128592398,
+          1128592396,
+          772755824,
+          823823141,
+          823823140,
+          772755821,
+          1313598528
+        ]
+      }
+    },
+    {
+      "circuitKey": 70,
+      "snapshotAt": "2026-09-07T10:41:06Z",
+      "bytes": 2813327,
+      "gzipBytes": 861731,
+      "featureCounts": {
+        "buildings": 5171,
+        "roads": 5472,
+        "areas": 2116
+      },
+      "vertexCounts": {
+        "buildings": 34251,
+        "roads": 35458,
+        "areas": 18863,
+        "total": 88572
+      },
+      "terrain": {
+        "width": 207,
+        "height": 207,
+        "minimumMeters": -8,
+        "maximumMeters": 36.5
+      },
+      "coverage": [
+        [
+          [
+            -2.0766957,
+            -2.1460788
+          ],
+          [
+            2.1103373,
+            -2.1460788
+          ],
+          [
+            2.1103373,
+            2.0409542
+          ],
+          [
+            -2.0766957,
+            2.0409542
+          ],
+          [
+            -2.0766957,
+            -2.1460788
+          ]
+        ]
+      ],
+      "alignment": {
+        "method": "orientation-preserving closed-loop similarity",
+        "rmsMeters": 5.019852366434559,
+        "maxErrorMeters": 11.017171049476259,
+        "validationRmsMeters": 4.116707671205902,
+        "validationP95Meters": 7.223356008321925,
+        "validationMaxMeters": 7.550913507048612,
+        "sourceBuildingElements": 5171,
+        "sourceRoadElements": 8682,
+        "rawUnitsPerMeter": 9.95841124076485,
+        "reversed": false,
+        "progressShift": 0.424,
+        "osmRacewayWayIds": [
+          1255169703,
+          1255169704,
+          168477013,
+          1469184731,
+          1469184732,
+          188337196
+        ]
+      }
+    },
+    {
+      "circuitKey": 144,
+      "snapshotAt": "2026-09-07T10:42:07Z",
+      "bytes": 4859913,
+      "gzipBytes": 1485983,
+      "featureCounts": {
+        "buildings": 8607,
+        "roads": 11087,
+        "areas": 3259
+      },
+      "vertexCounts": {
+        "buildings": 60854,
+        "roads": 57738,
+        "areas": 27239,
+        "total": 145831
+      },
+      "terrain": {
+        "width": 257,
+        "height": 257,
+        "minimumMeters": -30.6,
+        "maximumMeters": 231.4
+      },
+      "coverage": [
+        [
+          [
+            -2.2507942,
+            -2.2524166
+          ],
+          [
+            2.2495868,
+            -2.2524166
+          ],
+          [
+            2.2495868,
+            2.2479644
+          ],
+          [
+            -2.2507942,
+            2.2479644
+          ],
+          [
+            -2.2507942,
+            -2.2524166
+          ]
+        ]
+      ],
+      "alignment": {
+        "method": "orientation-preserving closed-loop similarity",
+        "rmsMeters": 11.080409604993003,
+        "maxErrorMeters": 31.784902089042596,
+        "validationRmsMeters": 4.070638903149027,
+        "validationP95Meters": 8.4339556660482,
+        "validationMaxMeters": 14.256337315469043,
+        "sourceBuildingElements": 8607,
+        "sourceRoadElements": 16368,
+        "rawUnitsPerMeter": 10.017790151842268,
+        "reversed": true,
+        "progressShift": 0.468,
+        "osmRacewayWayIds": [
+          1069034735,
+          1527788174,
+          -1413965638,
+          -167173315,
+          -290633714,
+          -1415085014,
+          -1415085013,
+          -1548322894,
+          -1548322893,
+          -1548322892,
+          -1548322891,
+          -414510525,
+          -177431273,
+          -182645384,
+          -1415085016,
+          -1415085017,
+          1415085020,
+          1329392226,
+          1415075090,
+          1415063178,
+          1415075088,
+          1415063177,
+          165695131,
+          1415063201,
+          1415063202,
+          278666424,
+          25402777,
+          1168829202,
+          1329392228,
+          -1168829203,
+          -766787796,
+          -179238852,
+          -1555062568,
+          -323377758,
+          -131835265,
+          -249018354,
+          -822375070,
+          -500527621,
+          -1050381555,
+          -167173308,
+          -1050381554,
+          -476752810,
+          926192527,
+          1279858618,
+          476752809,
+          1502989773,
+          639403533
+        ],
+        "qualityNote": "Current OSM circuit relation closes exactly; the 2023 replay centerline differs locally by up to 32m."
+      }
+    },
+    {
+      "circuitKey": 149,
+      "snapshotAt": "2026-09-07T10:42:07Z",
+      "bytes": 1406809,
+      "gzipBytes": 405503,
+      "featureCounts": {
+        "buildings": 2448,
+        "roads": 4163,
+        "areas": 442
+      },
+      "vertexCounts": {
+        "buildings": 16365,
+        "roads": 18091,
+        "areas": 3761,
+        "total": 38217
+      },
+      "terrain": {
+        "width": 257,
+        "height": 257,
+        "minimumMeters": -8.6,
+        "maximumMeters": 24.7
+      },
+      "coverage": [
+        [
+          [
+            -2.0668414,
+            -2.042935
+          ],
+          [
+            2.0566036,
+            -2.042935
+          ],
+          [
+            2.0566036,
+            2.0805101
+          ],
+          [
+            -2.0668414,
+            2.0805101
+          ],
+          [
+            -2.0668414,
+            -2.042935
+          ]
+        ]
+      ],
+      "alignment": {
+        "method": "orientation-preserving closed-loop similarity",
+        "rmsMeters": 5.776814413781467,
+        "maxErrorMeters": 16.93252814242252,
+        "validationRmsMeters": 3.5610225260874633,
+        "validationP95Meters": 5.997348707710653,
+        "validationMaxMeters": 8.439405282653821,
+        "sourceBuildingElements": 2448,
+        "sourceRoadElements": 5026,
+        "rawUnitsPerMeter": 9.982860763847679,
+        "reversed": false,
+        "progressShift": 0.169,
+        "osmRacewayWayIds": [
+          1007989410,
+          1359884757,
+          1257884699,
+          1359884761,
+          1359884760,
+          1359884759,
+          1359884758,
+          1359884756,
+          1359884762
+        ],
+        "qualityNote": "The loop fits the replay within 5.8m RMS/17m max, but OSM contributors flag imagery updates on two constituent ways."
+      }
+    },
+    {
+      "circuitKey": 150,
+      "snapshotAt": "2026-09-07T10:42:07Z",
+      "bytes": 443439,
+      "gzipBytes": 127557,
+      "featureCounts": {
+        "buildings": 338,
+        "roads": 1099,
+        "areas": 231
+      },
+      "vertexCounts": {
+        "buildings": 2221,
+        "roads": 6170,
+        "areas": 2211,
+        "total": 10602
+      },
+      "terrain": {
+        "width": 163,
+        "height": 163,
+        "minimumMeters": 0,
+        "maximumMeters": 17.4
+      },
+      "coverage": [
+        [
+          [
+            -1.9419697,
+            -1.9116489
+          ],
+          [
+            1.9194761,
+            -1.9116489
+          ],
+          [
+            1.9194761,
+            1.9497969
+          ],
+          [
+            -1.9419697,
+            1.9497969
+          ],
+          [
+            -1.9419697,
+            -1.9116489
+          ]
+        ]
+      ],
+      "alignment": {
+        "method": "orientation-preserving closed-loop similarity",
+        "rmsMeters": 3.824676991594129,
+        "maxErrorMeters": 8.227044878602292,
+        "validationRmsMeters": 2.8434696000042674,
+        "validationP95Meters": 5.264663789779163,
+        "validationMaxMeters": 6.446230370043391,
+        "sourceBuildingElements": 338,
+        "sourceRoadElements": 1460,
+        "rawUnitsPerMeter": 9.994379675453859,
+        "reversed": false,
+        "progressShift": 0.114,
+        "osmRacewayWayIds": [
+          152483595,
+          1553605580
+        ]
+      }
+    },
+    {
+      "circuitKey": 151,
+      "snapshotAt": "2026-09-07T10:42:07Z",
+      "bytes": 7253525,
+      "gzipBytes": 2159182,
+      "featureCounts": {
+        "buildings": 26817,
+        "roads": 4437,
+        "areas": 350
+      },
+      "vertexCounts": {
+        "buildings": 209560,
+        "roads": 22665,
+        "areas": 4708,
+        "total": 236933
+      },
+      "terrain": {
+        "width": 189,
+        "height": 189,
+        "minimumMeters": -4.6,
+        "maximumMeters": 26.5
+      },
+      "coverage": [
+        [
+          [
+            -2.1832309,
+            -2.1882897
+          ],
+          [
+            2.1839184,
+            -2.1882897
+          ],
+          [
+            2.1839184,
+            2.1788596
+          ],
+          [
+            -2.1832309,
+            2.1788596
+          ],
+          [
+            -2.1832309,
+            -2.1882897
+          ]
+        ]
+      ],
+      "alignment": {
+        "method": "orientation-preserving closed-loop similarity",
+        "rmsMeters": 7.867409240614296,
+        "maxErrorMeters": 18.51159204167734,
+        "validationRmsMeters": 4.959343687955566,
+        "validationP95Meters": 10.719140210697727,
+        "validationMaxMeters": 13.525614964881973,
+        "sourceBuildingElements": 26817,
+        "sourceRoadElements": 8317,
+        "rawUnitsPerMeter": 9.94859998214679,
+        "reversed": false,
+        "progressShift": 0.134,
+        "osmRacewayWayIds": [
+          1017340351,
+          1485453204,
+          1472684485,
+          1485453202,
+          1485453200,
+          1472686141,
+          1485453197
+        ]
+      }
+    },
+    {
+      "circuitKey": 152,
+      "snapshotAt": "2026-09-07T10:26:49Z",
+      "bytes": 10127855,
+      "gzipBytes": 3034663,
+      "featureCounts": {
+        "buildings": 24919,
+        "roads": 18947,
+        "areas": 1320
+      },
+      "vertexCounts": {
+        "buildings": 217446,
+        "roads": 96881,
+        "areas": 14570,
+        "total": 328897
+      },
+      "terrain": {
+        "width": 246,
+        "height": 246,
+        "minimumMeters": 571.1,
+        "maximumMeters": 711.7
+      },
+      "coverage": [
+        [
+          [
+            -2.2,
+            -2.2
+          ],
+          [
+            2.2,
+            -2.2
+          ],
+          [
+            2.2,
+            2.2
+          ],
+          [
+            -2.2,
+            2.2
+          ],
+          [
+            -2.2,
+            -2.2
+          ]
+        ]
+      ],
+      "alignment": {
+        "method": "curated named-road ICP with tagged paddock seed",
+        "rmsMeters": 3.87,
+        "maxErrorMeters": 35,
+        "validationRmsMeters": 4.869248790341013,
+        "validationP95Meters": 5.694888878562091,
+        "validationMaxMeters": 24.730749382289726,
+        "sourceBuildingElements": 24919,
+        "sourceRoadElements": 36100,
+        "rawUnitsPerMeter": 10.020111944921393,
+        "reversed": false,
+        "progressShift": 0.97,
+        "osmRacewayWayIds": [
+          1456078478,
+          1456078470,
+          1456078477,
+          1456078476,
+          1223479151,
+          1456078475,
+          1454797801
+        ],
+        "openAlignmentWayIds": [
+          1456078478,
+          1456078470,
+          1456078477,
+          1456078476,
+          1223479151,
+          1456078475
+        ],
+        "qualityNote": "The tagged paddock chain fits within 2.9m RMS/5.9m max; a separate public-road audit places 89.9% of the replay lap within 20m of the current named street network.",
+        "archiveCoverageWithin20Meters": 0.8986,
+        "archiveCoverageWithin35Meters": 0.9029
+      }
+    }
+  ]
+}

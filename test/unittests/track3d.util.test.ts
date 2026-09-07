@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildTrackRibbon3D, cornerKerbSections3D, cleanTrackPoints3D, distanceToTrack3D, getTrackBounds3D, offsetTrackFrame3D, projectTrackPosition3D, spaceKerbFrames3D, selectPitBoxRow3D, smoothTrackAngle3D, terrainHeight3D, terrainRoadClearance3D, trackFootprintIsClear3D, toTrackPoints3D } from "../../src/modules/replay/utils/track3d.util";
+import { buildTrackRibbon3D, cornerKerbSections3D, cleanTrackPoints3D, distanceToTrack3D, getTrackBounds3D, offsetTrackFrame3D, projectTrackPosition3D, spaceKerbFrames3D, selectPitBoxRow3D, smoothTrackAngle3D, terrainHeight3D, terrainRoadClearance3D, retainingWallNeeded3D, trackFootprintIsClear3D, toTrackPoints3D } from "../../src/modules/replay/utils/track3d.util";
 
 describe("3D track geometry", () => {
   test("lowers coarse terrain beneath the entire intersecting road triangle", () => {
@@ -235,4 +235,12 @@ test("pit garage rows use clear straight sections and keep a consistent side", (
   expect(compact.every(bay=>bay.point.z>0.05&&bay.point.z<0.12)).toBe(true);
   expect(selectPitBoxRow3D(frames,()=>false)).toHaveLength(0);
   expect(selectPitBoxRow3D([],()=>true)).toHaveLength(0);
+});
+
+test("retaining walls require a sustained real terrain drop, not normal clearance or carving",()=>{
+ expect(retainingWallNeeded3D([.002,.002],[.002,.002])).toBe(false);
+ expect(retainingWallNeeded3D([.008,.01],[.001,.002])).toBe(false);
+ expect(retainingWallNeeded3D([.002,.015],[.002,.014])).toBe(false);
+ expect(retainingWallNeeded3D([.012,.011],[.014,.01])).toBe(true);
+ expect(retainingWallNeeded3D([.0066,.00605],[.0077,.0055],.003)).toBe(false);
 });

@@ -18,7 +18,8 @@
     "format": "biome format --write src/",
     "archive:publish": "bun scripts/archive/publish.ts",
     "archive:build": "bun scripts/archive/build.ts",
-    "generate:elevations": "bun scripts/build-elevation-profiles.ts"
+    "generate:elevations": "bun scripts/build-elevation-profiles.ts",
+    "generate:surroundings": "bun scripts/build-circuit-surroundings.ts"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",

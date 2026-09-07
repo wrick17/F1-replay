@@ -18,6 +18,7 @@ import { TelemetryPanel } from "../components/TelemetryPanel";
 import { TrackView } from "../components/TrackView";
 import { WeatherBadge } from "../components/WeatherBadge";
 import { SKIP_INTERVAL_LABELS } from "../constants/replay.constants";
+import { useCircuitSurroundings } from "../hooks/useCircuitSurroundings";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useReplayController } from "../hooks/useReplayController";
 import { useReplayData } from "../hooks/useReplayData";
@@ -105,6 +106,8 @@ export const ReplayPage = () => {
       dataRevision,
       currentTimeMs: replay.currentTimeMs,
     });
+
+  const surroundings = useCircuitSurroundings(data?.meeting.circuit_key, trackPath);
 
   const telemetrySummary = useMemo(
     () => computeTelemetrySummary(data, loadedEndMs, effectiveEndMs, sessionStartMs),
@@ -529,6 +532,7 @@ export const ReplayPage = () => {
           aria-hidden={show3D}
         >
           <TrackView
+            surroundings={surroundings}
             trackPath={trackPath}
             pitLanePath={pitLanePath}
             driverStates={driverStates}
@@ -542,6 +546,7 @@ export const ReplayPage = () => {
         {Scene && (
           <div className="replay-spatial absolute inset-0" inert={!show3D} aria-hidden={!show3D}>
             <Scene
+              surroundings={surroundings}
               circuitKey={data?.meeting.circuit_key}
               trackPath={trackPath}
               pitLanePath={pitLanePath}
@@ -561,6 +566,33 @@ export const ReplayPage = () => {
           </div>
         )}
       </div>
+
+      {surroundings && (
+        <div className="fixed bottom-1 right-2 z-50 rounded bg-slate-950/90 px-2 py-0.5 text-[10px] text-slate-300">
+          <a
+            href="https://www.openstreetmap.org/copyright"
+            target="_blank"
+            rel="noreferrer"
+            className="underline"
+          >
+            © OpenStreetMap contributors · ODbL
+          </a>
+          {surroundings.terrain && (
+            <>
+              {" "}
+              ·{" "}
+              <a
+                href="/circuits/TERRAIN-LICENSE.txt"
+                target="_blank"
+                rel="noreferrer"
+                className="underline"
+              >
+                Copernicus DEM
+              </a>
+            </>
+          )}
+        </div>
+      )}
 
       {show3D && (
         <ReplayGameHUD

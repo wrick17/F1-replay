@@ -41,15 +41,23 @@ Set `RSBUILD_ARCHIVE_URL` to use another archive root. Production defaults to `h
 
 ## 3D replay
 
-Replays open in 2D. The button beside the logo switches views without resetting playback; its label shows the current view. In 3D, drag to orbit, scroll to zoom, and click a car or timing row to follow a driver. Reset returns to the overview. Telemetry and race events are available in the right-hand HUD.
+Replays open in 2D. The button beside the logo switches views without resetting playback; its label shows the current view. In 3D, drag to orbit, right-drag to pan, scroll to zoom, and click a car or timing row to follow a driver. Reset fits the circuit between the HUD panels using the 2D map's orientation. Manual camera changes survive view switches. Telemetry and race events are available in the right-hand HUD.
 
-The world follows the recorded weather and race-local time at the replay cursor, including backward seeks. Red-and-white kerbs follow detected corner sections; straights retain white edge lines. Kerb placement and surrounding scenery are procedural and illustrative, not a surveyed recreation of the venue.
+The world follows the recorded weather and race-local time at the replay cursor, including backward seeks. Red-and-white kerbs follow detected corner sections; straights retain white edge lines. Kerb placement remains procedural. Mapped surroundings use current OpenStreetMap features for every replay year; missing building heights and individual trees are estimated.
 
-Road width, car scale, kerb detection, prop spacing, and terrain clearance use the same renderer for every circuit. Terrain is cut below intersecting road surfaces, with retaining walls beneath exposed edges.
+Road width, car scale, kerb detection, prop spacing, and terrain clearance use the same renderer for every circuit. Terrain is cut below intersecting road surfaces. Retaining walls support substantial drops; ordinary edges meet the local ground with an earth shoulder.
 
-Circuit elevation profiles are derived from archived location data and matched against the replay's ordered track layout. The terrain and pit lane follow the road height. Relief is exaggerated threefold for readability; Suzuka also has an open underpass with additional bridge clearance for the miniature cars. Source provenance and coverage are recorded in `src/modules/replay/data/circuitElevations.json`.
+Circuit elevation profiles are derived from archived location data and matched against the replay's ordered track layout. The terrain and pit lane follow the road height. Relief uses a 1.65× vertical scale for readability; Suzuka also has an open underpass with additional bridge clearance for the miniature cars. Source provenance and coverage are recorded in `src/modules/replay/data/circuitElevations.json`.
+
+Both views share circuit map bundles served from `public/circuits/`. Building footprints, roads, parking, water, and vegetation areas are aligned to the archived circuit with a measured similarity fit. The loader validates coordinates and ordered track anchors before displaying a bundle. Cars keep their recorded positions. Attribution and data licences accompany the bundles.
+
+The 2D map uses SVG vectors; the 3D map uses terrain-conforming vector geometry, with nearby buildings extruded and distant footprints retained. Camera limits keep exploration near the circuit, and fog softens the outer coverage boundary. No map provider requests occur during playback.
+
+Surrounding terrain uses packaged Copernicus DEM GLO-30 samples. This is a surface model, so trees and buildings can affect its heights. Terrain is calibrated to the replay's elevation profile, with road clearance preserved. See `public/circuits/TERRAIN-LICENSE.txt` for source credit and terms.
 
 Run `bun run generate:elevations` to rebuild profiles from the archive. It verifies source object hashes, caches downloads under `/tmp/f1-elevation-profiles`, and records any unsupported layouts as gaps instead of inventing elevations.
+
+Run `bun run generate:surroundings --all` to rebuild the curated circuit bundles, or `bun run generate:surroundings --circuit 46` for Suzuka. This requires Python 3 and the `tiffcrop` command from libtiff. OSM and DEM downloads are cached under `/tmp/f1-circuit-surroundings`; generation depends on the public Overpass service being available. The bundles record alignment evidence and source attribution; mapped surroundings describe today's venue, not its historical layout.
 
 Pit lanes include team-colored garages and stopping bays, placed procedurally on clear sections. Car headings ease through turns without changing recorded positions and snap correctly when seeking.
 

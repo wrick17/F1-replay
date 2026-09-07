@@ -1,5 +1,8 @@
 import type { NormalizedPosition } from "./telemetry.util";
 
+// Shared by archived road profiles, mapped terrain, and elevation-dependent scenery.
+export const REPLAY_ELEVATION_SCALE_3D = 1.65;
+
 export type TrackPoint3D = { x: number; z: number; y?: number };
 export type TrackFrame3D = { point: TrackPoint3D; tangent: TrackPoint3D };
 
@@ -310,6 +313,19 @@ export const terrainRoadClearance3D = (
     lowering = Math.max(lowering, height - (point.y ?? 0) + clearance);
   }
   return lowering > 0 ? lowering + 1e-7 : 0;
+};
+
+/** Ignore the normal road/terrain clearance and isolated carved vertices when deciding on a wall. */
+export const retainingWallNeeded3D = (
+  edgeDrops: number[],
+  outsideDrops: number[],
+  metersToWorld = 0.0005,
+) => {
+  const substantialDrop = Math.max(
+    0.0015 * REPLAY_ELEVATION_SCALE_3D,
+    metersToWorld * REPLAY_ELEVATION_SCALE_3D * 1.5,
+  );
+  return Math.max(...edgeDrops) > substantialDrop && Math.min(...outsideDrops) > substantialDrop;
 };
 
 /** Distance to the actual segments, including the closing segment of a circuit. */

@@ -23,6 +23,7 @@ import {
   WebGPURenderer,
 } from "three/webgpu";
 import type { TrackViewProps } from "../types/replay.types";
+import { constrainMapCamera3D, fitTrackOverviewCamera3D } from "../utils/mapCamera3d.util";
 import { loadReplayCarModel3D } from "../utils/replayCar3d.util";
 import { elevateReplayTrack3D } from "../utils/replayElevation3d.util";
 import type { ReplayEnvironment } from "../utils/replayEnvironment.util";
@@ -94,6 +95,13 @@ export default function TrackView3D(props: TrackView3DProps) {
     [props.trackPath, props.circuitKey],
   );
   const trackPoints = elevation.points;
+  const savedViewRef = useRef<{
+    points: ReturnType<typeof toTrackPoints3D>;
+    position: Vector3;
+    target: Vector3;
+    follow: number | null;
+    overview: boolean;
+  } | null>(null);
   const pitPoints = useMemo(
     () => toTrackPoints3D(props.pitLanePath ?? [], false),
     [props.pitLanePath],
@@ -135,7 +143,8 @@ export default function TrackView3D(props: TrackView3DProps) {
     controls.enableDamping = !reducedMotion;
     controls.dampingFactor = 0.07;
     controls.enablePan = true;
-    controls.maxPolarAngle = Math.PI * 0.487;
+    controls.screenSpacePanning = false;
+    controls.maxPolarAngle = (Math.PI * 78) / 180;
     controls.minPolarAngle = Math.PI * 0.025;
 
     renderer.outputColorSpace = SRGBColorSpace;
@@ -151,6 +160,10 @@ export default function TrackView3D(props: TrackView3DProps) {
     const bounds = getTrackBounds3D(trackPoints);
     const center = new Vector3(bounds.centerX, 0, bounds.centerZ);
     const span = Math.max(bounds.width, bounds.depth, 0.5);
+    const trackHeights = trackPoints.map((point) => point.y ?? 0);
+    const overviewTarget = center
+      .clone()
+      .setY((Math.min(...trackHeights) + Math.max(...trackHeights)) / 2);
     camera.near = span * 0.006;
     camera.far = span * 64;
     const trackCurve = makeCurve(trackPoints, true);
@@ -180,9 +193,16 @@ export default function TrackView3D(props: TrackView3DProps) {
           team.name,
           latestPropsRef.current.driverStates[Number(number)]?.color ?? "#70808d",
         );
-      world = createReplayWorld3D(scene, center, span, trackCurve, pitCurve, elevation.bridge, [
-        ...teams.values(),
-      ]);
+      world = createReplayWorld3D(
+        scene,
+        center,
+        span,
+        trackCurve,
+        pitCurve,
+        elevation.bridge,
+        [...teams.values()],
+        props.surroundings,
+      );
     } catch (error) {
       controls.dispose();
       disposeObject(scene);
@@ -197,7 +217,13 @@ export default function TrackView3D(props: TrackView3DProps) {
     const cars = new Map<number, Group>();
     const previous = new Map<number, Vector3>();
     let overviewDistance = 1;
-    let previousFollow: number | null = null;
+    const savedView =
+      savedViewRef.current?.points === trackPoints &&
+      savedViewRef.current.follow === followRef.current
+        ? savedViewRef.current
+        : null;
+    let overview = savedView?.overview ?? true;
+    let previousFollow: number | null = savedView?.follow ?? null;
     let previousReplayTime: number | null = null;
     let followTransition = 0;
     const chaseOffset = new Vector3();
@@ -209,21 +235,22 @@ export default function TrackView3D(props: TrackView3DProps) {
     let renderFrames = 0;
 
     const resetOverview = () => {
-      controls.target.copy(center);
-      const usableAspect =
-        camera.aspect *
-        (container.clientWidth >= 900
-          ? Math.max(0.45, (container.clientWidth - 580) / container.clientWidth)
-          : 0.92);
-      overviewDistance =
-        (span / (2 * Math.tan(MathUtils.degToRad(camera.fov / 2)))) *
-        Math.max(1.12, 1 / usableAspect) *
-        1.12;
-      camera.position
-        .copy(center)
-        .add(new Vector3(0.38, 1.08, 1.0).normalize().multiplyScalar(overviewDistance));
+      overview = true;
+      controls.target.copy(overviewTarget);
+      const width = Math.max(container.clientWidth, 1),
+        height = Math.max(container.clientHeight, 1);
+      const usableWidth = width >= 900 ? Math.max(width - 590, width * 0.35) : width * 0.9;
+      const usableHeight =
+        width >= 900 ? Math.max(height - 280, height * 0.45) : Math.max(height * 0.52, 180);
+      overviewDistance = fitTrackOverviewCamera3D(
+        camera,
+        overviewTarget,
+        trackPoints,
+        usableWidth / width,
+        usableHeight / height,
+      );
       controls.minDistance = span * 0.028;
-      controls.maxDistance = span * 6;
+      controls.maxDistance = overviewDistance * 2;
       followTransition = 0;
       controls.update();
     };
@@ -234,10 +261,10 @@ export default function TrackView3D(props: TrackView3DProps) {
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
       camera.clearViewOffset();
-      if (width >= 900) camera.setViewOffset(width, height, 50, 45, width, height);
+      if (width >= 900) camera.setViewOffset(width, height, 45, 25, width, height);
       else if (width < 768) camera.setViewOffset(width, height, 0, -height * 0.12, width, height);
       camera.updateProjectionMatrix();
-      if (followRef.current === null) resetOverview();
+      if (overview && followRef.current === null) resetOverview();
     };
 
     let steeringSettling = false;
@@ -324,7 +351,7 @@ export default function TrackView3D(props: TrackView3DProps) {
             .set(0, span * 0.06, -span * 0.12)
             .applyAxisAngle(new Vector3(0, 1, 0), followed.rotation.y);
           followTransition = reducedMotion ? 1 : 70;
-        } else if (followRef.current === null) resetOverview();
+        } else if (overview && followRef.current === null) resetOverview();
       }
       if (followed?.visible) {
         renderer.domElement.dataset.followHeight = followed.position.y.toFixed(5);
@@ -409,6 +436,15 @@ export default function TrackView3D(props: TrackView3DProps) {
       updateCars(Math.min(0.05, Math.max(0, (now - previousRenderTime) / 1000)));
       previousRenderTime = now;
       const controlsChanged = controls.update();
+      controls.maxDistance = constrainMapCamera3D(
+        camera,
+        controls.target,
+        props.surroundings?.coverage,
+        overviewTarget,
+        span,
+        controls.minDistance,
+        overviewDistance * 2,
+      );
       updateLabels();
       world.update(latestPropsRef.current.environment, camera, renderer);
       const width = Math.max(container.clientWidth, 1);
@@ -426,7 +462,26 @@ export default function TrackView3D(props: TrackView3DProps) {
       renderer.domElement.dataset.renderFrames = String(++renderFrames);
       renderer.domElement.dataset.drawCalls = String(renderer.info.render.drawCalls);
       renderer.domElement.dataset.pitBoxes = String(world.pitBoxCount);
+      renderer.domElement.dataset.mappedBuildings = String(world.mappedBuildingCount);
+      renderer.domElement.dataset.mappedTrees = String(world.mappedTreeCount);
+      renderer.domElement.dataset.mapFeatures = String(world.mapFeatureCount);
+      renderer.domElement.dataset.mapTerrain = String(world.hasMappedTerrain);
       renderer.domElement.dataset.triangles = String(renderer.info.render.triangles);
+      const cameraOffset = camera.position.clone().sub(controls.target);
+      const cameraDistance = cameraOffset.length();
+      renderer.domElement.dataset.cameraDistance = cameraDistance.toFixed(6);
+      renderer.domElement.dataset.cameraMaxDistance = controls.maxDistance.toFixed(6);
+      renderer.domElement.dataset.cameraPolar = Math.acos(
+        MathUtils.clamp(cameraOffset.y / cameraDistance, -1, 1),
+      ).toFixed(6);
+      renderer.domElement.dataset.cameraAzimuth = Math.atan2(
+        cameraOffset.x,
+        cameraOffset.z,
+      ).toFixed(6);
+      renderer.domElement.dataset.cameraTargetX = controls.target.x.toFixed(6);
+      renderer.domElement.dataset.cameraTargetY = controls.target.y.toFixed(6);
+      renderer.domElement.dataset.cameraTargetZ = controls.target.z.toFixed(6);
+      renderer.domElement.dataset.cameraPanning = String(controls.enablePan);
       if (!readyRef.current) {
         readyRef.current = true;
         latestPropsRef.current.onReady();
@@ -452,6 +507,7 @@ export default function TrackView3D(props: TrackView3DProps) {
       pointerDown = { x: event.clientX, y: event.clientY };
     };
     const onControlStart = () => {
+      overview = false;
       followTransition = 0;
     };
     const onCanvasClick = (event: PointerEvent) => {
@@ -482,6 +538,7 @@ export default function TrackView3D(props: TrackView3DProps) {
 
     actionsRef.current = {
       orbit: (angle) => {
+        overview = false;
         const offset = camera.position.clone().sub(controls.target);
         offset.applyAxisAngle(new Vector3(0, 1, 0), angle);
         camera.position.copy(controls.target).add(offset);
@@ -491,6 +548,7 @@ export default function TrackView3D(props: TrackView3DProps) {
       reset: resetOverview,
       start,
       zoom: (factor) => {
+        overview = false;
         const offset = camera.position.clone().sub(controls.target);
         const distance = MathUtils.clamp(
           offset.length() * factor,
@@ -503,6 +561,12 @@ export default function TrackView3D(props: TrackView3DProps) {
     };
     resize();
     resetOverview();
+    if (savedView && (!savedView.overview || savedView.follow !== null)) {
+      overview = savedView.overview;
+      camera.position.copy(savedView.position);
+      controls.target.copy(savedView.target);
+      controls.update();
+    }
     controls.addEventListener("start", onControlStart);
     controls.addEventListener("change", onControlChange);
     renderer.domElement.addEventListener("pointerdown", onPointerDown);
@@ -565,6 +629,14 @@ export default function TrackView3D(props: TrackView3DProps) {
     })();
 
     return () => {
+      if (initialized)
+        savedViewRef.current = {
+          points: trackPoints,
+          position: camera.position.clone(),
+          target: controls.target.clone(),
+          follow: followRef.current,
+          overview,
+        };
       disposed = true;
       if (animationFrame) cancelAnimationFrame(animationFrame);
       observer.disconnect();
@@ -578,11 +650,10 @@ export default function TrackView3D(props: TrackView3DProps) {
       renderer.domElement.remove();
       actionsRef.current = null;
     };
-  }, [pitPoints, trackPoints, elevation.bridge]);
+  }, [pitPoints, trackPoints, elevation.bridge, props.surroundings]);
 
   useEffect(() => {
     if (!props.active) return;
-    if (followRef.current === null) actionsRef.current?.reset();
     actionsRef.current?.start();
   }, [props.active]);
 
@@ -624,7 +695,7 @@ export default function TrackView3D(props: TrackView3DProps) {
         <p className="pointer-events-none absolute bottom-[12rem] left-1/2 z-10 w-max max-w-[calc(100%-2rem)] -translate-x-1/2 text-center text-[11px] text-slate-400">
           <span className="md:hidden">Drag to orbit · Pinch to zoom</span>
           <span className="hidden md:inline">
-            Drag to orbit · Scroll to zoom · Click a car to follow
+            Drag to orbit · Right-drag to pan · Scroll to zoom
           </span>
         </p>
       )}

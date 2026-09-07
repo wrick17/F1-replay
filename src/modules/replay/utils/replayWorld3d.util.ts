@@ -4,12 +4,16 @@ import {
   Fn,
   float,
   floor,
+  fog as fogNode,
   fract,
   max,
+  min,
   mix,
   normalize,
   positionLocal,
+  positionWorld,
   pow,
+  rangeFogFactor,
   sin,
   smoothstep,
   uniform,
@@ -50,6 +54,9 @@ import {
   Vector3,
   type WebGPURenderer,
 } from "three/webgpu";
+import type { CircuitSurroundings } from "../types/circuitSurroundings.types";
+import { mapBounds, mapContainsPoint, sampleMapTerrain } from "./circuitMapGeometry.util";
+import { createMappedWorld3D } from "./mappedWorld3d.util";
 import type { ReplayBridge3D } from "./replayElevation3d.util";
 import type { ReplayEnvironment } from "./replayEnvironment.util";
 import {
@@ -59,6 +66,8 @@ import {
   offsetTrackFrame3D,
   PIT_BOX_3D,
   projectTrackPosition3D,
+  REPLAY_ELEVATION_SCALE_3D,
+  retainingWallNeeded3D,
   selectPitBoxRow3D,
   spaceKerbFrames3D,
   type TrackPoint3D,
@@ -126,7 +135,53 @@ export const createReplayWorld3D = (
   pitCurve: CatmullRomCurve3 | null,
   bridge?: ReplayBridge3D,
   teamColors: string[] = [],
+  surroundings?: CircuitSurroundings | null,
 ) => {
+  const mapped = (x: number, z: number) =>
+    !!surroundings && mapContainsPoint([x, z], surroundings.coverage);
+  const mappedBuildings =
+    surroundings?.buildings.flatMap((building) =>
+      building.polygons.map((polygon) => mapBounds(polygon[0])),
+    ) ?? [];
+  const woodland =
+    surroundings?.areas.filter((area) => area.kind === "wood").flatMap((area) => area.polygons) ??
+    [];
+  const overlapsMappedBuilding = (x: number, z: number, radius: number) =>
+    mappedBuildings.some(
+      (bounds) =>
+        x + radius >= bounds.minX &&
+        x - radius <= bounds.maxX &&
+        z + radius >= bounds.minY &&
+        z - radius <= bounds.maxY,
+    );
+  const mappedRoads =
+    surroundings?.roads.map((road) => ({
+      points: road.points.map(([x, z]) => ({ x, z })),
+      bounds: mapBounds(road.points),
+      halfWidth: ((road.widthM ?? 5) * surroundings.metersToWorld) / 2,
+    })) ?? [];
+  const overlapsMappedRoad = (x: number, z: number, radius: number) =>
+    mappedRoads.some(
+      (road) =>
+        x + radius + road.halfWidth >= road.bounds.minX &&
+        x - radius - road.halfWidth <= road.bounds.maxX &&
+        z + radius + road.halfWidth >= road.bounds.minY &&
+        z - radius - road.halfWidth <= road.bounds.maxY &&
+        distanceToTrack3D({ x, z }, road.points, false) < radius + road.halfWidth,
+    );
+  const mappedTreeAllowed = (x: number, z: number, radius: number) =>
+    !mapped(x, z) ||
+    (woodland.some((polygon) =>
+      [
+        [x, z],
+        [x + radius, z],
+        [x - radius, z],
+        [x, z + radius],
+        [x, z - radius],
+      ].every(([px, pz]) => mapContainsPoint([px, pz], polygon)),
+    ) &&
+      !overlapsMappedBuilding(x, z, radius) &&
+      !overlapsMappedRoad(x, z, radius));
   let seed = 71;
   const random = () => {
     seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
@@ -186,18 +241,23 @@ export const createReplayWorld3D = (
     vertexColors: true,
   });
   const roadHeight = 0.001;
-  const groundGeometry = new PlaneGeometry(span * 36, span * 36, 220, 220);
+  const gridSegments = surroundings ? 320 : 220;
+  const gridSide = gridSegments + 1;
+  const denseHalfCount = gridSegments / 2 - 10;
+  const denseExtent = surroundings ? 2.3 : 1.5;
+  const groundGeometry = new PlaneGeometry(span * 36, span * 36, gridSegments, gridSegments);
   groundGeometry.rotateX(-Math.PI / 2);
   const positions = groundGeometry.getAttribute("position");
-  const grid = Array.from({ length: 221 }, (_, index) => {
-    if (!hasElevation) return (index / 220 - 0.5) * span * 36;
-    if (index < 10) return -span * (1.5 + 16.5 * ((10 - index) / 10) ** 2);
-    if (index > 210) return span * (1.5 + 16.5 * ((index - 210) / 10) ** 2);
-    return ((index - 110) / 100) * span * 1.5;
+  const grid = Array.from({ length: gridSide }, (_, index) => {
+    if (!hasElevation && !surroundings) return (index / gridSegments - 0.5) * span * 36;
+    if (index < 10) return -span * (denseExtent + (18 - denseExtent) * ((10 - index) / 10) ** 2);
+    if (index > gridSegments - 10)
+      return span * (denseExtent + (18 - denseExtent) * ((index - (gridSegments - 10)) / 10) ** 2);
+    return ((index - gridSegments / 2) / denseHalfCount) * span * denseExtent;
   });
   const gridLocation = (value: number) => {
     let low = 0;
-    let high = 220;
+    let high = gridSegments;
     while (high - low > 1) {
       const middle = Math.floor((low + high) / 2);
       if (value < grid[middle]) high = middle;
@@ -213,10 +273,10 @@ export const createReplayWorld3D = (
     const z = gridLocation(worldZ - center.z);
     const { index: ix, fraction: fx } = x;
     const { index: iz, fraction: fz } = z;
-    const a = positions.getY(iz * 221 + ix);
-    const b = positions.getY((iz + 1) * 221 + ix);
-    const c = positions.getY((iz + 1) * 221 + ix + 1);
-    const d = positions.getY(iz * 221 + ix + 1);
+    const a = positions.getY(iz * gridSide + ix);
+    const b = positions.getY((iz + 1) * gridSide + ix);
+    const c = positions.getY((iz + 1) * gridSide + ix + 1);
+    const d = positions.getY(iz * gridSide + ix + 1);
     return fx + fz <= 1
       ? a + (d - a) * fx + (b - a) * fz
       : c + (b - c) * (1 - fx) + (d - c) * (1 - fz);
@@ -225,13 +285,43 @@ export const createReplayWorld3D = (
     point,
     tangent: trackCurve.getTangentAt(index / (trackSamples.length - 1)),
   }));
+  const terrainOffsets = surroundings?.terrain
+    ? trackSamples
+        .map((point) => {
+          const height = sampleMapTerrain(surroundings.terrain, [point.x, point.z]);
+          return height === undefined
+            ? NaN
+            : height - point.y / (surroundings.metersToWorld * REPLAY_ELEVATION_SCALE_3D);
+        })
+        .filter(Number.isFinite)
+        .sort((a, b) => a - b)
+    : [];
+  const terrainDatum = terrainOffsets[Math.floor(terrainOffsets.length / 2)] ?? 0;
+  const hasMappedTerrain = !!terrainOffsets.length;
   const colors: number[] = [];
   const fieldColor = new Color();
   for (let i = 0; i < positions.count; i++) {
-    const x = grid[i % 221];
-    const z = grid[Math.floor(i / 221)];
+    const x = grid[i % gridSide];
+    const z = grid[Math.floor(i / gridSide)];
     let height = terrainHeight3D(x, z, span) - 0.001;
-    if (hasElevation && Math.abs(x) < span && Math.abs(z) < span) {
+    const mappedHeight = hasMappedTerrain
+      ? sampleMapTerrain(surroundings?.terrain, [x + center.x, z + center.z])
+      : undefined;
+    if (mappedHeight !== undefined && surroundings?.terrain) {
+      const [minX, minZ, maxX, maxZ] = surroundings.terrain.bounds;
+      const edge = Math.min(
+        x + center.x - minX,
+        maxX - x - center.x,
+        z + center.z - minZ,
+        maxZ - z - center.z,
+      );
+      height = MathUtils.lerp(
+        height,
+        (mappedHeight - terrainDatum) * surroundings.metersToWorld * REPLAY_ELEVATION_SCALE_3D,
+        MathUtils.smoothstep(edge, 0, span * 0.03),
+      );
+    }
+    if (mappedHeight === undefined && hasElevation && Math.abs(x) < span && Math.abs(z) < span) {
       const road = projectTrackPosition3D(
         { x: x + center.x, z: z + center.z },
         terrainFrames,
@@ -276,8 +366,8 @@ export const createReplayWorld3D = (
         const maxZ = gridLocation(Math.max(...road.map((p) => p.z))).index;
         for (let z = minZ; z <= maxZ; z++)
           for (let x = minX; x <= maxX; x++) {
-            const a = z * 221 + x;
-            const b = a + 221;
+            const a = z * gridSide + x;
+            const b = a + gridSide;
             const c = b + 1;
             const d = a + 1;
             for (const triangle of [
@@ -304,6 +394,19 @@ export const createReplayWorld3D = (
   ground.position.set(center.x, 0, center.z);
   ground.receiveShadow = true;
   scene.add(ground);
+  const mappedWorld = surroundings
+    ? createMappedWorld3D(
+        scene,
+        surroundings,
+        groundGeometry,
+        center,
+        terrainY,
+        (point) => distanceToTrack3D(point, trackSamples),
+        roadHalfWidth,
+        grid,
+        span,
+      )
+    : null;
 
   const asphalt = new MeshStandardMaterial({ color: 0x343b3b, roughness: 0.9, metalness: 0.06 });
   const white = new MeshStandardMaterial({ color: 0xefeee2, roughness: 0.85 });
@@ -590,6 +693,7 @@ export const createReplayWorld3D = (
   }
   {
     const wallVertices: number[] = [];
+    const shoulderVertices: number[] = [];
     for (let i = 0; i < terrainFrames.length - 1; i++) {
       const progress = (i + 0.5) / (terrainFrames.length - 1);
       if (bridgeRange && progress >= bridgeRange[0] && progress <= bridgeRange[1]) continue;
@@ -606,7 +710,44 @@ export const createReplayWorld3D = (
         const topB = (b.y ?? 0) + roadHeight;
         const bottomA = Math.min(topA, terrainY(a.x, a.z));
         const bottomB = Math.min(topB, terrainY(b.x, b.z));
-        if (Math.max(topA - bottomA, topB - bottomB) < 0.0015) continue;
+        const outsideA = offsetTrackFrame3D(terrainFrames[i], side * (gravelOuter + span * 0.02));
+        const outsideB = offsetTrackFrame3D(
+          terrainFrames[i + 1],
+          side * (gravelOuter + span * 0.02),
+        );
+        if (
+          !retainingWallNeeded3D(
+            [topA - bottomA, topB - bottomB],
+            [topA - terrainY(outsideA.x, outsideA.z), topB - terrainY(outsideB.x, outsideB.z)],
+            surroundings?.metersToWorld,
+          )
+        ) {
+          // A small earth slope meets local ground; construction clearance is not a retaining wall.
+          const outerA = offsetTrackFrame3D(terrainFrames[i], side * (gravelOuter + 0.0035));
+          const outerB = offsetTrackFrame3D(terrainFrames[i + 1], side * (gravelOuter + 0.0035));
+          const bank = [
+            { ...a, y: topA - 0.00005 },
+            { ...b, y: topB - 0.00005 },
+            { ...outerA, y: Math.min(topA - 0.00005, terrainY(outerA.x, outerA.z)) },
+            { ...outerB, y: Math.min(topB - 0.00005, terrainY(outerB.x, outerB.z)) },
+          ];
+          for (const indices of [
+            [0, 1, 2],
+            [2, 1, 3],
+          ]) {
+            const points = indices.map((index) => bank[index]);
+            const checks = [
+              ...points,
+              ...points.map((p, index) => ({
+                x: (p.x + points[(index + 1) % 3].x) / 2,
+                z: (p.z + points[(index + 1) % 3].z) / 2,
+              })),
+            ];
+            if (checks.some((point) => trackDistance(point) < roadHalfWidth + 0.0002)) continue;
+            for (const point of points) shoulderVertices.push(point.x, point.y, point.z);
+          }
+          continue;
+        }
         for (const [point, height] of [
           [a, topA],
           [b, topB],
@@ -626,6 +767,15 @@ export const createReplayWorld3D = (
     const walls = new Mesh(wallGeometry, wallMaterial);
     walls.castShadow = true;
     scene.add(walls);
+    const shoulderGeometry = new BufferGeometry();
+    shoulderGeometry.setAttribute("position", new Float32BufferAttribute(shoulderVertices, 3));
+    shoulderGeometry.computeVertexNormals();
+    const shoulders = new Mesh(
+      shoulderGeometry,
+      new MeshStandardMaterial({ color: 0x68795b, roughness: 1, side: DoubleSide }),
+    );
+    shoulders.receiveShadow = true;
+    scene.add(shoulders);
   }
   const start = trackCurve.getPointAt(0);
   const startDirection = trackCurve.getPointAt(0.002).sub(start).normalize();
@@ -687,6 +837,7 @@ export const createReplayWorld3D = (
     const z = point.z - tangent.x * side * 0.067;
     const angle = Math.atan2(tangent.x, tangent.z) + (side < 0 ? Math.PI : 0);
     if (
+      mapped(x, z) ||
       trackDistance({ x, z }) < 0.046 ||
       facilities.some((f) => Math.hypot(f.x - x, f.z - z) < 0.09)
     )
@@ -717,6 +868,11 @@ export const createReplayWorld3D = (
             side * (pitHalfWidth + PIT_BOX_3D.apronDepth + PIT_BOX_3D.garageDepth / 2),
           );
           return (
+            !overlapsMappedBuilding(
+              garage.x,
+              garage.z,
+              Math.hypot(PIT_BOX_3D.garageDepth, spacing) / 2,
+            ) &&
             mainClear &&
             trackFootprintIsClear3D(
               { x: garage.x, z: garage.z },
@@ -731,23 +887,49 @@ export const createReplayWorld3D = (
         teamColors.length || 10,
       )
     : [];
+  const woodlandRegions = woodland.map((polygon) => ({ polygon, bounds: mapBounds(polygon[0]) }));
+  const woodlandWeights = woodlandRegions.map(
+    (region) =>
+      (region.bounds.maxX - region.bounds.minX) * (region.bounds.maxY - region.bounds.minY),
+  );
+  const woodlandArea = woodlandWeights.reduce((a, b) => a + b, 0);
   let treeIndex = 0;
+  let mappedTreeCount = 0;
   for (let attempt = 0; treeIndex < treeCount && attempt < treeCount * 6; attempt++) {
-    const near = treeIndex < 1100;
-    const x = center.x + (random() - 0.5) * span * (near ? 3.8 : 15);
-    const z = center.z + (random() - 0.5) * span * (near ? 3.8 : 15);
-    const radius = (0.009 + random() * 0.015) * (near ? 1 : 2.8);
+    const mapTree = !!surroundings && woodlandArea > 0 && mappedTreeCount < 1400;
+    const near = mapTree || treeIndex < 1100;
+    let x = center.x + (random() - 0.5) * span * (near ? 3.8 : 15),
+      z = center.z + (random() - 0.5) * span * (near ? 3.8 : 15);
+    if (mapTree) {
+      let pick = random() * woodlandArea,
+        index = 0;
+      while (index < woodlandWeights.length - 1 && pick > woodlandWeights[index])
+        pick -= woodlandWeights[index++];
+      const { bounds } = woodlandRegions[index];
+      x = bounds.minX + random() * (bounds.maxX - bounds.minX);
+      z = bounds.minY + random() * (bounds.maxY - bounds.minY);
+    }
+    const radius =
+      mapTree && surroundings
+        ? (3 + random() * 4) * surroundings.metersToWorld
+        : (0.009 + random() * 0.015) * (near ? 1 : 2.8);
+    if (!mappedTreeAllowed(x, z, radius)) continue;
     if (
       near &&
-      (trackDistance({ x, z }) < 0.041 + radius ||
+      (trackDistance({ x, z }) < (mapTree ? roadHalfWidth + 0.001 : 0.041) + radius ||
         facilities.some((f) => Math.hypot(f.x - x, f.z - z) < 0.085) ||
         pitBoxRow.some((bay) => Math.hypot(bay.point.x - x, bay.point.z - z) < 0.03 + radius))
     )
       continue;
     // Leave open lawns inside the course and break up the forest with meadows.
-    if (Math.hypot(x - center.x, z - center.z) < span * 0.65 && random() < 0.86) continue;
+    if (!mapTree && Math.hypot(x - center.x, z - center.z) < span * 0.65 && random() < 0.86)
+      continue;
     const y = terrainY(x, z);
-    const height = radius * (2.7 + random());
+    const height =
+      mapTree && surroundings
+        ? (8 + random() * 10) * surroundings.metersToWorld
+        : radius * (2.7 + random());
+    if (mapTree) mappedTreeCount++;
     put(trunks, treeIndex, x, y + height * 0.35, z, radius * 0.9, height * 0.7, radius * 0.9);
     for (let lobe = 0; lobe < 3; lobe++) {
       treeColor.setHSL(0.24 + random() * 0.095, 0.4 + random() * 0.15, 0.13 + random() * 0.12);
@@ -1041,6 +1223,8 @@ export const createReplayWorld3D = (
     const x = point.x + tangent.z * (barrierOffset + 0.007);
     const z = point.z - tangent.x * (barrierOffset + 0.007);
     if (
+      overlapsMappedBuilding(x, z, 0.002) ||
+      overlapsMappedRoad(x, z, 0.0015) ||
       trackDistance({ x, z }) < gravelOuter + 0.005 ||
       placedPoles.some((pole) => Math.hypot(pole.x - x, pole.z - z) < 0.065) ||
       (bridge && Math.hypot(x - bridge.center.x, z - bridge.center.z) < bridge.halfLength + 0.025)
@@ -1134,6 +1318,35 @@ export const createReplayWorld3D = (
   scene.add(sky);
   const fog = new Fog(0xc4d4d1, span * 5, span * 14);
   scene.fog = fog;
+  const fogColor = uniform(fog.color),
+    fogNear = uniform(fog.near),
+    fogFar = uniform(fog.far);
+  if (surroundings) {
+    const ring = surroundings.coverage[0];
+    const area = ring.reduce((total, p, i) => {
+      const q = ring[(i + 1) % ring.length];
+      return total + p[0] * q[1] - q[0] * p[1];
+    }, 0);
+    const boundaryFog = Fn(() => {
+      const edgeDistance = float(1e6).toVar();
+      for (let i = 0; i < ring.length; i++) {
+        const a = ring[i],
+          b = ring[(i + 1) % ring.length],
+          dx = b[0] - a[0],
+          dz = b[1] - a[1],
+          length = Math.hypot(dx, dz);
+        if (length < 1e-8) continue;
+        const inward = positionWorld.z
+          .sub(a[1])
+          .mul(dx)
+          .sub(positionWorld.x.sub(a[0]).mul(dz))
+          .mul((area > 0 ? 1 : -1) / length);
+        edgeDistance.assign(min(edgeDistance, inward));
+      }
+      return smoothstep(span * 0.03, span * 0.45, edgeDistance).oneMinus();
+    })();
+    scene.fogNode = fogNode(fogColor, max(boundaryFog, rangeFogFactor(fogNear, fogFar)));
+  }
 
   const rainCount = 1200;
   const rainPositions = new Float32Array(rainCount * 6);
@@ -1160,6 +1373,8 @@ export const createReplayWorld3D = (
     const cameraDistance = camera.position.distanceTo(center);
     fog.near = cameraDistance + span * (environment.rainfall ? 1 : 2);
     fog.far = cameraDistance + span * (environment.rainfall ? 6 : 12);
+    fogNear.value = fog.near;
+    fogFar.value = fog.far;
     const environmentKey = `${environment.localHour.toFixed(3)}:${environment.rainfall}:${environment.cloudCover}`;
     if (environmentKey !== previousEnvironmentKey) {
       previousEnvironmentKey = environmentKey;
@@ -1195,6 +1410,9 @@ export const createReplayWorld3D = (
       hemisphere.color.set(daylight > 0.5 ? 0xc7deee : 0x7496ce);
       renderer.toneMappingExposure = 0.92 + daylight * 0.15;
       asphalt.color.set(rainLevel > 0 ? 0x242f32 : 0x343b3b);
+      // Race circuits remain floodlit at recorded night times, including mapped urban venues.
+      asphalt.emissive.set(0x7c8891);
+      asphalt.emissiveIntensity = (1 - daylight) * 0.15 * (1 - rainLevel * 0.2);
       asphalt.roughness = 0.88 - rainLevel * 0.66;
       asphalt.metalness = 0.06 + rainLevel * 0.26;
       lamp.emissiveIntensity = (1 - daylight) * 6 + rainLevel * 0.3;
@@ -1229,8 +1447,18 @@ export const createReplayWorld3D = (
       array.needsUpdate = true;
     }
   };
+  let terrainMinimum = Infinity;
+  for (let i = 0; i < positions.count; i++)
+    terrainMinimum = Math.min(terrainMinimum, positions.getY(i));
   return {
     pitBoxCount: pitBoxRow.length,
+    mappedBuildingCount: mappedWorld?.buildingCount ?? 0,
+    mappedTreeCount,
+    hasMappedTerrain,
+    terrainMinimum,
+    mapFeatureCount: surroundings
+      ? surroundings.buildings.length + surroundings.roads.length + surroundings.areas.length
+      : 0,
     update,
     dispose: () => {
       grassTexture.dispose();

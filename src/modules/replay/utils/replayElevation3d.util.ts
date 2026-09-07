@@ -1,5 +1,5 @@
 import catalog from "../data/circuitElevations.json";
-import type { TrackPoint3D } from "./track3d.util";
+import { REPLAY_ELEVATION_SCALE_3D, type TrackPoint3D } from "./track3d.util";
 
 export type ReplayBridge3D = {
   upperProgress: number;
@@ -78,7 +78,7 @@ export const elevateReplayTrack3D = (
     );
   if (!Number.isFinite(total) || total <= 0) return { points };
   // Exaggerate relief so grades and the overpass read at miniature overview scale.
-  const scale = (total / elevation.geometry.referencePlanarLengthRaw) * 3;
+  const scale = (total / elevation.geometry.referencePlanarLengthRaw) * REPLAY_ELEVATION_SCALE_3D;
   const crossing = elevation.crossing;
   const upperProgress = crossing?.upperProgress ?? 0;
   const halfLength = 0.045;

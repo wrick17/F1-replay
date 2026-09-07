@@ -1,4 +1,5 @@
 import type { NormalizedPosition } from "../utils/telemetry.util";
+import type { CircuitSurroundings } from "./circuitSurroundings.types";
 import type {
   OpenF1Driver,
   OpenF1Meeting,
@@ -58,6 +59,7 @@ export type TimelineEvent = {
 };
 
 export type TrackViewProps = {
+  surroundings?: CircuitSurroundings | null;
   trackPath: NormalizedPosition[];
   pitLanePath?: NormalizedPosition[];
   driverStates: Record<number, DriverRenderState>;
