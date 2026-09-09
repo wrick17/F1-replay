@@ -18,6 +18,7 @@ import { TelemetryPanel } from "../components/TelemetryPanel";
 import { TrackView } from "../components/TrackView";
 import { WeatherBadge } from "../components/WeatherBadge";
 import { SKIP_INTERVAL_LABELS } from "../constants/replay.constants";
+import { useCarTelemetryData } from "../hooks/useCarTelemetryData";
 import { useCircuitSurroundings } from "../hooks/useCircuitSurroundings";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useReplayController } from "../hooks/useReplayController";
@@ -90,6 +91,12 @@ export const ReplayPage = () => {
     loadedEndMs,
   });
 
+  const carTelemetry = useCarTelemetryData({
+    enabled: Boolean(data && manifest?.car),
+    manifest,
+    currentTimeMs: replay.currentTimeMs,
+  });
+
   useEffect(() => {
     void requestWindow(replay.currentTimeMs);
   }, [replay.currentTimeMs, requestWindow]);
@@ -105,7 +112,11 @@ export const ReplayPage = () => {
       data,
       dataRevision,
       currentTimeMs: replay.currentTimeMs,
+      carTelemetry: carTelemetry.payload,
     });
+  const estimatedPositionCount = Object.values(driverStates).filter(
+    (state) => state.locationStatus === "estimated",
+  ).length;
 
   const surroundings = useCircuitSurroundings(data?.meeting.circuit_key, trackPath);
 
@@ -172,7 +183,6 @@ export const ReplayPage = () => {
   const [shortcutsCollapsed, setShortcutsCollapsed] = useState(true);
   const [telemetryCollapsed, setTelemetryCollapsed] = useState(false);
   const [eventsCollapsed, setEventsCollapsed] = useState(false);
-  const [isCarTelemetryLoading, setIsCarTelemetryLoading] = useState(false);
   const [followDriver, setFollowDriver] = useState<number | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   useEffect(() => {
@@ -184,7 +194,7 @@ export const ReplayPage = () => {
   useEffect(() => {
     setFollowDriver(null);
   }, [data?.session.session_key]);
-  const [wants3D, setWants3D] = useState(false);
+  const [wants3D, setWants3D] = useState(prefs.view === "3d");
   const [sceneReady, setSceneReady] = useState(false);
   const [sceneError, setSceneError] = useState<string | null>(null);
   const [panelsVisible, setPanelsVisible] = useState(true);
@@ -309,7 +319,7 @@ export const ReplayPage = () => {
   const drivers = useMemo(() => data?.drivers ?? [], [data]);
   const selectedDrivers = useMemo(() => [], []);
   const isBlockingLoad = loading && !data;
-  const isHeaderLoading = isReplayHeaderLoading(isBlockingLoad, isCarTelemetryLoading);
+  const isHeaderLoading = isReplayHeaderLoading(isBlockingLoad, carTelemetry.loading);
   const hasStatus = isHeaderLoading || Boolean(error);
   const statusText = isHeaderLoading
     ? "Loading telemetry data…"
@@ -336,7 +346,7 @@ export const ReplayPage = () => {
       sessionStartMs={data?.sessionStartMs ?? 0}
       sessionEndMs={data?.sessionEndMs ?? 0}
       archiveManifest={manifest}
-      onTelemetryLoadingChange={setIsCarTelemetryLoading}
+      telemetry={carTelemetry}
     />
   );
   const eventsPanel = (
@@ -440,7 +450,9 @@ export const ReplayPage = () => {
             onClick={() => {
               setSceneError(null);
               if (!wants3D) setPanelsVisible(true);
-              setWants3D((previous) => !previous);
+              const nextWants3D = !wants3D;
+              prefs.setView(nextWants3D ? "3d" : "2d");
+              setWants3D(nextWants3D);
             }}
           >
             {wants3D && !sceneReady ? (
@@ -492,6 +504,14 @@ export const ReplayPage = () => {
             {isHeaderLoading && <Loader2 size={14} className="animate-spin" />}
             <span className="truncate">{statusText}</span>
           </span>
+          {estimatedPositionCount > 0 && (
+            <output
+              className="rounded-full border border-amber-300/30 bg-amber-300/15 px-3 py-1 text-xs font-medium whitespace-nowrap text-amber-100"
+              title="Raw location data is unavailable here; positions follow recorded lap timing."
+            >
+              {estimatedPositionCount} positions estimated from lap timing
+            </output>
+          )}
         </div>
         {!show3D && <WeatherBadge weather={currentWeather} isLoading={isBlockingLoad} />}
         {show3D ? (

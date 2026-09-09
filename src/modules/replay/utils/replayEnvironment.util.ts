@@ -3,6 +3,7 @@ import type { OpenF1Weather } from "../types/openf1.types";
 export type ReplayEnvironment = {
   localHour: number;
   rainfall: number;
+  humidity: number;
   cloudCover: number;
   windSpeed: number;
   windDirection: number;
@@ -38,6 +39,12 @@ export const getReplayEnvironment = (
       ? local.getUTCHours() + local.getUTCMinutes() / 60 + local.getUTCSeconds() / 3600
       : 12,
     rainfall,
+    humidity:
+      weather && Number.isFinite(weather.humidity)
+        ? Math.max(0, Math.min(100, weather.humidity))
+        : rainfall
+          ? 90
+          : 45,
     // OpenF1 records rain presence, not cloud cover/intensity. Clouds are a visual interpretation.
     cloudCover: rainfall ? 0.95 : 0.18,
     windSpeed:

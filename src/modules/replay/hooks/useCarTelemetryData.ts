@@ -4,7 +4,7 @@ import type { ArchiveManifest } from "../../archive/types";
 import type { CarTelemetryPayload } from "../types/carTelemetry.types";
 import { getReplayWindowIndexes } from "./useReplayData";
 
-type CarTelemetryState = {
+export type CarTelemetryState = {
   payload: CarTelemetryPayload | null;
   loading: boolean;
   error: string | null;

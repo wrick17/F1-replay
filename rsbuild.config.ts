@@ -70,6 +70,12 @@ export default defineConfig({
     },
   },
   server: {
+    ...(process.env.F1_HTTPS_CERT && process.env.F1_HTTPS_KEY
+      ? { https: {
+          cert: fs.readFileSync(process.env.F1_HTTPS_CERT),
+          key: fs.readFileSync(process.env.F1_HTTPS_KEY),
+        } }
+      : {}),
     strictPort: true,
     port: 3001,
     historyApiFallback: true,

@@ -39,7 +39,6 @@ import {
   LineSegments,
   MathUtils,
   Mesh,
-  MeshBasicMaterial,
   MeshBasicNodeMaterial,
   MeshStandardMaterial,
   NearestFilter,
@@ -47,9 +46,11 @@ import {
   Object3D,
   type PerspectiveCamera,
   PlaneGeometry,
+  PointLight,
   RepeatWrapping,
   type Scene,
   SphereGeometry,
+  SpotLight,
   SRGBColorSpace,
   Vector3,
   type WebGPURenderer,
@@ -59,6 +60,7 @@ import { mapBounds, mapContainsPoint, sampleMapTerrain } from "./circuitMapGeome
 import { createMappedWorld3D } from "./mappedWorld3d.util";
 import type { ReplayBridge3D } from "./replayElevation3d.util";
 import type { ReplayEnvironment } from "./replayEnvironment.util";
+import { createReplayAsphaltTexture3D, replayWorldUvs3D } from "./replayMaterials3d.util";
 import {
   buildTrackRibbon3D,
   cornerKerbSections3D,
@@ -85,6 +87,41 @@ const barrierOffset = 0.031 * roadScale;
 const deckHalfWidth = 0.036 * roadScale;
 // Keep clearance around the supplied car model’s 0.00315 wheel span.
 const pitHalfWidth = Math.max(0.0019, 0.006 * roadScale);
+
+export const REPLAY_CLUSTERED_LIGHT_LIMIT_3D = 1024;
+const floodlightPoleHeight3D = 0.02;
+
+export const replayFloodlightHeights3D = (pointY: number, terrainY: number, roadside: boolean) => {
+  const baseY = roadside && Math.abs(terrainY - pointY) < 0.012 ? terrainY : pointY;
+  return { baseY, headY: baseY + (roadside ? floodlightPoleHeight3D : 0.008) };
+};
+
+export const replayFloodlightProgresses3D = (length: number, closed: boolean) => {
+  const count = Math.max(
+    closed ? 96 : 16,
+    Math.ceil(length / (closed ? 0.02 : 0.018)) + (closed ? 0 : 1),
+  );
+  return Array.from({ length: count }, (_, index) => index / (closed ? count : count - 1));
+};
+
+export const replayFloodlightPlacements3D = (
+  curve: CatmullRomCurve3,
+  closed: boolean,
+  blocked: (x: number, z: number) => boolean,
+) =>
+  replayFloodlightProgresses3D(curve.getLength(), closed).map((progress, index) => {
+    const point = curve.getPointAt(progress),
+      tangent = curve.getTangentAt(progress),
+      side = index % 2 ? -1 : 1,
+      offset = barrierOffset + 0.007,
+      fixture = [side, -side]
+        .map((candidateSide) => ({
+          x: point.x + tangent.z * candidateSide * offset,
+          z: point.z - tangent.x * candidateSide * offset,
+        }))
+        .find(({ x, z }) => !blocked(x, z));
+    return { point, tangent, fixture };
+  });
 
 /** Sample the source curve directly so adjoining surfaces share the same height profile. */
 const ribbon = (
@@ -115,6 +152,7 @@ const ribbon = (
   );
   const geometry = new BufferGeometry();
   geometry.setAttribute("position", new Float32BufferAttribute(data.positions, 3));
+  geometry.setAttribute("uv", new Float32BufferAttribute(replayWorldUvs3D(data.positions), 2));
   geometry.setIndex(data.indices);
   if (colors) {
     const values = data.sections.flatMap((section) => {
@@ -141,6 +179,43 @@ export const createReplayInstances3D = (
   return mesh;
 };
 
+const boundsIndex3D = <T>(
+  items: T[],
+  boundsFor: (item: T) => { minX: number; minY: number; maxX: number; maxY: number },
+  cellSize: number,
+) => {
+  const cells = new Map<string, T[]>();
+  for (const item of items) {
+    const bounds = boundsFor(item);
+    for (let x = Math.floor(bounds.minX / cellSize); x <= Math.floor(bounds.maxX / cellSize); x++)
+      for (
+        let z = Math.floor(bounds.minY / cellSize);
+        z <= Math.floor(bounds.maxY / cellSize);
+        z++
+      ) {
+        const key = `${x}:${z}`,
+          cell = cells.get(key) ?? [];
+        cell.push(item);
+        cells.set(key, cell);
+      }
+  }
+  return (x: number, z: number, radius: number) => {
+    const candidates = new Set<T>();
+    for (
+      let cellX = Math.floor((x - radius) / cellSize);
+      cellX <= Math.floor((x + radius) / cellSize);
+      cellX++
+    )
+      for (
+        let cellZ = Math.floor((z - radius) / cellSize);
+        cellZ <= Math.floor((z + radius) / cellSize);
+        cellZ++
+      )
+        for (const item of cells.get(`${cellX}:${cellZ}`) ?? []) candidates.add(item);
+    return candidates;
+  };
+};
+
 export const createReplayWorld3D = (
   scene: Scene,
   center: Vector3,
@@ -157,11 +232,13 @@ export const createReplayWorld3D = (
     surroundings?.buildings.flatMap((building) =>
       building.polygons.map((polygon) => mapBounds(polygon[0])),
     ) ?? [];
+  const indexCellSize = Math.max(span / 32, 1e-6);
+  const nearbyMappedBuildings = boundsIndex3D(mappedBuildings, (bounds) => bounds, indexCellSize);
   const woodland =
     surroundings?.areas.filter((area) => area.kind === "wood").flatMap((area) => area.polygons) ??
     [];
   const overlapsMappedBuilding = (x: number, z: number, radius: number) =>
-    mappedBuildings.some(
+    [...nearbyMappedBuildings(x, z, radius)].some(
       (bounds) =>
         x + radius >= bounds.minX &&
         x - radius <= bounds.maxX &&
@@ -174,8 +251,18 @@ export const createReplayWorld3D = (
       bounds: mapBounds(road.points),
       halfWidth: ((road.widthM ?? 5) * surroundings.metersToWorld) / 2,
     })) ?? [];
+  const nearbyMappedRoads = boundsIndex3D(
+    mappedRoads,
+    (road) => ({
+      minX: road.bounds.minX - road.halfWidth,
+      minY: road.bounds.minY - road.halfWidth,
+      maxX: road.bounds.maxX + road.halfWidth,
+      maxY: road.bounds.maxY + road.halfWidth,
+    }),
+    indexCellSize,
+  );
   const overlapsMappedRoad = (x: number, z: number, radius: number) =>
-    mappedRoads.some(
+    [...nearbyMappedRoads(x, z, radius)].some(
       (road) =>
         x + radius + road.halfWidth >= road.bounds.minX &&
         x - radius - road.halfWidth <= road.bounds.maxX &&
@@ -233,6 +320,13 @@ export const createReplayWorld3D = (
   };
   const trackDistance = (point: TrackPoint3D) =>
     Math.min(mainTrackDistance(point), distanceToTrack3D(point, pitSamples, false));
+  const blockedLight = (x: number, z: number) => overlapsMappedBuilding(x, z, 0.002);
+  const poleFrames = [
+    ...replayFloodlightPlacements3D(trackCurve, true, blockedLight),
+    ...(pitCurve ? replayFloodlightPlacements3D(pitCurve, false, blockedLight) : []),
+  ];
+  if (poleFrames.length > REPLAY_CLUSTERED_LIGHT_LIMIT_3D)
+    throw new Error(`Circuit needs ${poleFrames.length} floodlights; clustered limit is 1024.`);
   const textureCanvas = document.createElement("canvas");
   textureCanvas.width = textureCanvas.height = 128;
   const context = textureCanvas.getContext("2d");
@@ -419,15 +513,30 @@ export const createReplayWorld3D = (
         roadHalfWidth,
         grid,
         span,
+        Math.min(256, Math.max(0, REPLAY_CLUSTERED_LIGHT_LIMIT_3D - poleFrames.length)),
+        [trackSamples, pitSamples],
       )
     : null;
 
-  const asphalt = new MeshStandardMaterial({ color: 0x343b3b, roughness: 0.9, metalness: 0.06 });
+  const asphaltTexture = createReplayAsphaltTexture3D();
+  const asphalt = new MeshStandardMaterial({
+    color: 0x343b3b,
+    roughness: 0.9,
+    metalness: 0.06,
+    bumpMap: asphaltTexture,
+    bumpScale: 0.000025,
+  });
   const white = new MeshStandardMaterial({ color: 0xefeee2, roughness: 0.85 });
   const red = new Color(0xb61c24);
   const concrete = new MeshStandardMaterial({ color: 0xa6aaa2, roughness: 0.94 });
   const metal = new MeshStandardMaterial({ color: 0xc7d0ce, roughness: 0.43, metalness: 0.65 });
-  const glass = new MeshStandardMaterial({ color: 0x25414b, roughness: 0.23, metalness: 0.55 });
+  const glass = new MeshStandardMaterial({
+    color: 0x25414b,
+    emissive: 0x4f87a6,
+    emissiveIntensity: 0,
+    roughness: 0.23,
+    metalness: 0.55,
+  });
   const roof = new MeshStandardMaterial({ color: 0xcfd7d4, roughness: 0.55, metalness: 0.35 });
   const lamp = new MeshStandardMaterial({
     color: 0xffffe7,
@@ -1200,65 +1309,62 @@ export const createReplayWorld3D = (
     paint.renderOrder = 3;
     scene.add(paint);
   }
-  const poleCount = 56;
-  const poles = makeInstances(new CylinderGeometry(0.00065, 0.001, 0.057, 5), metal, poleCount);
-  const lamps = makeInstances(boxGeometry, lamp, poleCount);
-  const poolCanvas = document.createElement("canvas");
-  poolCanvas.width = poolCanvas.height = 64;
-  const poolContext = poolCanvas.getContext("2d");
-  if (!poolContext) throw new Error("Canvas textures are unavailable.");
-  const gradient = poolContext.createRadialGradient(32, 32, 0, 32, 32, 32);
-  gradient.addColorStop(0, "rgba(255,255,255,1)");
-  gradient.addColorStop(0.35, "rgba(255,255,255,0.45)");
-  gradient.addColorStop(1, "rgba(255,255,255,0)");
-  poolContext.fillStyle = gradient;
-  poolContext.fillRect(0, 0, 64, 64);
-  const poolTexture = new CanvasTexture(poolCanvas);
-  const lightPools = new InstancedMesh(
-    new PlaneGeometry(0.07, 0.07),
-    new MeshBasicMaterial({
-      color: 0xffe8b0,
-      map: poolTexture,
-      transparent: true,
-      opacity: 0,
-      depthWrite: false,
-    }),
+  const poleCount = poleFrames.length;
+  const floodlightPose = ({ point, fixture }: (typeof poleFrames)[number]) => {
+    const x = fixture?.x ?? point.x,
+      z = fixture?.z ?? point.z,
+      height = replayFloodlightHeights3D(point.y, terrainY(x, z), !!fixture);
+    return { x, z, ...height };
+  };
+  const poles = makeInstances(
+    new CylinderGeometry(0.00018, 0.00028, floodlightPoleHeight3D, 5),
+    metal,
     poleCount,
   );
-  lightPools.geometry.rotateX(-Math.PI / 2);
-  scene.add(lightPools);
-  let poleIndex = 0;
-  const placedPoles: TrackPoint3D[] = [];
-  for (let i = 0; i < poleCount; i++) {
-    const point = trackCurve.getPointAt(i / poleCount);
-    const tangent = trackCurve.getTangentAt(i / poleCount);
-    const x = point.x + tangent.z * (barrierOffset + 0.007);
-    const z = point.z - tangent.x * (barrierOffset + 0.007);
-    if (
-      overlapsMappedBuilding(x, z, 0.002) ||
-      overlapsMappedRoad(x, z, 0.0015) ||
-      trackDistance({ x, z }) < gravelOuter + 0.005 ||
-      placedPoles.some((pole) => Math.hypot(pole.x - x, pole.z - z) < 0.065) ||
-      (bridge && Math.hypot(x - bridge.center.x, z - bridge.center.z) < bridge.halfLength + 0.025)
-    )
-      continue;
-    placedPoles.push({ x, z });
-    put(poles, poleIndex, x, terrainY(x, z) + 0.0285, z, 1, 1, 1);
+  const lamps = makeInstances(boxGeometry, lamp, poleCount);
+  poles.castShadow = false;
+  lamps.castShadow = false;
+  const trackLights: PointLight[] = [];
+  let poleIndex = 0,
+    lightIndex = 0;
+  for (const frame of poleFrames) {
+    const { tangent, fixture } = frame;
+    const { x, z, baseY, headY } = floodlightPose(frame);
+    if (fixture)
+      put(poles, poleIndex++, fixture.x, baseY + floodlightPoleHeight3D / 2, fixture.z, 1, 1, 1);
     put(
       lamps,
-      poleIndex,
+      lightIndex,
       x,
-      terrainY(x, z) + 0.057,
+      headY,
       z,
-      0.009,
-      0.002,
-      0.004,
+      fixture ? 0.001 : 0.0012,
+      fixture ? 0.00024 : 0.00022,
+      fixture ? 0.0004 : 0.00035,
       Math.atan2(tangent.x, tangent.z),
     );
-    put(lightPools, poleIndex, point.x, point.y + 0.0018, point.z, 1, 1, 1);
-    poleIndex++;
+    const pointLight = new PointLight(0xffe4a3, 0, 0.055, 2);
+    pointLight.position.set(x, headY, z);
+    pointLight.userData.nightIntensity = 0.009;
+    trackLights.push(pointLight);
+    lightIndex++;
   }
-  poles.count = lamps.count = lightPools.count = poleIndex;
+  poles.count = poleIndex;
+  lamps.count = lightIndex;
+  scene.add(...trackLights);
+
+  const shadowLights = Array.from({ length: 2 }, () => {
+    const light = new SpotLight(0xffe4a3, 0, 0.065, Math.PI / 3.2, 0.55, 2);
+    light.castShadow = true;
+    light.shadow.mapSize.set(256, 256);
+    light.shadow.camera.near = 0.002;
+    light.shadow.camera.far = 0.065;
+    light.shadow.bias = -0.00001;
+    light.shadow.normalBias = 0.00008;
+    light.shadow.autoUpdate = false;
+    scene.add(light, light.target);
+    return light;
+  });
 
   const hemisphere = new HemisphereLight(0xc4deed, 0x607044, 1.6);
   scene.add(hemisphere);
@@ -1374,11 +1480,13 @@ export const createReplayWorld3D = (
   const rain = new LineSegments(rainGeometry, rainMaterial);
   rain.frustumCulled = false;
   scene.add(rain);
-  let previousEnvironmentKey = "";
+  let previousEnvironmentKey = "",
+    floodlightLevel = 0;
   const update = (
     environment: ReplayEnvironment,
     camera: PerspectiveCamera,
     renderer: WebGPURenderer,
+    focus: Vector3 = camera.position,
   ) => {
     sky.position.copy(camera.position);
     // Fog begins beyond the entire circuit even when overview zooms out.
@@ -1393,6 +1501,7 @@ export const createReplayWorld3D = (
       const angle = ((environment.localHour - 6) / 24) * Math.PI * 2;
       const elevation = Math.sin(angle);
       const daylight = MathUtils.smoothstep(elevation, -0.12, 0.22);
+      scene.environmentIntensity = 0.12 + daylight * 0.38;
       const sunset = (1 - MathUtils.smoothstep(Math.abs(elevation), 0.02, 0.42)) * daylight;
       const rainLevel = environment.rainfall;
       const horizon = new Color(0x0c182c)
@@ -1417,22 +1526,59 @@ export const createReplayWorld3D = (
       scene.background = horizon;
       sun.position.copy(center).addScaledVector(sunDirection, span * 4);
       sun.color.set(daylight < 0.2 ? 0xbccfea : sunset > 0.2 ? 0xffc786 : 0xfff0d7);
-      sun.intensity = (0.55 + daylight * 2.6) * (1 - rainLevel * 0.72);
-      hemisphere.intensity = 1 + daylight * 0.95;
+      sun.intensity = (0.35 + daylight * 2.8) * (1 - rainLevel * 0.72);
+      hemisphere.intensity = 0.7 + daylight * 1.25;
       hemisphere.color.set(daylight > 0.5 ? 0xc7deee : 0x7496ce);
       renderer.toneMappingExposure = 0.92 + daylight * 0.15;
       asphalt.color.set(rainLevel > 0 ? 0x242f32 : 0x343b3b);
       // Race circuits remain floodlit at recorded night times, including mapped urban venues.
       asphalt.emissive.set(0x7c8891);
-      asphalt.emissiveIntensity = (1 - daylight) * 0.15 * (1 - rainLevel * 0.2);
+      asphalt.emissiveIntensity = (1 - daylight) * 0.08 * (1 - rainLevel * 0.2);
       asphalt.roughness = 0.88 - rainLevel * 0.66;
       asphalt.metalness = 0.06 + rainLevel * 0.26;
+      marking.emissive.set(0xe5f2ff);
+      marking.emissiveIntensity = (1 - daylight) * 0.7;
+      curbMaterial.emissive.set(0xe5f2ff);
+      curbMaterial.emissiveIntensity = (1 - daylight) * 0.38;
       lamp.emissiveIntensity = (1 - daylight) * 6 + rainLevel * 0.3;
-      (lightPools.material as MeshBasicMaterial).opacity = (1 - daylight) * 0.12;
+      floodlightLevel = (1 - daylight) * (1 - rainLevel * 0.12);
+      glass.emissiveIntensity = (1 - daylight) * 0.6;
+      if (mappedWorld) {
+        mappedWorld.buildingMaterial.emissiveIntensity = (1 - daylight) * 0.18;
+        if (mappedWorld.windowMaterial) mappedWorld.windowMaterial.opacity = (1 - daylight) * 0.92;
+        if (mappedWorld.cityLampMaterial)
+          mappedWorld.cityLampMaterial.emissiveIntensity = (1 - daylight) * 5;
+        for (const light of mappedWorld.cityLights)
+          light.intensity = floodlightLevel * (light.userData.nightIntensity as number);
+      }
       rain.visible = rainLevel > 0;
       rainMaterial.opacity = rainLevel * 0.45;
       rainGeometry.setDrawRange(0, Math.ceil(rainCount * rainLevel) * 2);
     }
+    for (const light of trackLights)
+      light.intensity = floodlightLevel * (light.userData.nightIntensity as number);
+    const nearestLights = poleFrames
+      .map((frame, frameIndex) => ({
+        frame,
+        frameIndex,
+        distance: Math.hypot(frame.point.x - focus.x, frame.point.z - focus.z),
+      }))
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, shadowLights.length);
+    shadowLights.forEach((light, index) => {
+      const nearest = nearestLights[index];
+      if (!nearest) {
+        light.intensity = 0;
+        return;
+      }
+      const { frame, frameIndex } = nearest;
+      const { x, z, headY } = floodlightPose(frame);
+      trackLights[frameIndex].intensity = 0;
+      light.position.set(x, headY, z);
+      light.target.position.copy(frame.point);
+      light.intensity = floodlightLevel * 0.009;
+      light.shadow.needsUpdate = floodlightLevel > 0.01;
+    });
     const time = (environment.timeMs / 1000) % 1_000_000;
     const windAngle = MathUtils.degToRad(environment.windDirection);
     const drift = Math.min(environment.windSpeed, 30) * 0.0008;
@@ -1466,6 +1612,8 @@ export const createReplayWorld3D = (
     pitBoxCount: pitBoxRow.length,
     mappedBuildingCount: mappedWorld?.buildingCount ?? 0,
     mappedTreeCount,
+    clusteredLightCount: trackLights.length + (mappedWorld?.cityLights.length ?? 0),
+    volumetricLights: shadowLights,
     hasMappedTerrain,
     terrainMinimum,
     mapFeatureCount: surroundings
@@ -1474,8 +1622,12 @@ export const createReplayWorld3D = (
     update,
     dispose: () => {
       grassTexture.dispose();
-      poolTexture.dispose();
+      asphaltTexture.dispose();
       checkerTexture.dispose();
+      for (const light of trackLights) light.dispose();
+      for (const light of mappedWorld?.cityLights ?? []) light.dispose();
+      for (const light of shadowLights) light.dispose();
+      mappedWorld?.dispose();
       sun.shadow.dispose();
     },
   };

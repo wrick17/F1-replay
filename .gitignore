@@ -6,3 +6,4 @@ workers/openf1-proxy/.wrangler/
 workers/openf1-proxy/.dev.vars
 *.log
 .DS_Store
+.local/

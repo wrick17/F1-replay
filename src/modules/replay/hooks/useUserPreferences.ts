@@ -8,6 +8,7 @@ type UserPreferences = {
   skipIntervalMs: number;
   radioEnabled: boolean;
   timelineExpanded: boolean;
+  view: "2d" | "3d";
 };
 
 const DEFAULTS: UserPreferences = {
@@ -15,6 +16,7 @@ const DEFAULTS: UserPreferences = {
   skipIntervalMs: 10_000,
   radioEnabled: true,
   timelineExpanded: false,
+  view: "2d",
 };
 
 const loadPrefs = (): UserPreferences => {
@@ -22,7 +24,8 @@ const loadPrefs = (): UserPreferences => {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULTS;
     const parsed = JSON.parse(raw) as Partial<UserPreferences>;
-    return { ...DEFAULTS, ...parsed };
+    const view = parsed.view === "3d" || parsed.view === "2d" ? parsed.view : DEFAULTS.view;
+    return { ...DEFAULTS, ...parsed, view };
   } catch {
     return DEFAULTS;
   }
@@ -51,6 +54,8 @@ export const useUserPreferences = () => {
   }, []);
 
   const setSpeed = useCallback((speed: number) => update({ speed }), [update]);
+
+  const setView = useCallback((view: UserPreferences["view"]) => update({ view }), [update]);
 
   const cycleSpeed = useCallback(() => {
     const currentIndex = SPEED_OPTIONS.indexOf(prefsRef.current.speed);
@@ -85,7 +90,9 @@ export const useUserPreferences = () => {
     skipIntervalMs: prefs.skipIntervalMs,
     radioEnabled: prefs.radioEnabled,
     timelineExpanded: prefs.timelineExpanded,
+    view: prefs.view,
     setSpeed,
+    setView,
     cycleSpeed,
     setSkipIntervalMs,
     cycleSkipInterval,

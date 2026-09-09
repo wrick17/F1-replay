@@ -1,20 +1,30 @@
 import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CircuitSurroundings } from "../types/circuitSurroundings.types";
 import type { TrackViewProps } from "../types/replay.types";
-import {
-  MAP_COLORS,
-  mapBounds,
-  mapPolygonPath,
-  mapScreenBounds2D,
-} from "../utils/circuitMapGeometry.util";
+import { mapBounds, mapPolygonPath, mapScreenBounds2D } from "../utils/circuitMapGeometry.util";
 import { computeBounds, toPoint2D, VIEWBOX_PADDING } from "../utils/geometry.util";
+
+const MAP_COLORS_2D = {
+  grass: "#26352f",
+  wood: "#1c2a28",
+  water: "#143247",
+  paved: "#252c35",
+  parking: "#2d333a",
+} satisfies Record<CircuitSurroundings["areas"][number]["kind"], string>;
+
+const locationNote = (status: TrackViewProps["driverStates"][number]["locationStatus"]) =>
+  status === "estimated"
+    ? "Estimated from lap timing"
+    : status === "stale"
+      ? "Last known location"
+      : "";
 
 const TrackBase = memo(({ pathD, pitD }: { pathD: string; pitD: string }) => (
   <g fill="none" strokeLinecap="round" strokeLinejoin="round">
-    <path d={pathD} stroke="#151e2a" strokeWidth="15" />
-    <path d={pathD} stroke="#8d9aaa" strokeWidth="5" />
+    <path d={pathD} stroke="#080d12" strokeWidth="15" />
+    <path d={pathD} stroke="#d04444" strokeWidth="5" />
     {pitD && (
-      <path data-pit-lane="true" d={pitD} stroke="#38bdf8" strokeWidth="4" strokeDasharray="9 5">
+      <path data-pit-lane="true" d={pitD} stroke="#497b90" strokeWidth="4" strokeDasharray="9 5">
         <title>Pit lane</title>
       </path>
     )}
@@ -46,7 +56,7 @@ const MapBackdrop = memo(
           surroundings.buildings.length + surroundings.roads.length + surroundings.areas.length
         }
       >
-        <path d={mapPolygonPath(surroundings.coverage)} fill="#192c29" fillRule="evenodd" />
+        <path d={mapPolygonPath(surroundings.coverage)} fill="#0b1217" fillRule="evenodd" />
         {surroundings.areas.map((area) =>
           area.polygons
             .filter((polygon) => visible(polygon[0]))
@@ -54,7 +64,7 @@ const MapBackdrop = memo(
               <path
                 key={`${area.id}-${index}`}
                 d={mapPolygonPath(polygon)}
-                fill={MAP_COLORS[area.kind]}
+                fill={MAP_COLORS_2D[area.kind]}
                 fillOpacity={area.kind === "water" ? 0.75 : 0.35}
                 fillRule="evenodd"
               />
@@ -72,7 +82,7 @@ const MapBackdrop = memo(
                       `${i ? "L" : "M"}${(point[0] * 1000).toFixed(2)},${(point[1] * 1000).toFixed(2)}`,
                   )
                   .join(" ")}
-                stroke={road.kind === "footway" || road.kind === "path" ? "#526966" : "#60716f"}
+                stroke={road.kind === "footway" || road.kind === "path" ? "#2b3c3d" : "#3b4a53"}
                 strokeWidth={Math.max(0.8, (road.widthM ?? 5) * surroundings.metersToWorld * 1000)}
                 opacity={road.tunnel ? 0.35 : 0.85}
               />
@@ -85,8 +95,8 @@ const MapBackdrop = memo(
               <path
                 key={`${building.id}-${index}`}
                 d={mapPolygonPath(polygon)}
-                fill="#788a83"
-                stroke="#a2b2a8"
+                fill="#222b33"
+                stroke="#46545d"
                 strokeWidth="0.65"
                 fillRule="evenodd"
               >
@@ -201,7 +211,7 @@ export const TrackView = ({
     );
   const active = entries.find((entry) => entry.driverNumber === activeDriver);
   const labelText = active
-    ? `P${active.state.racePosition ?? "–"} ${active.fullName} · ${driverTeams[active.driverNumber]?.name ?? ""}${active.state.locationStatus === "stale" ? " · Last known location" : ""}`
+    ? `P${active.state.racePosition ?? "–"} ${active.fullName} · ${driverTeams[active.driverNumber]?.name ?? ""}${locationNote(active.state.locationStatus) ? ` · ${locationNote(active.state.locationStatus)}` : ""}`
     : "";
   const labelWidth = Math.min(
     Math.max(labelText.length * 6.5 + 24, 110),
@@ -272,14 +282,14 @@ export const TrackView = ({
               setFocusedDriver(entry.driverNumber);
             }
           }}
-          aria-label={`Position ${entry.state.racePosition ?? "unknown"}, ${entry.fullName}, ${driverTeams[entry.driverNumber]?.name ?? ""}${entry.state.locationStatus === "stale" ? ", last known location" : ""}`}
+          aria-label={`Position ${entry.state.racePosition ?? "unknown"}, ${entry.fullName}, ${driverTeams[entry.driverNumber]?.name ?? ""}${locationNote(entry.state.locationStatus) ? `, ${locationNote(entry.state.locationStatus).toLowerCase()}` : ""}`}
           onFocus={() => setFocusedDriver(entry.driverNumber)}
           onBlur={() => setFocusedDriver(null)}
           onMouseEnter={() => setHoveredDriver(entry.driverNumber)}
           onMouseLeave={() => setHoveredDriver(null)}
           style={{ outline: "none" }}
         >
-          <title>{`${entry.fullName}${entry.state.locationStatus === "stale" ? " · Last known location" : ""}`}</title>
+          <title>{`${entry.fullName}${locationNote(entry.state.locationStatus) ? ` · ${locationNote(entry.state.locationStatus)}` : ""}`}</title>
           <circle
             r={entry.selected || entry.driverNumber === focusedDriver ? 9 : 7}
             fill={entry.state.color}

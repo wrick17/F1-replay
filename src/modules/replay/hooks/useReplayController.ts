@@ -71,6 +71,7 @@ export const useReplayController = ({
       const delta = timestamp - lastFrameRef.current;
       lastFrameRef.current = timestamp;
       const next = currentTimeMsRef.current + delta * speedRef.current;
+      currentTimeMsRef.current = Math.min(next, endTimeMsRef.current);
       if (next >= endTimeMsRef.current) {
         setCurrentTimeMs(endTimeMsRef.current);
         stop();

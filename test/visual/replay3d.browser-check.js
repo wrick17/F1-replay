@@ -30,6 +30,11 @@ async function checkReplay3D() {
   await waitFor(() => mode() === "3d", "3D did not become ready");
   check(document.querySelectorAll(".replay-spatial canvas").length === 1, "Expected one 3D canvas");
   await waitFor(() => sceneFrames() > 0, "3D did not render its first frame");
+  const firstCanvas = document.querySelector(".replay-spatial canvas");
+  check(Number(firstCanvas.dataset.drawCalls) > 0, "First 3D frame contained no draw calls");
+  check(Number(firstCanvas.dataset.triangles) > 0, "First 3D frame contained no geometry");
+  check(firstCanvas.width % 32 === 0, "3D drawing buffer width was not cluster aligned");
+  check(firstCanvas.height % 32 === 0, "3D drawing buffer height was not cluster aligned");
   // WebGPU validation errors arrive asynchronously after a submitted frame.
   await new Promise((resolve) => setTimeout(resolve, 2000));
   check(mode() === "3d" && document.querySelector(".replay-spatial canvas"), "3D failed after GPU validation");

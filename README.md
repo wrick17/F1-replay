@@ -41,7 +41,7 @@ Set `RSBUILD_ARCHIVE_URL` to use another archive root. Production defaults to `h
 
 ## 3D replay
 
-Replays open in 2D. The button beside the logo switches views without resetting playback; its label shows the current view. In 3D, drag to orbit, right-drag to pan, scroll to zoom, and click a car or timing row to follow a driver. Reset fits the circuit between the HUD panels using the 2D map's orientation. Manual camera changes survive view switches. Telemetry and race events are available in the right-hand HUD.
+Replays remember the last selected 2D or 3D view, defaulting to 2D on a first visit. The button beside the logo switches views without resetting playback; its label shows the current view. In 3D, drag to orbit, right-drag to pan, scroll to zoom, and click a car or timing row to follow a driver. Reset fits the circuit between the HUD panels using the 2D map's orientation. Manual camera changes survive view switches. Telemetry and race events are available in the right-hand HUD.
 
 The world follows the recorded weather and race-local time at the replay cursor, including backward seeks. Red-and-white kerbs follow detected corner sections; straights retain white edge lines. Kerb placement remains procedural. Mapped surroundings use current OpenStreetMap features for every replay year; missing building heights and individual trees are estimated.
 
@@ -49,7 +49,7 @@ Road width, car scale, kerb detection, prop spacing, and terrain clearance use t
 
 Circuit elevation profiles are derived from archived location data and matched against the replay's ordered track layout. The terrain and pit lane follow the road height. Relief uses a 1.65× vertical scale for readability; Suzuka also has an open underpass with additional bridge clearance for the miniature cars. Source provenance and coverage are recorded in `src/modules/replay/data/circuitElevations.json`.
 
-Both views share circuit map bundles served from `public/circuits/`. Building footprints, roads, parking, water, and vegetation areas are aligned to the archived circuit with a measured similarity fit. The loader validates coordinates and ordered track anchors before displaying a bundle. Cars keep their recorded positions. Attribution and data licences accompany the bundles.
+Both views share circuit map bundles served from `public/circuits/`. Building footprints, roads, parking, water, and vegetation areas are aligned to the archived circuit with a measured similarity fit. The loader validates coordinates and ordered track anchors before displaying a bundle. Cars interpolate recorded GPS using telemetry-informed motion. When GPS is missing, bounded estimates follow recorded lap timing and are clearly labelled; unsupported gaps retain the last known position. Attribution and data licences accompany the bundles.
 
 The 2D map uses SVG vectors; the 3D map uses terrain-conforming vector geometry, with nearby buildings extruded and distant footprints retained. Camera limits keep exploration near the circuit, and fog softens the outer coverage boundary. No map provider requests occur during playback.
 

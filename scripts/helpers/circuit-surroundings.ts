@@ -1,5 +1,6 @@
 import { rotateTrackPoint } from "../../src/modules/replay/services/trackBuilder.service";
 import { normalizePositions } from "../../src/modules/replay/utils/telemetry.util";
+import { mapContainsPoint } from "../../src/modules/replay/utils/circuitMapGeometry.util";
 
 export type GeoPoint = { lat: number; lon: number };
 export type Point2 = [number, number];
@@ -13,6 +14,92 @@ export type SimilarityFit = {
   progressShift: number;
   rmsMeters: number;
   maxErrorMeters: number;
+};
+
+/** Close directed OSM coastlines against the map bounds. OSM keeps seawater on their right. */
+export const coastlineWaterPolygons = (
+  lines: Point2[][],
+  [minX, minY, maxX, maxY]: [number, number, number, number],
+) => {
+  const same = (a: Point2, b: Point2) => a[0] === b[0] && a[1] === b[1];
+  const unused = lines.filter((line) => line.length >= 2).map((line) => [...line]);
+  const chains: Point2[][] = [];
+  while (unused.length) {
+    const chain = unused.shift()!;
+    while (true) {
+      const next = unused.findIndex((line) => same(chain.at(-1)!, line[0]));
+      if (next >= 0) {
+        chain.push(...unused.splice(next, 1)[0].slice(1));
+        continue;
+      }
+      const previous = unused.findIndex((line) => same(line.at(-1)!, chain[0]));
+      if (previous < 0) break;
+      chain.unshift(...unused.splice(previous, 1)[0].slice(0, -1));
+    }
+    chains.push(chain);
+  }
+
+  const width = maxX - minX;
+  const height = maxY - minY;
+  const perimeter = 2 * (width + height);
+  const boundaryPosition = ([x, y]: Point2) => {
+    const epsilon = Math.max(width, height) * 1e-6;
+    if (Math.abs(y - minY) <= epsilon) return x - minX;
+    if (Math.abs(x - maxX) <= epsilon) return width + y - minY;
+    if (Math.abs(y - maxY) <= epsilon) return 2 * width + height - x + minX;
+    if (Math.abs(x - minX) <= epsilon) return 2 * width + 2 * height - y + minY;
+    return undefined;
+  };
+  const boundaryPoint = (position: number): Point2 => {
+    const value = ((position % perimeter) + perimeter) % perimeter;
+    if (value <= width) return [minX + value, minY];
+    if (value <= width + height) return [maxX, minY + value - width];
+    if (value <= 2 * width + height) return [maxX - value + width + height, maxY];
+    return [minX, maxY - value + 2 * width + height];
+  };
+  const counterClockwiseBoundary = (from: Point2, to: Point2) => {
+    const start = boundaryPosition(from);
+    const finish = boundaryPosition(to);
+    if (start === undefined || finish === undefined) return [];
+    const distance = ((finish - start) % perimeter + perimeter) % perimeter;
+    const points = [from];
+    const corners = [width, width + height, 2 * width + height, perimeter]
+      .map((position) => ({
+        position,
+        offset: ((position - start) % perimeter + perimeter) % perimeter,
+      }))
+      .filter(({ offset }) => offset > 0 && offset < distance)
+      .sort((a, b) => a.offset - b.offset);
+    for (const corner of corners) points.push(boundaryPoint(corner.position));
+    points.push(to);
+    return points;
+  };
+  const signedArea = (ring: Point2[]) =>
+    ring.reduce((sum, point, index) => {
+      const next = ring[(index + 1) % ring.length];
+      return sum + point[0] * next[1] - next[0] * point[1];
+    }, 0) / 2;
+  const islands = chains.filter((line) => same(line[0], line.at(-1)!));
+  const coasts = chains.filter((line) => !same(line[0], line.at(-1)!));
+  const polygons = coasts.flatMap((line) => {
+    const ccw = counterClockwiseBoundary(line.at(-1)!, line[0]);
+    const clockwise = [...counterClockwiseBoundary(line[0], line.at(-1)!)].reverse();
+    if (!ccw.length || !clockwise.length)
+      throw new Error("Coastline chain has an endpoint inside the map bounds");
+    const first = [...line, ...ccw.slice(1)];
+    const second = [...line, ...clockwise.slice(1)];
+    const outer = signedArea(first) < signedArea(second) ? first : second;
+    return [[outer, ...islands.filter((island) => mapContainsPoint(island[0], [outer]))]];
+  });
+  if (!polygons.length && islands.length)
+    polygons.push([[
+      [minX, minY],
+      [maxX, minY],
+      [maxX, maxY],
+      [minX, maxY],
+      [minX, minY],
+    ], ...islands]);
+  return polygons;
 };
 
 const distance = (a: Point2, b: Point2) => Math.hypot(b[0] - a[0], b[1] - a[1]);

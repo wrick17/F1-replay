@@ -5,6 +5,7 @@ import elevationCatalog from "../src/modules/replay/data/circuitElevations.json"
 import type { CircuitSurroundings, MapPoint, MapPolygon } from "../src/modules/replay/types/circuitSurroundings.types";
 import {
   createGeoToWorld,
+  coastlineWaterPolygons,
   fitGeoLineToArchive,
   fitGeoOpenLineToArchive,
   type GeoPoint,
@@ -165,6 +166,7 @@ const overpassQuery = ([south, west, north, east]: Bounds) => `[out:json][timeou
   relation["building"](${south},${west},${north},${east});
   way["highway"](${south},${west},${north},${east});
   way["natural"~"^(water|wood|grassland)$"](${south},${west},${north},${east});
+  way["natural"="coastline"](${south},${west},${north},${east});
   relation["natural"~"^(water|wood|grassland)$"](${south},${west},${north},${east});
   way["landuse"~"^(forest|grass|meadow|recreation_ground)$"](${south},${west},${north},${east});
   relation["landuse"~"^(forest|grass|meadow|recreation_ground)$"](${south},${west},${north},${east});
@@ -741,6 +743,13 @@ for (const element of featureElements) {
   const shape = polygons(element).filter((polygon) => intersectsCoverage(polygon.flat()));
   if (shape.length) areas.push({ id: id(element), polygons: shape, kind });
 }
+const sea = coastlineWaterPolygons(
+  osm.elements
+    .filter((element) => element.type === "way" && element.tags?.natural === "coastline")
+    .flatMap((element) => clipLine(mapLine(element.geometry ?? []))),
+  [coverageBounds[1], coverageBounds[0], coverageBounds[3], coverageBounds[2]],
+);
+if (sea.length) areas.push({ id: "derived/coastline", polygons: sea, kind: "water" });
 
 const coverage: MapPolygon = [[
   [coverageBounds[1], coverageBounds[0]],

@@ -1,9 +1,12 @@
 import { expect, test } from "bun:test";
 import { Mesh, MeshStandardMaterial, PlaneGeometry, Scene } from "three/webgpu";
 import type { CircuitSurroundings, MapPolygon } from "../../src/modules/replay/types/circuitSurroundings.types";
-import { mapContainsPoint } from "../../src/modules/replay/utils/circuitMapGeometry.util";
+import { MAP_COLORS, mapContainsPoint } from "../../src/modules/replay/utils/circuitMapGeometry.util";
 import { createMappedGround3D } from "../../src/modules/replay/utils/mappedGround3d.util";
-import { createMappedWorld3D } from "../../src/modules/replay/utils/mappedWorld3d.util";
+import {
+  createMappedWorld3D,
+  mappedBuildingBlocksCircuit3D,
+} from "../../src/modules/replay/utils/mappedWorld3d.util";
 
 const fixture = () => {
   const grid = [0, .25, 1], center = {x: 2, z: 3};
@@ -64,24 +67,111 @@ test("mapped world suppresses the matched raceway and tunnels and needs no raste
  const scene=new Scene();
  expect(createMappedWorld3D(scene,data,ground,center,height,()=>0,.01,grid,1).groundTriangleCount).toBe(0);
  data.roads.push({id:"local",kind:"road",points:[[2.2,3.7],[2.8,3.7]],widthM:5});
- expect(createMappedWorld3D(scene,data,ground,center,height,()=>0,.01,grid,1).groundTriangleCount).toBeGreaterThan(0);
- expect(scene.children.length).toBeLessThan(5);ground.dispose();
+ const mapped=createMappedWorld3D(scene,data,ground,center,height,()=>1,.01,grid,1);
+ expect(mapped.groundTriangleCount).toBeGreaterThan(0);expect(mapped.streetLightCount).toBeGreaterThan(0);
+ expect(mapped.cityLights).toHaveLength(mapped.streetLightCount);
+ expect(mapped.cityLights.every(light=>light.distance>0&&light.intensity===0)).toBe(true);ground.dispose();
 });
 
 test("overlapping vector classes share terrain depth and deterministic decal priority",()=>{
  const {grid,center,ground,height}=fixture();
  const polygon:MapPolygon=[[[2.2,3.2],[2.8,3.2],[2.8,3.8],[2.2,3.8]]];
  const data:CircuitSurroundings={schemaVersion:1,circuitKey:46,geometry:{sha256:"",anchors:[],referencePlanarLengthRaw:1},source:{snapshotAt:"",url:"",attribution:""},metersToWorld:.001,coverage:polygon,areas:["grass","wood","paved","parking","water"].map(kind=>({id:kind,kind:kind as CircuitSurroundings["areas"][number]["kind"],polygons:[polygon]})),roads:[{id:"road",kind:"road",points:[[2.2,3.5],[2.8,3.5]]}],buildings:[{id:"building",polygons:[polygon]}]};
- const scene=new Scene();createMappedWorld3D(scene,data,ground,center,height,()=>1,.01,grid,1);
- const orders=new Set<number>();
+ const scene=new Scene(),mapped=createMappedWorld3D(scene,data,ground,center,height,()=>1,.01,grid,1);
+ expect(mapped.windowCount).toBeGreaterThan(0);expect(mapped.windowMaterial?.opacity).toBe(0);
+ const orders=new Set<number>();let water:Mesh|undefined;
  for(const child of scene.children){
   if(!(child instanceof Mesh)||child.renderOrder===0)continue;
   orders.add(child.renderOrder);
   const material=child.material as MeshStandardMaterial;
+  if(material.color.getHexString()===MAP_COLORS.water.slice(1))water=child;
   expect(material.depthTest).toBe(true);expect(material.depthWrite).toBe(false);
   expect(material.polygonOffset).toBe(true);expect(material.polygonOffsetFactor).toBe(-1);expect(material.polygonOffsetUnits).toBe(-1);
   const p=child.geometry.getAttribute("position");
   for(let i=0;i<p.count;i++)expect(p.getY(i)).toBeCloseTo(height(p.getX(i),p.getZ(i)),5);
  }
  expect([...orders].sort()).toEqual([1,2,3,4,5,6,7]);ground.dispose();
+ expect(water).toBeDefined();
+ expect(water!.geometry.hasAttribute("uv")).toBe(true);
+ const waterMaterial=water!.material as MeshStandardMaterial;
+ expect(waterMaterial.roughness).toBe(.42);expect(waterMaterial.metalness).toBe(0);
+ expect(waterMaterial.bumpScale).toBe(.00012);expect(waterMaterial.bumpMap?.image.width).toBe(128);
+ mapped.dispose();
+});
+
+test("mapped buildings leave the whole road corridor clear while preserving overheads", () => {
+  const building = (minHeightM?: number): CircuitSurroundings["buildings"][number] => ({
+    id: "test",
+    polygons: [],
+    ...(minHeightM === undefined ? {} : { minHeightM }),
+  });
+  const rectangle = (minX: number, minZ: number, maxX: number, maxZ: number): MapPolygon => [
+    [
+      [minX, minZ],
+      [maxX, minZ],
+      [maxX, maxZ],
+      [minX, maxZ],
+    ],
+  ];
+  const track = [[{ x: -2, z: 0 }, { x: 2, z: 0 }]];
+  expect(
+    mappedBuildingBlocksCircuit3D(building(), rectangle(-0.01, -1, 0.01, 1), track, 0.001),
+  ).toBe(true);
+  expect(
+    mappedBuildingBlocksCircuit3D(building(), rectangle(-0.5, 0.08, 0.5, 0.2), track, 0.1),
+  ).toBe(true);
+  expect(
+    mappedBuildingBlocksCircuit3D(building(), rectangle(-0.5, 0.11, 0.5, 0.2), track, 0.1),
+  ).toBe(false);
+  expect(
+    mappedBuildingBlocksCircuit3D(building(), rectangle(-3, -1, 3, 1), track, 0.001),
+  ).toBe(true);
+  const nearParallel: MapPolygon = [
+    [
+      [0, 0.0002],
+      [0.001, 0.0012],
+      [0.0011, 0.0013],
+      [0.0001, 0.0003],
+    ],
+  ];
+  expect(
+    mappedBuildingBlocksCircuit3D(
+      building(),
+      nearParallel,
+      [[{ x: 0, z: 0 }, { x: 0.001, z: 0.001 }]],
+      0.00005,
+    ),
+  ).toBe(false);
+  expect(
+    mappedBuildingBlocksCircuit3D(building(4.5), rectangle(-0.1, -1, 0.1, 1), track, 0.1),
+  ).toBe(false);
+  const courtyard: MapPolygon = [
+    rectangle(-2, -2, 2, 2)[0],
+    rectangle(-1, -1, 1, 1)[0],
+  ];
+  expect(
+    mappedBuildingBlocksCircuit3D(
+      building(),
+      courtyard,
+      [[{ x: -0.5, z: 0 }, { x: 0.5, z: 0 }]],
+      0.1,
+    ),
+  ).toBe(false);
+  expect(
+    mappedBuildingBlocksCircuit3D(
+      building(),
+      rectangle(-0.2, -0.2, 0.2, 0.2),
+      [
+        [
+          { x: -2, z: -2 },
+          { x: -1, z: -2 },
+        ],
+        [
+          { x: 1, z: 2 },
+          { x: 2, z: 2 },
+        ],
+      ],
+      0.1,
+    ),
+  ).toBe(false);
 });

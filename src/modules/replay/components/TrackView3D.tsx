@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { ClusteredLighting } from "three/addons/lighting/ClusteredLighting.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import {
   ACESFilmicToneMapping,
@@ -13,6 +15,7 @@ import {
   type Object3D,
   PCFShadowMap,
   PerspectiveCamera,
+  PMREMGenerator,
   Raycaster,
   Scene,
   Sprite,
@@ -27,7 +30,8 @@ import { constrainMapCamera3D, fitTrackOverviewCamera3D } from "../utils/mapCame
 import { loadReplayCarModel3D } from "../utils/replayCar3d.util";
 import { elevateReplayTrack3D } from "../utils/replayElevation3d.util";
 import type { ReplayEnvironment } from "../utils/replayEnvironment.util";
-import { createReplayWorld3D } from "../utils/replayWorld3d.util";
+import { createReplayVolumetricLighting3D } from "../utils/replayVolumetricLighting3d.util";
+import { createReplayWorld3D, REPLAY_CLUSTERED_LIGHT_LIMIT_3D } from "../utils/replayWorld3d.util";
 import {
   getTrackBounds3D,
   projectTrackPosition3D,
@@ -85,6 +89,7 @@ export default function TrackView3D(props: TrackView3DProps) {
   const followRef = useRef<number | null>(null);
   const readyRef = useRef(false);
   const actionsRef = useRef<SceneActions | null>(null);
+  const [canInitialize, setCanInitialize] = useState(false);
   const { followDriver } = props;
   latestPropsRef.current = props;
   activeRef.current = props.active;
@@ -124,12 +129,19 @@ export default function TrackView3D(props: TrackView3DProps) {
   }, [trackPoints.length]);
 
   useEffect(() => {
+    const frame = requestAnimationFrame(() => setCanInitialize(true));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
+    if (!canInitialize) return;
     const container = containerRef.current;
     if (!container || trackPoints.length < 3) return;
 
     let renderer: WebGPURenderer;
     try {
       renderer = new WebGPURenderer({ antialias: true, alpha: false });
+      renderer.lighting = new ClusteredLighting(REPLAY_CLUSTERED_LIGHT_LIMIT_3D, 32, 24, 64);
     } catch {
       latestPropsRef.current.onError("This browser could not start the 3D circuit view.");
       return;
@@ -152,7 +164,6 @@ export default function TrackView3D(props: TrackView3DProps) {
     renderer.toneMappingExposure = 1.15;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = PCFShadowMap;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.domElement.setAttribute("aria-hidden", "true");
     renderer.domElement.style.cssText = "display:block;width:100%;height:100%;touch-action:none";
     container.prepend(renderer.domElement);
@@ -185,7 +196,10 @@ export default function TrackView3D(props: TrackView3DProps) {
         }))
       : [];
     const previousProgress = new Map<number, number>();
+    let drawingBufferWidth = 1;
+    let drawingBufferHeight = 1;
     let world: ReturnType<typeof createReplayWorld3D>;
+    const worldBuildStarted = performance.now();
     try {
       const teams = new Map<string, string>();
       for (const [number, team] of Object.entries(latestPropsRef.current.driverTeams))
@@ -203,6 +217,7 @@ export default function TrackView3D(props: TrackView3DProps) {
         [...teams.values()],
         props.surroundings,
       );
+      renderer.domElement.dataset.worldBuildMs = (performance.now() - worldBuildStarted).toFixed(1);
     } catch (error) {
       controls.dispose();
       disposeObject(scene);
@@ -214,6 +229,8 @@ export default function TrackView3D(props: TrackView3DProps) {
     }
 
     let carModel: Awaited<ReturnType<typeof loadReplayCarModel3D>> | undefined;
+    let environmentTarget: ReturnType<PMREMGenerator["fromScene"]> | undefined;
+    let volumetric: ReturnType<typeof createReplayVolumetricLighting3D> | undefined;
     const cars = new Map<number, Group>();
     const previous = new Map<number, Vector3>();
     let overviewDistance = 1;
@@ -239,7 +256,10 @@ export default function TrackView3D(props: TrackView3DProps) {
       controls.target.copy(overviewTarget);
       const width = Math.max(container.clientWidth, 1),
         height = Math.max(container.clientHeight, 1);
-      const usableWidth = width >= 900 ? Math.max(width - 590, width * 0.35) : width * 0.9;
+      // Keep the centered projection clear of the widest side HUD and its page inset.
+      const panelInset = width >= 1024 ? 330 : 298;
+      const usableWidth =
+        width >= 900 ? Math.max(width - panelInset * 2, width * 0.35) : width * 0.9;
       const usableHeight =
         width >= 900 ? Math.max(height - 280, height * 0.45) : Math.max(height * 0.52, 180);
       overviewDistance = fitTrackOverviewCamera3D(
@@ -258,11 +278,12 @@ export default function TrackView3D(props: TrackView3DProps) {
     const resize = () => {
       const width = Math.max(container.clientWidth, 1);
       const height = Math.max(container.clientHeight, 1);
-      renderer.setSize(width, height, false);
+      const pixelRatio = Math.min(window.devicePixelRatio, 2);
+      // ClusteredLighting requires tile-aligned buffers and a symmetric camera projection.
+      drawingBufferWidth = Math.ceil((width * pixelRatio) / 32) * 32;
+      drawingBufferHeight = Math.ceil((height * pixelRatio) / 32) * 32;
+      renderer.setDrawingBufferSize(drawingBufferWidth, drawingBufferHeight, 1);
       camera.aspect = width / height;
-      camera.clearViewOffset();
-      if (width >= 900) camera.setViewOffset(width, height, 45, 25, width, height);
-      else if (width < 768) camera.setViewOffset(width, height, 0, -height * 0.12, width, height);
       camera.updateProjectionMatrix();
       if (overview && followRef.current === null) resetOverview();
     };
@@ -446,12 +467,12 @@ export default function TrackView3D(props: TrackView3DProps) {
         overviewDistance * 2,
       );
       updateLabels();
-      world.update(latestPropsRef.current.environment, camera, renderer);
-      const width = Math.max(container.clientWidth, 1);
-      const height = Math.max(container.clientHeight, 1);
-      renderer.setViewport(0, 0, width, height);
+      world.update(latestPropsRef.current.environment, camera, renderer, controls.target);
+      volumetric?.update(latestPropsRef.current.environment, controls.target);
+      renderer.setViewport(0, 0, drawingBufferWidth, drawingBufferHeight);
       try {
-        renderer.render(scene, camera);
+        if (volumetric) volumetric.render();
+        else renderer.render(scene, camera);
       } catch (error) {
         animationFrame = 0;
         failed = true;
@@ -464,6 +485,7 @@ export default function TrackView3D(props: TrackView3DProps) {
       renderer.domElement.dataset.pitBoxes = String(world.pitBoxCount);
       renderer.domElement.dataset.mappedBuildings = String(world.mappedBuildingCount);
       renderer.domElement.dataset.mappedTrees = String(world.mappedTreeCount);
+      renderer.domElement.dataset.clusteredLights = String(world.clusteredLightCount);
       renderer.domElement.dataset.mapFeatures = String(world.mapFeatureCount);
       renderer.domElement.dataset.mapTerrain = String(world.hasMappedTerrain);
       renderer.domElement.dataset.triangles = String(renderer.info.render.triangles);
@@ -575,9 +597,11 @@ export default function TrackView3D(props: TrackView3DProps) {
     const observer = new ResizeObserver(resize);
     observer.observe(container);
     const disposeResources = () => {
+      volumetric?.dispose();
       world.dispose();
       disposeObject(scene);
       carModel?.dispose();
+      environmentTarget?.dispose();
       renderer.dispose();
       cars.clear();
       previous.clear();
@@ -599,20 +623,56 @@ export default function TrackView3D(props: TrackView3DProps) {
     void (async () => {
       try {
         // Three selects WebGPU when available and initializes its WebGL2 fallback otherwise.
+        const carModelStarted = performance.now();
         carModel = await loadReplayCarModel3D();
+        renderer.domElement.dataset.carModelMs = (performance.now() - carModelStarted).toFixed(1);
         if (disposed) return;
+        const rendererInitStarted = performance.now();
         await renderer.init();
+        renderer.domElement.dataset.rendererInitMs = (
+          performance.now() - rendererInitStarted
+        ).toFixed(1);
         if (disposed) return;
         renderer.domElement.dataset.renderer =
           "isWebGPUBackend" in renderer.backend && renderer.backend.isWebGPUBackend
             ? "webgpu"
             : "webgl2";
+        const volumetricStarted = performance.now();
+        volumetric = createReplayVolumetricLighting3D({
+          scene,
+          camera,
+          renderer,
+          span,
+          spotLights: world.volumetricLights,
+        });
+        renderer.domElement.dataset.volumetricInitMs = (
+          performance.now() - volumetricStarted
+        ).toFixed(1);
         updateCars();
         controls.update();
-        world.update(latestPropsRef.current.environment, camera, renderer);
-        await renderer.compileAsync(scene, camera);
-        if (disposed) return;
+        world.update(latestPropsRef.current.environment, camera, renderer, controls.target);
+        volumetric.update(latestPropsRef.current.environment, controls.target);
         initialized = true;
+        render();
+        await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+        if (disposed) return;
+        renderer.domElement.dataset.initialRenderMs = (
+          performance.now() - worldBuildStarted
+        ).toFixed(1);
+        const environmentStarted = performance.now();
+        const room = new RoomEnvironment();
+        const pmrem = new PMREMGenerator(renderer);
+        try {
+          environmentTarget = pmrem.fromScene(room, 0.04, 0.1, 100, { size: 64 });
+          scene.environment = environmentTarget.texture;
+        } finally {
+          room.dispose();
+          pmrem.dispose();
+        }
+        renderer.domElement.dataset.environmentMs = (
+          performance.now() - environmentStarted
+        ).toFixed(1);
+        if (disposed) return;
         start();
       } catch (error) {
         if (!disposed) {
@@ -650,7 +710,7 @@ export default function TrackView3D(props: TrackView3DProps) {
       renderer.domElement.remove();
       actionsRef.current = null;
     };
-  }, [pitPoints, trackPoints, elevation.bridge, props.surroundings]);
+  }, [canInitialize, pitPoints, trackPoints, elevation.bridge, props.surroundings]);
 
   useEffect(() => {
     if (!props.active) return;

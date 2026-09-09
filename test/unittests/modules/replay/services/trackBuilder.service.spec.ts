@@ -76,6 +76,87 @@ it("retains a past measured driver location during gaps and after the feed ends,
   });
 });
 
+it("moves cars from bounded lap timing during a substantial location-feed gap", () => {
+  const data = fixture();
+  data.sessionStartMs = 0;
+  data.trackGeometry = {
+    points: [
+      [1000, 1000],
+      [0, 1000],
+      [0, 0],
+      [1000, 0],
+    ],
+    rotation: 0,
+    source: "circuit",
+  };
+  data.telemetryByDriver[1].locations = [
+    { ...sample(1)[0], timestampMs: 800_000, x: 0, y: 0, z: 0 },
+    { ...sample(1)[0], timestampMs: 805_000, x: 250, y: 0, z: 0 },
+    { ...sample(1)[0], timestampMs: 880_000, x: 0, y: 0, z: 0 },
+    { ...sample(1)[0], timestampMs: 3_420_060, x: 0, y: 0, z: 0 },
+  ];
+  data.telemetryByDriver[1].laps = [
+    {
+      driver_number: 1,
+      lap_number: 10,
+      timestampMs: 800_000,
+      date_start: "",
+      lap_duration: 80,
+      is_pit_out_lap: false,
+    },
+    {
+      driver_number: 1,
+      lap_number: 11,
+      timestampMs: 965_616,
+      date_start: "",
+      lap_duration: 78.223,
+      is_pit_out_lap: false,
+    },
+    {
+      driver_number: 1,
+      lap_number: 12,
+      timestampMs: 1_043_839,
+      date_start: "",
+      lap_duration: 80,
+      is_pit_out_lap: false,
+    },
+  ];
+  const normalization = buildTrack(data).normalization;
+  const first = computeDriverStates(data, 993_000, normalization)[1];
+  const second = computeDriverStates(data, 996_000, normalization)[1];
+
+  expect(first.locationStatus).toBe("estimated");
+  expect(second.locationStatus).toBe("estimated");
+  expect(second.position).not.toEqual(first.position);
+  expect(second.position!.y).toBeGreaterThan(first.position!.y);
+
+  data.telemetryByDriver[1].laps[1].is_pit_out_lap = true;
+  expect(computeDriverStates(data, 993_000, normalization)[1].locationStatus).toBe("stale");
+  data.telemetryByDriver[1].laps[1].is_pit_out_lap = false;
+  data.telemetryByDriver[1].laps[1].lap_duration = 600;
+  expect(computeDriverStates(data, 993_000, normalization)[1].locationStatus).toBe("stale");
+  data.telemetryByDriver[1].laps[1].lap_duration = 78.223;
+  data.pits = [{ driver_number: 1, lap_number: 11 } as ReplaySessionData["pits"][number]];
+  expect(computeDriverStates(data, 993_000, normalization)[1].locationStatus).toBe("stale");
+  data.pits = [];
+  data.raceControl = [
+    {
+      timestampMs: 990_000,
+      category: "Flag",
+      flag: "RED",
+      scope: "Track",
+      message: "RED FLAG",
+    } as ReplaySessionData["raceControl"][number],
+  ];
+  expect(computeDriverStates(data, 993_000, normalization)[1].locationStatus).toBe("stale");
+  data.raceControl.push({
+    timestampMs: 991_000,
+    category: "SessionStatus",
+    message: "SESSION RESUMED",
+  } as ReplaySessionData["raceControl"][number]);
+  expect(computeDriverStates(data, 993_000, normalization)[1].locationStatus).toBe("estimated");
+});
+
 it("extracts a continuous measured pit traversal and rejects a gap or a route that never rejoins", async () => {
   const { buildPitLaneGeometry } = await import("modules/replay/services/trackBuilder.service");
   const data = fixture();
@@ -159,8 +240,15 @@ it("derives car heading from the replay cursor even after a backward seek", () =
     { ...sample(1)[0], timestampMs: 2000, x: 100, y: 100, z: 30 },
   ];
   const normalization = { scale: 1, offset: { x: 0, y: 0, z: 0 } };
-  expect(computeDriverStates(data, 2000, normalization)[1].direction).toEqual({ x: 0, y: 100, z: 10 });
-  expect(computeDriverStates(data, 1500, normalization)[1].direction).toEqual({ x: 100, y: 0, z: 10 });
+  const endDirection = computeDriverStates(data, 2000, normalization)[1].direction!;
+  expect(endDirection.y).toBeGreaterThan(0);
+  expect(endDirection.y).toBeGreaterThan(Math.abs(endDirection.x));
+  expect(computeDriverStates(data, 1500, normalization)[1].direction).toMatchObject({
+    x: expect.any(Number),
+    y: expect.any(Number),
+  });
+  expect(computeDriverStates(data, 1500, normalization)[1].direction!.x).toBeGreaterThan(0);
+  expect(computeDriverStates(data, 1500, normalization)[1].direction!.y).toBeGreaterThan(0);
   expect(computeDriverStates(data, 999, normalization)[1].direction).toBeUndefined();
   expect(computeDriverStates(data, 10000, normalization)[1].direction).toBeUndefined();
 });

@@ -5,6 +5,7 @@ import {
   computeDriverStates,
 } from "../services/driverState.service";
 import { buildTrack, rotateTrackPoint } from "../services/trackBuilder.service";
+import type { CarTelemetryPayload } from "../types/carTelemetry.types";
 import type { ReplaySessionData } from "../types/openf1.types";
 import type { DriverRenderState } from "../types/replay.types";
 
@@ -12,10 +13,12 @@ export const useTrackComputation = ({
   data,
   dataRevision,
   currentTimeMs,
+  carTelemetry,
 }: {
   data: ReplaySessionData | null;
   dataRevision: number;
   currentTimeMs: number;
+  carTelemetry: CarTelemetryPayload | null;
 }) => {
   const sessionKey = data?.session.session_key;
   const [fallback, setFallback] = useState<{
@@ -41,13 +44,13 @@ export const useTrackComputation = ({
   // biome-ignore lint/correctness/useExhaustiveDependencies: revisions support existing mutated telemetry consumers
   const driverStates = useMemo((): Record<number, DriverRenderState> => {
     if (!data || !track?.trackPath.length) return {};
-    const states = computeDriverStates(data, currentTimeMs, track.normalization);
+    const states = computeDriverStates(data, currentTimeMs, track.normalization, carTelemetry);
     for (const state of Object.values(states)) {
       if (state.position) state.position = rotateTrackPoint(state.position, track.rotation);
       if (state.direction) state.direction = rotateTrackPoint(state.direction, track.rotation);
     }
     return states;
-  }, [data, dataRevision, currentTimeMs, track]);
+  }, [data, dataRevision, currentTimeMs, track, carTelemetry]);
   const driverNames = useMemo(() => buildDriverNames(data?.drivers ?? []), [data]);
   const driverFullNames = useMemo(
     () =>

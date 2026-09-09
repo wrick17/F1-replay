@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { memo, useEffect, useMemo, useState } from "react";
 import type { ArchiveManifest } from "../../archive/types";
-import { useCarTelemetryData } from "../hooks/useCarTelemetryData";
+import type { CarTelemetryState } from "../hooks/useCarTelemetryData";
 import {
   clamp,
   computeSessionStats,
@@ -21,6 +21,7 @@ import { Tooltip } from "./Tooltip";
 type ArchiveTelemetryPanelProps = TelemetryPanelProps & {
   archiveManifest?: ArchiveManifest | null;
   autoEnable?: boolean;
+  telemetry: CarTelemetryState;
 };
 
 type OvertakeRole = "overtaking" | "overtaken" | null;
@@ -267,7 +268,7 @@ export const TelemetryPanel = ({
   currentTimeMs = 0,
   archiveManifest = null,
   autoEnable = false,
-  onTelemetryLoadingChange,
+  telemetry,
 }: ArchiveTelemetryPanelProps) => {
   const showSkeleton = isLoading && rows.length === 0;
   const overtakeRoleMap = useMemo(() => {
@@ -317,17 +318,6 @@ export const TelemetryPanel = ({
       return next;
     });
   };
-
-  const telemetry = useCarTelemetryData({
-    enabled: telemetryEnabled && !isLoading && Boolean(archiveManifest?.car),
-    manifest: archiveManifest,
-    currentTimeMs,
-  });
-
-  useEffect(() => {
-    onTelemetryLoadingChange?.(telemetry.loading);
-    return () => onTelemetryLoadingChange?.(false);
-  }, [telemetry.loading, onTelemetryLoadingChange]);
 
   const hasTelemetryData = useMemo(
     () => hasCarTelemetryPayload(telemetry.payload),

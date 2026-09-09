@@ -15,7 +15,7 @@ export type DriverRenderState = {
   position: NormalizedPosition | null;
   direction?: NormalizedPosition;
   color: string;
-  locationStatus?: "live" | "stale" | "unavailable";
+  locationStatus?: "live" | "estimated" | "stale" | "unavailable";
   racePosition?: number | null;
 };
 
@@ -128,7 +128,6 @@ export type TelemetryPanelProps = {
   sessionKey?: number | null;
   sessionStartMs?: number;
   sessionEndMs?: number;
-  onTelemetryLoadingChange?: (isLoading: boolean) => void;
 };
 
 export type MarkerLegendProps = {

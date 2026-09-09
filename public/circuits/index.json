@@ -752,19 +752,19 @@
     },
     {
       "circuitKey": 22,
-      "snapshotAt": "2026-09-07T10:22:50Z",
-      "bytes": 2740932,
-      "gzipBytes": 859048,
+      "snapshotAt": "2026-09-09T06:33:31Z",
+      "bytes": 2753451,
+      "gzipBytes": 863871,
       "featureCounts": {
         "buildings": 9681,
         "roads": 3650,
-        "areas": 399
+        "areas": 400
       },
       "vertexCounts": {
         "buildings": 63990,
         "roads": 20996,
-        "areas": 4163,
-        "total": 89149
+        "areas": 4700,
+        "total": 89686
       },
       "terrain": {
         "width": 143,

@@ -31,9 +31,8 @@ test("overhead zoom has twice the reset range and paused constraints settle",()=
 
 test("default and reset preserve the flat map axes and fit the actual track inside the HUD gap",()=>{
  const points=Array.from({length:120},(_,i)=>({x:Math.cos(i*Math.PI/60),y:Math.sin(i*Math.PI/30)*.03,z:Math.sin(i*Math.PI/60)*.32}));
- for(const [width,height,usableWidth,usableHeight] of [[1440,900,850,620],[2048,900,1458,620],[390,844,351,439]]){
+ for(const [width,height,usableWidth,usableHeight] of [[1316,855,656,575],[1440,900,780,620],[2048,900,1388,620],[390,844,351,439]]){
   const camera=new PerspectiveCamera(42,width/height,.006,64),target=new Vector3();
-  camera.setViewOffset(width,height,width>900?45:0,width>900?25:-height*.12,width,height);
   const distance=fitTrackOverviewCamera3D(camera,target,points,usableWidth/width,usableHeight/height);
   const origin=target.clone().project(camera),right=new Vector3(.1,0,0).project(camera),down=new Vector3(0,0,.1).project(camera);
   expect(right.x).toBeGreaterThan(origin.x);expect(right.y).toBeCloseTo(origin.y,8);
