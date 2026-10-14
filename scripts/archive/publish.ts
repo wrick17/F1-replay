@@ -347,15 +347,27 @@ export const decodeLegacyCar = (value: unknown, expectedSessionKey: number) => {
   return car as CarTelemetryPayload;
 };
 
-export const loadExistingCatalog = async (args: PublisherArgs) => {
+export const loadExistingCatalog = async (
+  args: PublisherArgs,
+  bucket?: ReturnType<typeof createR2Client>,
+) => {
   if (args.catalog) return normalizeExistingCatalog(await readJsonFile(args.catalog));
-  const response = await fetch(`${DATA_URL}catalog.json?publisher=${Date.now()}`, {
+  // Publishing reads the canonical object without depending on public-domain access rules.
+  const url = bucket
+    ? bucket.file("catalog.json").presign({ method: "GET", expiresIn: 60 })
+    : `${DATA_URL}catalog.json?publisher=${Date.now()}`;
+  const response = await fetch(url, {
     cache: "no-store",
     headers: { accept: "application/json" },
     signal: fetchSignal(),
+  }).catch(() => {
+    // Bun network errors can expose the presigned URL in their path property.
+    throw new Error("Catalog request failed: network error");
   });
   if (!response.ok) throw new Error(`Catalog request failed: ${response.status}`);
-  return normalizeExistingCatalog(await response.json());
+  const stored = new Uint8Array(await response.arrayBuffer());
+  const decoded = stored[0] === 0x1f && stored[1] === 0x8b ? Bun.gunzipSync(stored) : stored;
+  return normalizeExistingCatalog(JSON.parse(new TextDecoder().decode(decoded)));
 };
 
 const sessionId = (session: Pick<ArchiveCatalogSession, "year" | "round" | "type">) =>
@@ -924,16 +936,16 @@ const main = async () => {
   if (args.repairInvalidCores && !args.importDir) {
     throw new Error("--repair-invalid-cores requires --import-dir");
   }
-  const existing = await loadExistingCatalog(args);
+  const bucket = args.dryRun ? undefined : createR2Client();
+  const existing = await loadExistingCatalog(args, bucket);
   const additions: ArchiveCatalogSession[] = [];
   const quarantined: QuarantinedLegacyObject[] = [];
   let upload: Upload;
-  if (args.dryRun) {
-    upload = localUpload(args.out);
-  } else {
-    const bucket = createR2Client();
+  if (bucket) {
     await preflightR2(bucket, Boolean(args.catalog));
     upload = r2Upload(bucket);
+  } else {
+    upload = localUpload(args.out);
   }
   const repairSessionKeys = args.repairInvalidCores
     ? await invalidCoreSessionKeys(existing)

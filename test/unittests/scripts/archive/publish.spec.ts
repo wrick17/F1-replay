@@ -238,6 +238,68 @@ describe("archive publisher", () => {
     }
   });
 
+  it.each([false, true])("reads the canonical R2 catalog when public access is blocked, gzip=%s", async (gzip) => {
+    const originalFetch = globalThis.fetch;
+    const catalog: ArchiveCatalog = {
+      schemaVersion: ARCHIVE_SCHEMA_VERSION,
+      updatedAt: "2026-10-14T08:00:00Z",
+      sessions: [session(1), { ...session(2), round: 23 }],
+    };
+    const requests: string[] = [];
+    const bucket = {
+      file: (path: string) => ({
+        presign: ({ method }: { method: string }) => `https://signed.invalid/${path}?method=${method}`,
+      }),
+    };
+    globalThis.fetch = async (input) => {
+      requests.push(String(input));
+      if (!String(input).startsWith("https://signed.invalid/")) {
+        return new Response("Forbidden", { status: 403 });
+      }
+      const content = JSON.stringify(catalog);
+      return new Response(gzip ? Bun.gzipSync(content) : content);
+    };
+    try {
+      expect(await loadExistingCatalog(parsePublisherArgs([]), bucket as never)).toEqual(catalog);
+      expect(requests).toEqual(["https://signed.invalid/catalog.json?method=GET"]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("fails closed when the authenticated catalog is unavailable or invalid", async () => {
+    const originalFetch = globalThis.fetch;
+    const bucket = {
+      file: () => ({ presign: () => "https://signed.invalid/catalog.json" }),
+    };
+    try {
+      globalThis.fetch = async () => new Response("Forbidden", { status: 403 });
+      await expect(
+        loadExistingCatalog(parsePublisherArgs([]), bucket as never),
+      ).rejects.toThrow("Catalog request failed: 403");
+      globalThis.fetch = async () => Response.json({ sessions: [] });
+      await expect(
+        loadExistingCatalog(parsePublisherArgs([]), bucket as never),
+      ).rejects.toThrow();
+      globalThis.fetch = async () => {
+        throw Object.assign(new Error("Connection failed"), {
+          path: "https://signed.invalid/catalog.json?X-Amz-Signature=private",
+        });
+      };
+      let networkError: unknown;
+      try {
+        await loadExistingCatalog(parsePublisherArgs([]), bucket as never);
+      } catch (error) {
+        networkError = error;
+      }
+      expect(networkError).toBeInstanceOf(Error);
+      expect((networkError as Error).message).toBe("Catalog request failed: network error");
+      expect(Bun.inspect(networkError)).not.toContain("X-Amz-Signature");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("accepts only a direct or explicitly wrapped legacy replay schema", () => {
     const catalogSession = session(1);
     const replay = {

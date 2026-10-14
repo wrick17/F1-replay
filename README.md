@@ -98,7 +98,7 @@ It requires these environment variables:
 - `S3_ENDPOINT`
 - `S3_REGION`, optional and defaults to `auto`
 
-The bucket name is fixed as `f1-archive`. Keep values in GitHub Actions secrets or local environment storage. Do not commit them.
+The bucket name is fixed as `f1-archive`. Keep values in GitHub Actions secrets or local environment storage. Do not commit them. Publishing reads the canonical catalog through authenticated R2 access, so a public-domain HTTP 403 cannot block startup. Dry runs read the public catalog without credentials. An unavailable or invalid canonical catalog stops publishing; the checked-in snapshot is never an automatic fallback.
 
 The workflow at `.github/workflows/archive.yml` checks the Jolpica calendar at 7 and 37 minutes past each hour. Qualifying and Sprint become eligible 90 minutes after their scheduled start; Race becomes eligible after 150 minutes. The workflow retries a missing exact `year/round/type` identity for 48 hours. It ignores Sprint Qualifying and Sprint Shootout, and the publisher still requires OpenF1 to report an actual `date_end` before it fetches a session.
 
