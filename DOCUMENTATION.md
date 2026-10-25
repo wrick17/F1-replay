@@ -67,7 +67,7 @@ The first location and car window is 60 seconds, followed by four-minute windows
 
 Car telemetry is optional. `status.car` is `ready` when its chunks were published and `unavailable` otherwise. Replay core and location data remain usable without it.
 
-R2 stores JSON bodies with `Content-Encoding: gzip`. Immutable objects use `Cache-Control: public, max-age=31536000, immutable`; `catalog.json` uses a five-minute public cache. The publisher verifies each content hash locally, reads each R2 upload back, decompresses when needed, and compares the exact JSON before it publishes references to that object.
+R2 stores JSON bodies with `Content-Encoding: gzip`. Immutable objects use `Cache-Control: public, max-age=31536000, immutable`; `catalog.json` uses a five-minute public cache. The publisher verifies each content hash locally, reads each R2 upload back, decompresses when needed, and compares the exact JSON before it publishes references to that object. It also reads every immutable object through the public domain, including objects already in R2, and checks the encoding, type, cache headers, and exact JSON. Authenticated readback proves storage integrity only; it does not prove public availability.
 
 ## Publisher
 
@@ -89,7 +89,7 @@ Production publishing is:
 bun run archive:publish
 ```
 
-The required secret names are `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, and `S3_ENDPOINT`. `S3_REGION` is optional and defaults to `auto`. The publisher writes to the fixed `f1-archive` bucket and verifies the public catalog at `https://data.f1.wrick17.com/catalog.json` before it succeeds.
+The required secret names are `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, and `S3_ENDPOINT`. `S3_REGION` is optional and defaults to `auto`. The publisher writes to the fixed `f1-archive` bucket and verifies the public catalog at `https://data.f1.wrick17.com/catalog.json` before it succeeds. It reads that public catalog before discovery and stops if the domain cannot serve it. If the public catalog fails verification after upload, the publisher restores the previous catalog and does not write `public/archive/catalog.json`.
 
 For each ended supported session, the publisher:
 
