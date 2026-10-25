@@ -1,105 +1,97 @@
-name: Publish replay archive
+# Diagnostic-only branch version: six public reads, no checkout, secrets, or publishing.
+name: Diagnose archive public reads
 
 on:
-  schedule:
-    - cron: "7,37 * * * *"
-    - cron: "17 3 * * *"
-    - cron: "47 2 * * *"
   workflow_dispatch:
-    inputs:
-      years:
-        description: "Blank selects all available years (2023 onward)"
-        required: false
-        type: string
-      max_sessions:
-        description: "Maximum sessions to attempt"
-        required: true
-        default: "10"
-        type: choice
-        options:
-          - "1"
-          - "2"
-          - "3"
-          - "4"
-          - "5"
-          - "6"
-          - "7"
-          - "8"
-          - "9"
-          - "10"
-          - "100"
 
-permissions:
-  contents: write
-
-concurrency:
-  group: replay-archive-publisher
-  cancel-in-progress: false
+permissions: {}
 
 jobs:
-  publish:
-    if: github.event_name != 'schedule' || github.event.schedule != '47 2 * * *'
-    runs-on: ubuntu-latest
-    timeout-minutes: ${{ inputs.max_sessions == '100' && 360 || 120 }}
-    env:
-      S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
-      S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
-      S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
-      S3_REGION: ${{ secrets.S3_REGION }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.0
-      - run: bun install --frozen-lockfile
-      - name: Check publishing window
-        id: schedule
-        env:
-          FORCE_PUBLISH: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '17 3 * * *' }}
-        run: |
-          if [ "$FORCE_PUBLISH" = "true" ]; then
-            bun scripts/archive/schedule.ts --force
-          else
-            bun scripts/archive/schedule.ts
-          fi
-      - name: Publish archive
-        if: steps.schedule.outputs.publish == 'true'
-        env:
-          MANUAL_YEARS: ${{ inputs.years }}
-          MANUAL_MAX_SESSIONS: ${{ inputs.max_sessions }}
-          DAILY_BACKFILL: ${{ github.event_name == 'schedule' && github.event.schedule == '17 3 * * *' }}
-        run: |
-          args=(--snapshot public/archive/catalog.json)
-          if [ "$DAILY_BACKFILL" = "true" ]; then
-            args+=(--all-years --max-sessions 10)
-          elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
-            if [ -n "$MANUAL_YEARS" ]; then
-              args+=(--years "$MANUAL_YEARS")
-            else
-              args+=(--all-years)
-            fi
-            args+=(--max-sessions "${MANUAL_MAX_SESSIONS:-10}")
-          else
-            args+=(--max-sessions 2)
-          fi
-          bun scripts/archive/publish.ts "${args[@]}"
-      - name: Commit catalog snapshot
-        if: ${{ !cancelled() && steps.schedule.outputs.publish == 'true' }}
-        run: |
-          if git diff --quiet -- public/archive/catalog.json; then exit 0; fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/archive/catalog.json
-          git commit -m "chore: update replay archive catalog"
-          git pull --rebase origin main
-          git push
-
-  keep-schedules-active:
-    if: github.event_name == 'schedule' && github.event.schedule == '47 2 * * *'
+  diagnose:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          ref: main
-      - run: bash .github/scripts/keep-schedules-active.sh
+          bun-version: 1.4.0
+          no-cache: true
+      - name: Read public archive objects
+        run: |
+          cat > "$RUNNER_TEMP/diagnose.ts" <<'EOF'
+          const DATA_URL = "https://data.f1.wrick17.com/";
+          const RUN_371 = "objects/32dc0a9eb6b0ffc1b13a4bd4e91612a83e89f39ba63591b9d0dee98313994f06.json";
+          const RUN_372 = "objects/206224366c3ebf43040329469881fd8834e6edc17aa498698ed3de1a19692048.json";
+          const HEADERS = [
+            "cf-ray",
+            "cf-mitigated",
+            "cf-cache-status",
+            "server",
+            "content-type",
+            "date",
+            "cache-control",
+            "access-control-allow-origin",
+          ];
+          const json = { accept: "application/json" };
+          const t = Date.now();
+          const requests: [string, string, Record<string, string>?][] = [
+            ["1 catalog published json-accept", `catalog.json?published=${t}`, json],
+            ["2 run371 verify default", `${RUN_371}?verify=${t}`],
+            ["3 run372 verify default", `${RUN_372}?verify=${t}`],
+            ["4 run371 verify json-accept", `${RUN_371}?verify=${t}`, json],
+            ["5 run372 verify json-accept", `${RUN_372}?verify=${t}`, json],
+            ["6 run372 bare default", RUN_372],
+          ];
+
+          // Reads at most 4096 bytes and returns only a recognised Cloudflare error number.
+          const cloudflareCode = async (body: ReadableStream<Uint8Array> | null) => {
+            if (!body) return "";
+            const reader = body.getReader();
+            const chunks: Uint8Array[] = [];
+            let size = 0;
+            try {
+              while (size < 4096) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+                size += value.length;
+              }
+            } finally {
+              await reader.cancel().catch(() => {});
+            }
+            const text = new TextDecoder().decode(Buffer.concat(chunks).subarray(0, 4096));
+            return text.match(/error code:?\s*(\d{4,5})\b/i)?.[1] ?? "";
+          };
+
+          console.log(`bun ${Bun.version} revision ${Bun.revision}`);
+          const failed: string[] = [];
+          for (const [label, path, headers] of requests) {
+            const url = `${DATA_URL}${path}`;
+            const fields = [`utc=${new Date().toISOString()}`, `label="${label}"`, "method=GET", `url=${url}`];
+            try {
+              const response = await fetch(url, {
+                cache: "no-store",
+                redirect: "manual",
+                signal: AbortSignal.timeout(30_000),
+                ...(headers && { headers }),
+              });
+              fields.push(`status=${response.status}`);
+              for (const name of HEADERS) fields.push(`${name}=${response.headers.get(name) ?? "-"}`);
+              if (response.ok) {
+                await response.body?.cancel().catch(() => {});
+              } else {
+                failed.push(label);
+                const code = await cloudflareCode(response.body).catch(() => "");
+                fields.push(`cloudflare-error=${code || "-"}`);
+              }
+            } catch (error) {
+              failed.push(label);
+              const timeout = error instanceof Error && error.name === "TimeoutError";
+              fields.push(`status=request-failed timeout=${timeout}`);
+            }
+            console.log(fields.join(" "));
+          }
+          console.log(`summary ok=${requests.length - failed.length} failed=${failed.length}`);
+          for (const label of failed) console.log(`::error::Diagnostic read failed: ${label}`);
+          if (failed.length) process.exit(1);
+          EOF
+          bun "$RUNNER_TEMP/diagnose.ts"
