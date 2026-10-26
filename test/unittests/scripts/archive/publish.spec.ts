@@ -79,7 +79,7 @@ const fakeArchiveStorage = (publicOverride: (path: string) => Response | undefin
     const signed = url.origin === "https://signed.invalid";
     requests.push({ path, method, signed });
     if (!signed) {
-      expect(url.origin).toBe("https://data.f1.wrick17.com");
+      expect(url.origin).toBe("https://f1-archive.wrick17worker.workers.dev");
       const response = publicOverride(path);
       if (response) return response;
     }
@@ -271,7 +271,7 @@ describe("archive publisher", () => {
     }
   });
 
-  it.each(["healthy", "failed"])(
+  it.each(["healthy", "failed", "denied"])(
     "preserves the committed snapshot when a publisher run fails without additions, run=%s",
     async (run) => {
       const directory = await mkdtemp(join(tmpdir(), "archive-main-"));
@@ -289,24 +289,35 @@ describe("archive publisher", () => {
         await mkdir(join(importDir, "replay"), { recursive: true });
         // A dangling replay link fails the import before any network request.
         if (run === "failed") await symlink(join(directory, "missing.json"), join(importDir, "replay/9.json"));
+        const preload = join(directory, "openf1-denied.ts");
+        // OpenF1 rejects the token while the calendar answers, so only the denial can fail the run.
+        await Bun.write(
+          preload,
+          `globalThis.fetch = async (input) => String(input).startsWith("https://api.openf1.org/")
+            ? new Response(null, { status: 401 })
+            : Response.json({ MRData: { RaceTable: { Races: [] } } });`,
+        );
         const child = Bun.spawn(
           [
             process.execPath,
+            ...(run === "denied" ? ["--preload", preload] : []),
             join(import.meta.dir, "../../../../scripts/archive/publish.ts"),
             "--dry-run",
-            "--import-only",
+            ...(run === "denied" ? ["--years", "2025"] : ["--import-only", "--import-dir", importDir]),
             "--catalog",
             catalogPath,
-            "--import-dir",
-            importDir,
             "--quarantine",
             join(directory, "quarantine.json"),
             "--snapshot",
             snapshot,
           ],
-          { stdout: "ignore", stderr: "ignore" },
+          { stdout: "pipe", stderr: "ignore" },
         );
         const exitCode = await child.exited;
+        if (run === "denied") {
+          const summary = (await new Response(child.stdout).text()).trim().split("\n").at(-1) ?? "";
+          expect(JSON.parse(summary)).toMatchObject({ denied: true, failed: true });
+        }
         if (run === "healthy") {
           expect(exitCode).toBe(0);
           expect(await Bun.file(snapshot).json()).toEqual(normalizeExistingCatalog(canonical));

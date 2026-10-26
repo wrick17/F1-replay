@@ -17,7 +17,7 @@ import { circuitSurroundingsConfigs } from "./helpers/circuit-surroundings.confi
 
 const OVERPASS_URL = "https://maps.mail.ru/osm/tools/overpass/api/interpreter";
 const OSM_SOURCE_URL = "https://www.openstreetmap.org";
-const ARCHIVE_URL = "https://data.f1.wrick17.com/objects/";
+const ARCHIVE_URL = "https://f1-archive.wrick17worker.workers.dev/objects/";
 const USER_AGENT = "f1-replay-circuit-surroundings/0.1 contact: wrick17";
 
 type Bounds = [number, number, number, number];

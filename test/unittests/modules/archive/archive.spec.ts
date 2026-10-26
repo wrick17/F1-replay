@@ -379,7 +379,7 @@ describe("static replay archive", () => {
 
   it("falls back to the bundled catalog while keeping immutable reads on the data host", async () => {
     const archive = await buildSessionArchive(replay, { round: 24 });
-    const catalogUrl = "https://data.f1.wrick17.com/catalog.json";
+    const catalogUrl = "https://f1-archive.wrick17worker.workers.dev/catalog.json";
     const appOrigin = "https://f1.wrick17.com";
     const bundledUrl = `${appOrigin}/archive/catalog.json`;
     const requests: string[] = [];
@@ -396,7 +396,7 @@ describe("static replay archive", () => {
         if (url === catalogUrl) return new Response("offline", { status: 503 });
         if (url === bundledUrl) return new Response(archive.files.get("catalog.json"));
         const parsed = new URL(url);
-        if (parsed.origin === "https://data.f1.wrick17.com") {
+        if (parsed.origin === "https://f1-archive.wrick17worker.workers.dev") {
           const content = archive.files.get(parsed.pathname.slice(1));
           return content === undefined
             ? new Response("missing", { status: 404 })
@@ -424,7 +424,7 @@ describe("static replay archive", () => {
   });
 
   it("keeps network-only catalog checks off local fallbacks", async () => {
-    const catalogUrl = "https://data.f1.wrick17.com/catalog.json";
+    const catalogUrl = "https://f1-archive.wrick17worker.workers.dev/catalog.json";
     const requests: string[] = [];
     const originalFetch = globalThis.fetch;
     try {

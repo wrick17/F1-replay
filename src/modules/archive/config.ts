@@ -1,4 +1,5 @@
-const DEFAULT_ARCHIVE_CATALOG_URL = "https://data.f1.wrick17.com/catalog.json";
+export const DEFAULT_ARCHIVE_CATALOG_URL =
+  "https://f1-archive.wrick17worker.workers.dev/catalog.json";
 
 export const getArchiveCatalogUrl = () => {
   const configured = import.meta.env.RSBUILD_ARCHIVE_URL?.trim();

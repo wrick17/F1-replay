@@ -2,7 +2,7 @@ import { loadCatalog } from "../../archive";
 import type { ArchiveCatalog, ArchiveCatalogSession } from "../../archive/types";
 
 const archiveBaseUrl =
-  import.meta.env.RSBUILD_ARCHIVE_URL?.trim() || "https://data.f1.wrick17.com/";
+  import.meta.env.RSBUILD_ARCHIVE_URL?.trim() || "https://f1-archive.wrick17worker.workers.dev/";
 
 export const ARCHIVE_CATALOG_URL = `${archiveBaseUrl.replace(/\/?$/, "/")}catalog.json`;
 export const ARCHIVE_WORKFLOW_URL =

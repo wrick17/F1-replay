@@ -28,7 +28,7 @@ import { buildReplayPayload } from "../../src/modules/replay/warm/buildReplayPay
 
 const OPENF1_URL = "https://api.openf1.org/v1";
 const JOLPICA_URL = "https://api.jolpi.ca/ergast/f1";
-const DATA_URL = "https://data.f1.wrick17.com/";
+const DATA_URL = "https://f1-archive.wrick17worker.workers.dev/";
 const encoder = new TextEncoder();
 const OPENF1_COLLECTIONS = new Set([
   "car_data",
@@ -993,14 +993,16 @@ const main = async () => {
         failure = new Error(`All ${attempted} replay build attempts failed`);
       }
     } catch (error) {
+      // An OpenF1 access restriction must fail the run instead of passing as a healthy no-op.
       if (error instanceof OpenF1AuthError) {
         denied = true;
         console.warn("OpenF1 returned 401; preserving the last good catalog");
-      } else failure = error;
+      }
+      failure = error;
     }
   }
 
-  const preserve = (denied || failure) && !additions.length;
+  const preserve = failure && !additions.length;
   const catalog = preserve ? existing : mergeCatalog(existing, additions, new Date().toISOString());
   // Nothing new was verified, so leave the committed snapshot untouched.
   if (!preserve) await activateCatalog(catalog, existing, upload, args);

@@ -2,7 +2,7 @@
 
 F1 Replay is a React and Rsbuild app for browsing completed Formula 1 sessions and replaying archived timing, position, event, and optional car telemetry data.
 
-Production replay data is a static schema v2 archive at `https://data.f1.wrick17.com/catalog.json`. The browser does not build or upload archives.
+Production replay data is a static schema v2 archive at `https://f1-archive.wrick17worker.workers.dev/catalog.json`. The read-only `workers/f1-archive` Worker serves it from the `f1-archive` R2 bucket. The browser does not build or upload archives.
 
 GitHub Actions handles scheduled publishing. The legacy Cloudflare warmer's cron triggers are disabled; its read-only data remains available for rollback.
 
@@ -37,7 +37,7 @@ bun run build
 
 `bun run test:visual` runs the optional Playwright visual checks. `bun run preview` serves the built `dist` directory locally.
 
-Set `RSBUILD_ARCHIVE_URL` to use another archive root. Production defaults to `https://data.f1.wrick17.com`.
+Set `RSBUILD_ARCHIVE_URL` to use another archive root. Production defaults to `https://f1-archive.wrick17worker.workers.dev`.
 
 ## 3D replay
 
@@ -136,9 +136,9 @@ Keep the legacy replay and car telemetry Workers read-only during acceptance. A 
 
 ## Cost model
 
-Normal replay reads go directly to static R2 data through the custom domain. They do not execute the old warmer Worker or issue its repeated D1 probes. The publisher uploads only newly discovered immutable objects plus the small mutable catalog.
+Normal replay reads go to static R2 data through the read-only `f1-archive` Worker. Each archive request is one Worker request and one R2 read. They do not execute the old warmer Worker or issue its repeated D1 probes. The publisher uploads only newly discovered immutable objects plus the small mutable catalog.
 
-This design reduces Worker and D1 activity, but it does not promise zero cost or permanent free-tier operation. R2 storage, reads, writes, GitHub Actions time, and any retained legacy services still count against their current provider limits.
+This design reduces Worker and D1 activity, but it does not promise zero cost or permanent free-tier operation. Worker requests, R2 storage, reads, writes, GitHub Actions time, and any retained legacy services still count against their current provider limits.
 
 ## Data sources
 

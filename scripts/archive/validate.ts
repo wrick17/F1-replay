@@ -16,7 +16,7 @@ const option = (name: string) => {
 const directory = option("--dir");
 let server: ReturnType<typeof Bun.serve> | undefined;
 let catalogUrl =
-  option("--catalog") ?? `https://data.f1.wrick17.com/catalog.json?validate=${Date.now()}`;
+  option("--catalog") ?? `https://f1-archive.wrick17worker.workers.dev/catalog.json?validate=${Date.now()}`;
 
 if (directory) {
   const root = resolve(directory);
