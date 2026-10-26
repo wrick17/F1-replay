@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAt": "2026-10-11T15:58:35.152Z",
+  "updatedAt": "2026-10-26T06:23:53.673Z",
   "sessions": [
     {
       "year": 2026,
@@ -2110,6 +2110,112 @@
         "url": "objects/2435974c75ff0c9833540c54dea841416150f68ef6f933016ab8d72d157b18e9.json",
         "sha256": "2435974c75ff0c9833540c54dea841416150f68ef6f933016ab8d72d157b18e9",
         "bytes": 13912
+      }
+    },
+    {
+      "year": 2026,
+      "round": 18,
+      "sessionKey": 11392,
+      "meetingKey": 1297,
+      "type": "Qualifying",
+      "meeting": {
+        "meeting_key": 1297,
+        "meeting_name": "United States Grand Prix",
+        "meeting_official_name": "FORMULA 1 MSC CRUISES UNITED STATES GRAND PRIX 2026",
+        "location": "Austin",
+        "country_key": 19,
+        "country_code": "USA",
+        "country_name": "United States",
+        "country_flag": "https://media.formula1.com/content/dam/fom-website/2018-redesign-assets/Flags%2016x9/united-states-flag.png",
+        "circuit_key": 9,
+        "circuit_short_name": "Austin",
+        "circuit_type": "Permanent",
+        "circuit_info_url": "https://api.multiviewer.app/api/v1/circuits/9/2026",
+        "circuit_image": "https://media.formula1.com/content/dam/fom-website/2018-redesign-assets/Track%20icons%204x3/United States%20carbon.png",
+        "gmt_offset": "-05:00:00",
+        "date_start": "2026-10-23T17:30:00+00:00",
+        "date_end": "2026-10-25T22:00:00+00:00",
+        "year": 2026,
+        "is_cancelled": false
+      },
+      "session": {
+        "session_key": 11392,
+        "session_type": "Qualifying",
+        "session_name": "Qualifying",
+        "date_start": "2026-10-24T21:00:00+00:00",
+        "date_end": "2026-10-24T22:00:00+00:00",
+        "meeting_key": 1297,
+        "circuit_key": 9,
+        "circuit_short_name": "Austin",
+        "country_key": 19,
+        "country_code": "USA",
+        "country_name": "United States",
+        "location": "Austin",
+        "gmt_offset": "-05:00:00",
+        "year": 2026,
+        "is_cancelled": false
+      },
+      "status": {
+        "replay": "ready",
+        "car": "ready"
+      },
+      "manifest": {
+        "url": "objects/19dc0fff33a60de70ed961544078cdc0e2e37126008d70d16b66b00524134903.json",
+        "sha256": "19dc0fff33a60de70ed961544078cdc0e2e37126008d70d16b66b00524134903",
+        "bytes": 8127
+      }
+    },
+    {
+      "year": 2026,
+      "round": 18,
+      "sessionKey": 11396,
+      "meetingKey": 1297,
+      "type": "Race",
+      "meeting": {
+        "meeting_key": 1297,
+        "meeting_name": "United States Grand Prix",
+        "meeting_official_name": "FORMULA 1 MSC CRUISES UNITED STATES GRAND PRIX 2026",
+        "location": "Austin",
+        "country_key": 19,
+        "country_code": "USA",
+        "country_name": "United States",
+        "country_flag": "https://media.formula1.com/content/dam/fom-website/2018-redesign-assets/Flags%2016x9/united-states-flag.png",
+        "circuit_key": 9,
+        "circuit_short_name": "Austin",
+        "circuit_type": "Permanent",
+        "circuit_info_url": "https://api.multiviewer.app/api/v1/circuits/9/2026",
+        "circuit_image": "https://media.formula1.com/content/dam/fom-website/2018-redesign-assets/Track%20icons%204x3/United States%20carbon.png",
+        "gmt_offset": "-05:00:00",
+        "date_start": "2026-10-23T17:30:00+00:00",
+        "date_end": "2026-10-25T22:00:00+00:00",
+        "year": 2026,
+        "is_cancelled": false
+      },
+      "session": {
+        "session_key": 11396,
+        "session_type": "Race",
+        "session_name": "Race",
+        "date_start": "2026-10-25T20:00:00+00:00",
+        "date_end": "2026-10-25T22:00:00+00:00",
+        "meeting_key": 1297,
+        "circuit_key": 9,
+        "circuit_short_name": "Austin",
+        "country_key": 19,
+        "country_code": "USA",
+        "country_name": "United States",
+        "location": "Austin",
+        "gmt_offset": "-05:00:00",
+        "year": 2026,
+        "is_cancelled": false
+      },
+      "status": {
+        "replay": "ready",
+        "car": "ready"
+      },
+      "manifest": {
+        "url": "objects/b1def8970ce480695b455c453b3eb67a6e126f5d5e4e80109c434f488859764f.json",
+        "sha256": "b1def8970ce480695b455c453b3eb67a6e126f5d5e4e80109c434f488859764f",
+        "bytes": 13430
       }
     },
     {
