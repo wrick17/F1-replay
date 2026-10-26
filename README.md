@@ -2,7 +2,7 @@
 
 F1 Replay is a React and Rsbuild app for browsing completed Formula 1 sessions and replaying archived timing, position, event, and optional car telemetry data.
 
-Production replay data is a static schema v2 archive at `https://data.f1.wrick17.com/catalog.json`. The browser does not build or upload archives.
+Production replay data is a static schema v2 archive at `https://f1-archive.wrick17worker.workers.dev/catalog.json`. The read-only `workers/f1-archive` Worker serves it from the `f1-archive` R2 bucket. The browser does not build or upload archives.
 
 GitHub Actions handles scheduled publishing. The legacy Cloudflare warmer's cron triggers are disabled; its read-only data remains available for rollback.
 
@@ -37,7 +37,7 @@ bun run build
 
 `bun run test:visual` runs the optional Playwright visual checks. `bun run preview` serves the built `dist` directory locally.
 
-Set `RSBUILD_ARCHIVE_URL` to use another archive root. Production defaults to `https://data.f1.wrick17.com`.
+Set `RSBUILD_ARCHIVE_URL` to use another archive root. Production defaults to `https://f1-archive.wrick17worker.workers.dev`.
 
 ## 3D replay
 
@@ -98,7 +98,7 @@ It requires these environment variables:
 - `S3_ENDPOINT`
 - `S3_REGION`, optional and defaults to `auto`
 
-The bucket name is fixed as `f1-archive`. Keep values in GitHub Actions secrets or local environment storage. Do not commit them. Publishing reads the canonical catalog through authenticated R2 access, so a public-domain HTTP 403 cannot block startup. Dry runs read the public catalog without credentials. An unavailable or invalid canonical catalog stops publishing; the checked-in snapshot is never an automatic fallback.
+The bucket name is fixed as `f1-archive`. Keep values in GitHub Actions secrets or local environment storage. Do not commit them. Publishing reads the canonical catalog through authenticated R2 access. It then reads the public catalog and stops before discovery if the public domain cannot serve it, because activation requires a verified public catalog read. A `--catalog` bootstrap skips that public check. Dry runs read the public catalog without credentials. An unavailable or invalid canonical catalog stops publishing; the checked-in snapshot is never an automatic fallback.
 
 The workflow at `.github/workflows/archive.yml` checks the Jolpica calendar at 7 and 37 minutes past each hour. Qualifying and Sprint become eligible 90 minutes after their scheduled start; Race becomes eligible after 150 minutes. The workflow retries a missing exact `year/round/type` identity for 48 hours. It ignores Sprint Qualifying and Sprint Shootout, and the publisher still requires OpenF1 to report an actual `date_end` before it fetches a session.
 
@@ -108,7 +108,7 @@ A daily 03:17 UTC run bypasses the gate and attempts up to ten sessions across e
 
 A separate daily 02:47 UTC check makes one empty `[CF-Pages-Skip]` commit after 30 days without a repository commit. This keeps GitHub's scheduled workflow enabled through the winter without running the publisher, writing to R2, or starting a Pages build.
 
-The publisher uploads content-addressed core and chunk objects first, then the manifest, then `catalog.json`. A catalog cannot point to an object that has not passed upload readback. Bounded retries cover transient network, HTTP 429, and server errors, and OpenF1 calls are paced to at most 30 per minute.
+The publisher uploads content-addressed core and chunk objects first, then the manifest, then `catalog.json`. Every object, including one already in R2, must pass two separate checks: authenticated R2 readback proves the stored bytes, and a public-domain read shows that the domain serves them to the publisher. Neither check substitutes for the other, and a catalog cannot point to an object that has not passed both. If the public catalog is unreadable or does not match after upload, the publisher restores the previous catalog and does not write the snapshot. Public reads retry HTTP 404, 429, and server errors but not 401 or 403. Their errors include the status and the `cf-ray`, `cf-mitigated`, `cf-cache-status`, `server`, and `content-type` headers for follow-up, never the response body. Bounded retries cover transient network, HTTP 429, and server errors, and OpenF1 calls are paced to at most 30 per minute.
 
 On 2026-09-06, during a live F1 session, the unauthenticated OpenF1 request `GET /v1/sessions?year=2025` returned HTTP 401 with a temporary restriction on global and past-session access. That observation does not establish the same behavior for every year or endpoint. If OpenF1 returns 401 before a run adds anything, the publisher preserves the exact last good catalog and snapshot. Verified legacy backups remain the path for historical gaps.
 
@@ -136,9 +136,9 @@ Keep the legacy replay and car telemetry Workers read-only during acceptance. A 
 
 ## Cost model
 
-Normal replay reads go directly to static R2 data through the custom domain. They do not execute the old warmer Worker or issue its repeated D1 probes. The publisher uploads only newly discovered immutable objects plus the small mutable catalog.
+Normal replay reads go to static R2 data through the read-only `f1-archive` Worker. Each archive request is one Worker request and one R2 read. They do not execute the old warmer Worker or issue its repeated D1 probes. The publisher uploads only newly discovered immutable objects plus the small mutable catalog.
 
-This design reduces Worker and D1 activity, but it does not promise zero cost or permanent free-tier operation. R2 storage, reads, writes, GitHub Actions time, and any retained legacy services still count against their current provider limits.
+This design reduces Worker and D1 activity, but it does not promise zero cost or permanent free-tier operation. Worker requests, R2 storage, reads, writes, GitHub Actions time, and any retained legacy services still count against their current provider limits.
 
 ## Data sources
 

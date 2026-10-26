@@ -1,0 +1,20 @@
+# Read-only probe of the public archive endpoint from a GitHub-hosted runner.
+# No secrets, R2 credentials, publishing, or commits.
+name: Probe archive endpoint
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - run: bun scripts/archive/probe-endpoint.ts

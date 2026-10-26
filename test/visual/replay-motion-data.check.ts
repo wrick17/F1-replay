@@ -12,7 +12,7 @@ import { buildTrack } from "../../src/modules/replay/services/trackBuilder.servi
 import type { CarTelemetrySample } from "../../src/modules/replay/types/carTelemetry.types";
 import { interpolateLocationMotion } from "../../src/modules/replay/utils/telemetry.util";
 
-const catalogUrl = "https://data.f1.wrick17.com/catalog.json";
+const catalogUrl = "https://f1-archive.wrick17worker.workers.dev/catalog.json";
 
 const session = async (sessionKey: number) => {
   const catalog = await loadCatalog(catalogUrl, { networkOnly: true });

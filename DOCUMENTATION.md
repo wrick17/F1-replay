@@ -5,7 +5,7 @@
 F1 Replay has four production parts:
 
 1. Cloudflare Pages serves the Rsbuild single-page app from `dist`.
-2. The public R2 custom domain serves `https://data.f1.wrick17.com/catalog.json` and immutable archive objects.
+2. The read-only `workers/f1-archive` Worker serves `https://f1-archive.wrick17worker.workers.dev/catalog.json` and immutable archive objects from the `f1-archive` R2 bucket. It allows only `GET`, `HEAD`, and `OPTIONS` for `catalog.json` and `objects/<sha256>.json`, and streams the stored gzip bytes and HTTP metadata unchanged. It replaced the `data.f1.wrick17.com` custom domain because the zone's Bot Fight Mode challenged GitHub-hosted publisher reads.
 3. `.github/workflows/archive.yml` runs the trusted publisher on schedule or through authenticated manual dispatch.
 4. The old replay and car telemetry Workers remain read-only during migration and rollback acceptance.
 
@@ -27,7 +27,7 @@ The supported archive identities are `year/round/type`, where type comes from th
 
 ## Runtime data flow
 
-The app resolves the archive root through `RSBUILD_ARCHIVE_URL`. The production build defaults it to `https://data.f1.wrick17.com`.
+The app resolves the archive root through `RSBUILD_ARCHIVE_URL`. The production build defaults it to `https://f1-archive.wrick17worker.workers.dev`.
 
 1. Home, details, and replay routes load and validate `catalog.json`.
 2. The chosen catalog entry identifies one immutable manifest.
@@ -67,7 +67,7 @@ The first location and car window is 60 seconds, followed by four-minute windows
 
 Car telemetry is optional. `status.car` is `ready` when its chunks were published and `unavailable` otherwise. Replay core and location data remain usable without it.
 
-R2 stores JSON bodies with `Content-Encoding: gzip`. Immutable objects use `Cache-Control: public, max-age=31536000, immutable`; `catalog.json` uses a five-minute public cache. The publisher verifies each content hash locally, reads each R2 upload back, decompresses when needed, and compares the exact JSON before it publishes references to that object.
+R2 stores JSON bodies with `Content-Encoding: gzip`. Immutable objects use `Cache-Control: public, max-age=31536000, immutable`; `catalog.json` uses a five-minute public cache. The publisher verifies each content hash locally, reads each R2 upload back, decompresses when needed, and compares the exact JSON before it publishes references to that object. It also reads every immutable object through the public domain, including objects already in R2, and checks the encoding, type, cache headers, and exact JSON. Authenticated readback proves storage integrity only; it does not prove public availability.
 
 ## Publisher
 
@@ -89,7 +89,7 @@ Production publishing is:
 bun run archive:publish
 ```
 
-The required secret names are `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, and `S3_ENDPOINT`. `S3_REGION` is optional and defaults to `auto`. The publisher writes to the fixed `f1-archive` bucket and verifies the public catalog at `https://data.f1.wrick17.com/catalog.json` before it succeeds.
+The required secret names are `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, and `S3_ENDPOINT`. `S3_REGION` is optional and defaults to `auto`. The publisher writes to the fixed `f1-archive` bucket and verifies the public catalog at `https://f1-archive.wrick17worker.workers.dev/catalog.json` before it succeeds. It reads that public catalog before discovery and stops if the domain cannot serve it. If the public catalog fails verification after upload, the publisher restores the previous catalog and does not write `public/archive/catalog.json`.
 
 For each ended supported session, the publisher:
 
@@ -103,7 +103,7 @@ For each ended supported session, the publisher:
 
 The client paces OpenF1 requests to at most 30 per minute. Transient network failures, HTTP 429, and server errors get bounded retries. An individual session build failure is logged and skipped. An OpenF1 HTTP 401 stops further discovery because retrying an access restriction would waste calls.
 
-On 2026-09-06, during a live F1 session, `GET https://api.openf1.org/v1/sessions?year=2025` returned HTTP 401. The response described a temporary restriction on global API and past-session access until the live session ended. This was one observed year, endpoint, and time condition. It does not prove that all historical endpoints are restricted. If a 401 occurs before additions, the publisher keeps the prior catalog and snapshot byte-for-byte. If verified legacy imports were completed earlier in the run, it may publish those additions.
+On 2026-09-06, during a live F1 session, `GET https://api.openf1.org/v1/sessions?year=2025` returned HTTP 401. The response described a temporary restriction on global API and past-session access until the live session ended. This was one observed year, endpoint, and time condition. It does not prove that all historical endpoints are restricted. A 401 fails the run. If it occurs before additions, the publisher keeps the prior catalog and snapshot byte-for-byte. If verified legacy imports were completed earlier in the run, it may publish those additions.
 
 The GitHub workflow checks the current UTC year's Jolpica calendar at 7 and 37 minutes past every hour. During the first 48 hours of January it also checks the prior year. It considers only the exact `Qualifying`, `Sprint`, and `Race` calendar fields:
 
@@ -195,11 +195,21 @@ If the frontend fails, roll Pages back to the previous deployment. That build ca
 
 Do not delete legacy data as part of migration. Retire the warmer schedule only after a successful trusted publish and valid live schema v2 catalog check. Then remove the old warmer cron triggers, verify scheduled events stop, and separately decide the retention period for the warmer Worker, its D1 state, and old cache storage.
 
+## Archive endpoint
+
+`workers/f1-archive` is the public read path for the `f1-archive` bucket on the account's `workers.dev` subdomain. It only reads the bucket and adds no cache layer or compression step. Deploy it with:
+
+```sh
+cd workers/f1-archive && npx wrangler deploy
+```
+
+`.github/workflows/archive-endpoint-probe.yml` checks the endpoint from a GitHub-hosted runner without secrets. It reads `catalog.json` and one known object three times each and requires HTTP 200, no `cf-mitigated` header, gzip JSON headers, the expected cache policy, `Access-Control-Allow-Origin: *`, a valid catalog, and an object whose decoded SHA-256 matches its path. It logs status, selected headers, and hashes only. It also compares the catalog hash with the compact form of the checked-out snapshot and warns on a difference. GitHub runs `workflow_dispatch` only for workflow files present on the default branch.
+
 ## Cost model
 
-Normal replay traffic reads static gzip content from the R2 custom domain. It does not invoke the old cache warmer or poll D1. Content-addressed objects are uploaded once and reused; routine publisher runs write only new session objects and the small mutable catalog.
+Normal replay traffic reads static gzip content from R2 through the read-only `f1-archive` Worker. It does not invoke the old cache warmer or poll D1. Content-addressed objects are uploaded once and reused; routine publisher runs write only new session objects and the small mutable catalog.
 
-The design aims to fit low-volume operation within available free allowances, but no allowance or traffic pattern is guaranteed. Track R2 storage, Class A and Class B operations, GitHub Actions minutes, Pages usage, and any retained Worker or D1 activity against the providers' current limits.
+The design aims to fit low-volume operation within available free allowances, but no allowance or traffic pattern is guaranteed. Track Worker requests, R2 storage, Class A and Class B operations, GitHub Actions minutes, Pages usage, and any retained Worker or D1 activity against the providers' current limits.
 
 ## Source ownership
 

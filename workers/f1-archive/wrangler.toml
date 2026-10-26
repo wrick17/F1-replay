@@ -1,0 +1,9 @@
+name = "f1-archive"
+main = "src/index.ts"
+compatibility_date = "2026-04-03"
+workers_dev = true
+
+# Read-only public origin for the publisher-owned archive bucket.
+[[r2_buckets]]
+binding = "ARCHIVE_BUCKET"
+bucket_name = "f1-archive"

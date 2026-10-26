@@ -12,7 +12,7 @@ import suzukaElevation from "../src/modules/replay/data/suzukaElevation.json";
 import { normalizePositions } from "../src/modules/replay/utils/telemetry.util";
 import { type TrackPoint3D, toTrackPoints3D } from "../src/modules/replay/utils/track3d.util";
 
-const DEFAULT_CATALOG = "https://data.f1.wrick17.com/catalog.json";
+const DEFAULT_CATALOG = "https://f1-archive.wrick17worker.workers.dev/catalog.json";
 const DEFAULT_OUTPUT = "src/modules/replay/data/circuitElevations.json";
 const DEFAULT_CACHE = "/tmp/f1-elevation-profiles";
 const MAX_OBJECT_BYTES = 12_000_000;

@@ -28,7 +28,7 @@ import { buildReplayPayload } from "../../src/modules/replay/warm/buildReplayPay
 
 const OPENF1_URL = "https://api.openf1.org/v1";
 const JOLPICA_URL = "https://api.jolpi.ca/ergast/f1";
-const DATA_URL = "https://data.f1.wrick17.com/";
+const DATA_URL = "https://f1-archive.wrick17worker.workers.dev/";
 const encoder = new TextEncoder();
 const OPENF1_COLLECTIONS = new Set([
   "car_data",
@@ -91,6 +91,60 @@ const sha256 = async (content: string) => {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const fetchSignal = () => AbortSignal.timeout(30_000);
+
+const fetchSigned = async (url: string, init: RequestInit, label: string) => {
+  try {
+    const response = await fetch(url, { ...init, signal: fetchSignal() });
+    return { response, bytes: new Uint8Array(await response.arrayBuffer()) };
+  } catch {
+    // Bun network and body errors can expose the presigned URL in their path property.
+    throw new Error(`${label} failed: network error`);
+  }
+};
+
+const PUBLIC_DIAGNOSTIC_HEADERS = ["cf-ray", "cf-mitigated", "cf-cache-status", "server", "content-type"];
+
+// Playback reads the public domain, so authenticated R2 readback cannot prove availability.
+const fetchPublic = async (path: string) => {
+  for (let attempt = 0; ; attempt += 1) {
+    const response = await fetch(`${DATA_URL}${path}?verify=${Date.now()}`, {
+      cache: "no-store",
+      headers: { accept: "application/json" },
+      signal: fetchSignal(),
+    });
+    if (response.ok) return response;
+    // Retry delivery failures only; repeating an access decision cannot make it valid.
+    const transient = response.status === 404 || response.status === 429 || response.status >= 500;
+    if (!transient || attempt === 3) {
+      // Never log the body; these headers let an authorized operator trace the edge decision.
+      const details = PUBLIC_DIAGNOSTIC_HEADERS.flatMap((name) => {
+        const value = response.headers.get(name);
+        return value ? [`${name}=${value}`] : [];
+      });
+      throw new Error(`Public object unavailable: ${path} (${[response.status, ...details].join("; ")})`);
+    }
+    await sleep(2_000 * 2 ** attempt);
+  }
+};
+
+const verifyPublic = async (path: string, content: string, immutable: boolean) => {
+  const response = await fetchPublic(path);
+  if (response.headers.get("content-encoding") !== "gzip") {
+    throw new Error(`Public object is missing gzip Content-Encoding: ${path}`);
+  }
+  if (!response.headers.get("content-type")?.toLowerCase().includes("application/json")) {
+    throw new Error(`Public object is missing JSON Content-Type: ${path}`);
+  }
+  const cacheControl = response.headers.get("cache-control") ?? "";
+  if (
+    immutable
+      ? !cacheControl.includes("max-age=31536000") || !cacheControl.includes("immutable")
+      : !cacheControl.includes("max-age=300")
+  ) {
+    throw new Error(`Public object has invalid Cache-Control: ${path}`);
+  }
+  if ((await response.text()) !== content) throw new Error(`Public object mismatch: ${path}`);
+};
 
 const retryAfterMs = (response: Response, attempt: number) => {
   const header = response.headers.get("retry-after");
@@ -356,16 +410,12 @@ export const loadExistingCatalog = async (
   const url = bucket
     ? bucket.file("catalog.json").presign({ method: "GET", expiresIn: 60 })
     : `${DATA_URL}catalog.json?publisher=${Date.now()}`;
-  const response = await fetch(url, {
-    cache: "no-store",
-    headers: { accept: "application/json" },
-    signal: fetchSignal(),
-  }).catch(() => {
-    // Bun network errors can expose the presigned URL in their path property.
-    throw new Error("Catalog request failed: network error");
-  });
+  const { response, bytes: stored } = await fetchSigned(
+    url,
+    { cache: "no-store", headers: { accept: "application/json" } },
+    "Catalog request",
+  );
   if (!response.ok) throw new Error(`Catalog request failed: ${response.status}`);
-  const stored = new Uint8Array(await response.arrayBuffer());
   const decoded = stored[0] === 0x1f && stored[1] === 0x8b ? Bun.gunzipSync(stored) : stored;
   return normalizeExistingCatalog(JSON.parse(new TextDecoder().decode(decoded)));
 };
@@ -392,19 +442,10 @@ export const mergeCatalog = (
   };
 };
 
-export const publishArchiveObjects = async (
-  archive: BuiltArchive,
-  upload: Upload,
-  reuse?: ArchiveManifest,
-) => {
+export const publishArchiveObjects = async (archive: BuiltArchive, upload: Upload) => {
   const manifestPath = archive.catalog.sessions[0].manifest.url;
-  const reusablePaths = new Set([
-    ...(reuse?.locations.map((chunk) => chunk.url) ?? []),
-    ...(reuse?.car?.chunks.map((chunk) => chunk.url) ?? []),
-  ]);
-  const objects = [...archive.files].filter(
-    ([path]) => path !== "catalog.json" && path !== manifestPath && !reusablePaths.has(path),
-  );
+  // Reused repair chunks go through upload too: the R2 HEAD skips the rewrite, never the verification.
+  const objects = [...archive.files].filter(([path]) => path !== "catalog.json" && path !== manifestPath);
   for (let index = 0; index < objects.length; index += 8) {
     await Promise.all(
       objects.slice(index, index + 8).map(([path, content]) => upload(path, content, true)),
@@ -417,6 +458,28 @@ export const publishArchiveObjects = async (
 
 export const publishCatalog = async (catalog: ArchiveCatalog, upload: Upload) => {
   await upload("catalog.json", JSON.stringify(catalog), false);
+};
+
+export const activateCatalog = async (
+  catalog: ArchiveCatalog,
+  previous: ArchiveCatalog,
+  upload: Upload,
+  args: Pick<PublisherArgs, "dryRun" | "snapshot">,
+) => {
+  // mergeCatalog returns the previous object when nothing was added.
+  if (catalog !== previous) {
+    try {
+      await publishCatalog(catalog, upload);
+      if (!args.dryRun) await verifyPublic("catalog.json", JSON.stringify(catalog), false);
+    } catch (error) {
+      console.error(`Catalog activation failed; restoring the previous catalog: ${String(error)}`);
+      await publishCatalog(previous, upload);
+      throw error;
+    }
+  }
+  // The workflow commits this bundled fallback even after failures, so write it only once verified.
+  await mkdir(dirname(args.snapshot), { recursive: true });
+  await Bun.write(args.snapshot, `${JSON.stringify(catalog, null, 2)}\n`);
 };
 
 const localUpload = (out?: string): Upload => async (path, content) => {
@@ -448,54 +511,42 @@ export const preflightR2 = async (
   bucket: ReturnType<typeof createR2Client>,
   allowMissingCatalog: boolean,
 ) => {
-  const response = await fetch(bucket.file("catalog.json").presign({ method: "HEAD", expiresIn: 60 }), {
-    method: "HEAD",
-    signal: fetchSignal(),
-  });
+  const { response } = await fetchSigned(
+    bucket.file("catalog.json").presign({ method: "HEAD", expiresIn: 60 }),
+    { method: "HEAD" },
+    "R2 catalog preflight",
+  );
   if (response.ok || (allowMissingCatalog && response.status === 404)) return;
   throw new Error(`R2 catalog preflight failed: ${response.status}`);
 };
 
-const r2Upload = (bucket: ReturnType<typeof createR2Client>): Upload => {
-  let publicHeaderVerification: Promise<void> | undefined;
-  return async (path, content, immutable) => {
-    const hash = /^objects\/([a-f0-9]{64})\.json$/.exec(path)?.[1];
-    if (hash && (await sha256(content)) !== hash) throw new Error(`Hash path mismatch: ${path}`);
-    const file = bucket.file(path);
-    const verify = async () => {
-      const response = await fetch(file.presign({ method: "GET", expiresIn: 60 }), {
-        signal: fetchSignal(),
-      });
-      if (!response.ok) throw new Error(`R2 verification failed: ${path} (${response.status})`);
-      const stored = new Uint8Array(await response.arrayBuffer());
-      const decoded = stored[0] === 0x1f && stored[1] === 0x8b ? Bun.gunzipSync(stored) : stored;
-      if (new TextDecoder().decode(decoded) !== content) throw new Error(`R2 verification failed: ${path}`);
-    };
-    if (immutable) {
-      const response = await fetch(file.presign({ method: "HEAD", expiresIn: 60 }), {
-        method: "HEAD",
-        signal: fetchSignal(),
-      });
-      if (response.ok) {
-        await verify();
-        return;
-      }
-      if (response.status !== 404) throw new Error(`R2 HEAD failed: ${path} (${response.status})`);
+export const r2Upload = (bucket: ReturnType<typeof createR2Client>): Upload => async (path, content, immutable) => {
+  const hash = /^objects\/([a-f0-9]{64})\.json$/.exec(path)?.[1];
+  if (hash && (await sha256(content)) !== hash) throw new Error(`Hash path mismatch: ${path}`);
+  const file = bucket.file(path);
+  const request = (method: "GET" | "HEAD" | "PUT", init: RequestInit = {}) =>
+    fetchSigned(file.presign({ method, expiresIn: 60 }), { ...init, method }, `R2 ${method} ${path}`);
+  let stored = false;
+  if (immutable) {
+    const { response } = await request("HEAD");
+    if (!response.ok && response.status !== 404) {
+      throw new Error(`R2 HEAD failed: ${path} (${response.status})`);
     }
+    stored = response.ok;
+  }
+  if (!stored) {
     const compressed = Bun.gzipSync(encoder.encode(content));
     const cacheControl = immutable
       ? "public,max-age=31536000,immutable"
       : "public,max-age=300";
     for (let attempt = 0; ; attempt += 1) {
-      const response = await fetch(file.presign({ method: "PUT", expiresIn: 60 }), {
-        method: "PUT",
+      const { response } = await request("PUT", {
         headers: {
           "Content-Type": "application/json",
           "Content-Encoding": "gzip",
           "Cache-Control": cacheControl,
         },
         body: compressed,
-        signal: fetchSignal(),
       });
       if (response.ok) break;
       if (response.status < 500 || attempt === 3) {
@@ -503,41 +554,13 @@ const r2Upload = (bucket: ReturnType<typeof createR2Client>): Upload => {
       }
       await sleep(1_000 * 2 ** attempt);
     }
-    await verify();
-    if (immutable) {
-      publicHeaderVerification ??= (async () => {
-        for (let attempt = 0; ; attempt += 1) {
-          const response = await fetch(`${DATA_URL}${path}?verify=${Date.now()}`, {
-            cache: "no-store",
-            signal: fetchSignal(),
-          });
-          if (response.ok) {
-            if (response.headers.get("content-encoding") !== "gzip") {
-              throw new Error(`Public object is missing gzip Content-Encoding: ${path}`);
-            }
-            if (!response.headers.get("content-type")?.toLowerCase().includes("application/json")) {
-              throw new Error(`Public object is missing JSON Content-Type: ${path}`);
-            }
-            const publicCacheControl = response.headers.get("cache-control") ?? "";
-            if (
-              !publicCacheControl.includes("max-age=31536000") ||
-              !publicCacheControl.includes("immutable")
-            ) {
-              throw new Error(`Public object has invalid Cache-Control: ${path}`);
-            }
-            if ((await response.text()) !== content) throw new Error(`Public object mismatch: ${path}`);
-            console.log(
-              `Verified public headers for ${path}; cache-control=${publicCacheControl}`,
-            );
-            return;
-          }
-          if (attempt === 3) throw new Error(`Public object unavailable: ${path} (${response.status})`);
-          await sleep(2_000 * 2 ** attempt);
-        }
-      })();
-      await publicHeaderVerification;
-    }
-  };
+  }
+  const { response, bytes } = await request("GET");
+  if (!response.ok) throw new Error(`R2 verification failed: ${path} (${response.status})`);
+  const decoded = bytes[0] === 0x1f && bytes[1] === 0x8b ? Bun.gunzipSync(bytes) : bytes;
+  if (new TextDecoder().decode(decoded) !== content) throw new Error(`R2 verification failed: ${path}`);
+  // Every referenced object, including one already stored, must be readable where playback reads it.
+  if (immutable) await verifyPublic(path, content, true);
 };
 
 const walk = async (directory: string): Promise<string[]> => {
@@ -681,7 +704,7 @@ const archiveOne = async (
       `replay ${replay.session.session_key} failed archive validation: ${String(error)}`,
     );
   }
-  await publishArchiveObjects(archive, upload, reuse);
+  await publishArchiveObjects(archive, upload);
   return archive.catalog.sessions[0];
 };
 
@@ -910,26 +933,6 @@ const discover = async (
   return { attempted, failed };
 };
 
-const verifyPublicCatalog = async (catalog: ArchiveCatalog) => {
-  const response = await fetch(`${DATA_URL}catalog.json?published=${Date.now()}`, {
-    cache: "no-store",
-    headers: { accept: "application/json" },
-    signal: fetchSignal(),
-  });
-  if (!response.ok) throw new Error(`Published catalog unavailable: ${response.status}`);
-  if (response.headers.get("content-encoding") !== "gzip") {
-    throw new Error("Published catalog is missing gzip Content-Encoding");
-  }
-  if (!response.headers.get("content-type")?.toLowerCase().includes("application/json")) {
-    throw new Error("Published catalog is missing JSON Content-Type");
-  }
-  if (!response.headers.get("cache-control")?.includes("max-age=300")) {
-    throw new Error("Published catalog has invalid Cache-Control");
-  }
-  const actual = validateCatalog(await response.json());
-  if (JSON.stringify(actual) !== JSON.stringify(catalog)) throw new Error("Published catalog mismatch");
-};
-
 const main = async () => {
   const args = parsePublisherArgs(process.argv.slice(2));
   if (args.out && !args.dryRun) throw new Error("--out requires --dry-run");
@@ -943,6 +946,8 @@ const main = async () => {
   let upload: Upload;
   if (bucket) {
     await preflightR2(bucket, Boolean(args.catalog));
+    // Activation needs the public catalog, so stop before building telemetry when it is unreadable.
+    if (!args.catalog) await (await fetchPublic("catalog.json")).body?.cancel();
     upload = r2Upload(bucket);
   } else {
     upload = localUpload(args.out);
@@ -988,22 +993,19 @@ const main = async () => {
         failure = new Error(`All ${attempted} replay build attempts failed`);
       }
     } catch (error) {
+      // An OpenF1 access restriction must fail the run instead of passing as a healthy no-op.
       if (error instanceof OpenF1AuthError) {
         denied = true;
         console.warn("OpenF1 returned 401; preserving the last good catalog");
-      } else failure = error;
+      }
+      failure = error;
     }
   }
 
-  const catalog = (denied || failure) && !additions.length
-    ? existing
-    : mergeCatalog(existing, additions, new Date().toISOString());
-  await mkdir(dirname(args.snapshot), { recursive: true });
-  await Bun.write(args.snapshot, `${JSON.stringify(catalog, null, 2)}\n`);
-  if (additions.length) {
-    await publishCatalog(catalog, upload);
-    if (!args.dryRun) await verifyPublicCatalog(catalog);
-  }
+  const preserve = failure && !additions.length;
+  const catalog = preserve ? existing : mergeCatalog(existing, additions, new Date().toISOString());
+  // Nothing new was verified, so leave the committed snapshot untouched.
+  if (!preserve) await activateCatalog(catalog, existing, upload, args);
   console.log(
     JSON.stringify({
       dryRun: args.dryRun,
