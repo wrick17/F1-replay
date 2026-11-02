@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAt": "2026-10-31T22:48:01.673Z",
+  "updatedAt": "2026-11-02T00:37:04.227Z",
   "sessions": [
     {
       "year": 2026,
@@ -2269,6 +2269,59 @@
         "url": "objects/d1887b3feb29bd33320c70732b48c1a6d9c1e93558888266154c7935508dd49b.json",
         "sha256": "d1887b3feb29bd33320c70732b48c1a6d9c1e93558888266154c7935508dd49b",
         "bytes": 8127
+      }
+    },
+    {
+      "year": 2026,
+      "round": 19,
+      "sessionKey": 11404,
+      "meetingKey": 1298,
+      "type": "Race",
+      "meeting": {
+        "meeting_key": 1298,
+        "meeting_name": "Mexico City Grand Prix",
+        "meeting_official_name": "FORMULA 1 GRAN PREMIO DE LA CIUDAD DE MÉXICO 2026",
+        "location": "Mexico City",
+        "country_key": 8,
+        "country_code": "MEX",
+        "country_name": "Mexico",
+        "country_flag": "https://media.formula1.com/content/dam/fom-website/2018-redesign-assets/Flags%2016x9/mexico-flag.png",
+        "circuit_key": 65,
+        "circuit_short_name": "Mexico City",
+        "circuit_type": "Permanent",
+        "circuit_info_url": "https://api.multiviewer.app/api/v1/circuits/65/2026",
+        "circuit_image": "https://media.formula1.com/content/dam/fom-website/2018-redesign-assets/Track%20icons%204x3/Mexico%20carbon.png",
+        "gmt_offset": "-06:00:00",
+        "date_start": "2026-10-30T18:30:00+00:00",
+        "date_end": "2026-11-01T23:00:00+00:00",
+        "year": 2026,
+        "is_cancelled": false
+      },
+      "session": {
+        "session_key": 11404,
+        "session_type": "Race",
+        "session_name": "Race",
+        "date_start": "2026-11-01T20:00:00+00:00",
+        "date_end": "2026-11-01T23:00:00+00:00",
+        "meeting_key": 1298,
+        "circuit_key": 65,
+        "circuit_short_name": "Mexico City",
+        "country_key": 8,
+        "country_code": "MEX",
+        "country_name": "Mexico",
+        "location": "Mexico City",
+        "gmt_offset": "-06:00:00",
+        "year": 2026,
+        "is_cancelled": false
+      },
+      "status": {
+        "replay": "ready",
+        "car": "ready"
+      },
+      "manifest": {
+        "url": "objects/2af96d34ce0948532790ac91122d10653573981dada744d0fa0bef1ca8b9ec80.json",
+        "sha256": "2af96d34ce0948532790ac91122d10653573981dada744d0fa0bef1ca8b9ec80",
+        "bytes": 18731
       }
     },
     {
